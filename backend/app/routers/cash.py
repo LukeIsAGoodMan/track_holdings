@@ -1,0 +1,76 @@
+"""
+GET /api/cash[?portfolio_id=N]
+
+Returns the current cash balance (sum of all CashLedger.amount rows)
+and the 50 most-recent ledger entries.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.models import CashLedger
+from app.schemas.base import DecStr
+
+router = APIRouter(tags=["cash"])
+
+
+class CashEntry(BaseModel):
+    id:             int
+    portfolio_id:   int
+    trade_event_id: int | None
+    amount:         DecStr
+    description:    str | None
+    created_at:     datetime
+
+
+class CashSummary(BaseModel):
+    balance: DecStr
+    entries: list[CashEntry]
+
+
+@router.get("/cash", response_model=CashSummary)
+async def get_cash(
+    portfolio_id: int | None = Query(None, description="Filter by portfolio ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return current cash balance and recent ledger (last 50 entries)."""
+    # Balance
+    stmt_sum = select(func.sum(CashLedger.amount))
+    if portfolio_id is not None:
+        stmt_sum = stmt_sum.where(CashLedger.portfolio_id == portfolio_id)
+    raw = await db.execute(stmt_sum)
+    balance = Decimal(str(raw.scalar() or 0))
+
+    # Ledger
+    stmt_entries = (
+        select(CashLedger)
+        .order_by(CashLedger.created_at.desc())
+        .limit(50)
+    )
+    if portfolio_id is not None:
+        stmt_entries = stmt_entries.where(CashLedger.portfolio_id == portfolio_id)
+
+    result  = await db.execute(stmt_entries)
+    entries = result.scalars().all()
+
+    return CashSummary(
+        balance=balance,
+        entries=[
+            CashEntry(
+                id=e.id,
+                portfolio_id=e.portfolio_id,
+                trade_event_id=e.trade_event_id,
+                amount=e.amount,
+                description=e.description,
+                created_at=e.created_at,
+            )
+            for e in entries
+        ],
+    )

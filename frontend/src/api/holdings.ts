@@ -1,0 +1,154 @@
+/**
+ * Typed API functions — one function per backend endpoint.
+ * All return the raw data shape from types/index.ts.
+ */
+import api from './client'
+import type {
+  Portfolio,
+  HoldingGroup,
+  TradeCreate,
+  TradeResponse,
+  RiskDashboard,
+  ScenarioResult,
+  CashSummary,
+  AccountHistoryResponse,
+  AttributionResponse,
+  LifecycleResult,
+  SettledTradesResponse,
+  PortfolioInsight,
+} from '@/types'
+
+// ── Portfolios ────────────────────────────────────────────────────────────────
+
+/** GET /api/portfolios → nested tree */
+export const fetchPortfolios = (): Promise<Portfolio[]> =>
+  api.get<Portfolio[]>('/portfolios').then((r) => r.data)
+
+/** POST /api/portfolios */
+export const createPortfolio = (body: {
+  name: string
+  description?: string
+  parent_id?: number | null
+}): Promise<Portfolio> =>
+  api.post<Portfolio>('/portfolios', body).then((r) => r.data)
+
+// ── Holdings ──────────────────────────────────────────────────────────────────
+
+/** GET /api/holdings[?portfolio_id=N] */
+export const fetchHoldings = (portfolioId?: number | null): Promise<HoldingGroup[]> =>
+  api
+    .get<HoldingGroup[]>('/holdings', {
+      params: portfolioId != null ? { portfolio_id: portfolioId } : undefined,
+    })
+    .then((r) => r.data)
+
+// ── Trades ────────────────────────────────────────────────────────────────────
+
+/** POST /api/trades */
+export const createTrade = (body: TradeCreate): Promise<TradeResponse> =>
+  api.post<TradeResponse>('/trades', body).then((r) => r.data)
+
+// ── Risk dashboard ────────────────────────────────────────────────────────────
+
+/** GET /api/risk/dashboard[?portfolio_id=N] */
+export const fetchRiskDashboard = (portfolioId?: number | null): Promise<RiskDashboard> =>
+  api
+    .get<RiskDashboard>('/risk/dashboard', {
+      params: portfolioId != null ? { portfolio_id: portfolioId } : undefined,
+    })
+    .then((r) => r.data)
+
+// ── Scenario engine ───────────────────────────────────────────────────────────
+
+/** GET /api/risk/scenario — 2nd-order Taylor expansion PnL estimate */
+export const fetchScenario = (
+  portfolioId:    number | null | undefined,
+  priceChangePct: number,   // e.g. -0.15 for -15%
+  volChangePpt:   number,   // e.g. 20 for +20 vol-points
+): Promise<ScenarioResult> =>
+  api
+    .get<ScenarioResult>('/risk/scenario', {
+      params: {
+        ...(portfolioId != null ? { portfolio_id: portfolioId } : {}),
+        price_change_pct: priceChangePct,
+        vol_change_ppt:   volChangePpt,
+      },
+    })
+    .then((r) => r.data)
+
+// ── Cash ──────────────────────────────────────────────────────────────────────
+
+/** GET /api/cash[?portfolio_id=N] */
+export const fetchCash = (portfolioId?: number | null): Promise<CashSummary> =>
+  api
+    .get<CashSummary>('/cash', {
+      params: portfolioId != null ? { portfolio_id: portfolioId } : undefined,
+    })
+    .then((r) => r.data)
+
+// ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────
+
+/**
+ * GET /api/risk/history
+ * Returns normalized NLV index for the account + each benchmark.
+ * Both start at 100 at the account's first trade date.
+ * `benchmarks` is a comma-separated list, e.g. "SPY,QQQ,NVDA".
+ */
+// ── Lifecycle automation ──────────────────────────────────────────────────────
+
+/**
+ * POST /api/lifecycle/process
+ * Triggers the expired-option settlement sweep.
+ * Returns a summary of what was settled.
+ */
+export const triggerLifecycle = (): Promise<LifecycleResult> =>
+  api.post<LifecycleResult>('/lifecycle/process').then((r) => r.data)
+
+/** GET /api/lifecycle/settled[?portfolio_id=N&since_hours=N] */
+export const fetchSettledTrades = (
+  portfolioId?: number | null,
+  sinceHours?: number | null,
+): Promise<SettledTradesResponse> =>
+  api
+    .get<SettledTradesResponse>('/lifecycle/settled', {
+      params: {
+        ...(portfolioId != null ? { portfolio_id: portfolioId } : {}),
+        ...(sinceHours != null ? { since_hours: sinceHours } : {}),
+      },
+    })
+    .then((r) => r.data)
+
+// ── P&L Attribution ───────────────────────────────────────────────────────────
+
+/** GET /api/risk/attribution[?portfolio_id=N] */
+export const fetchAttribution = (portfolioId?: number | null): Promise<AttributionResponse> =>
+  api
+    .get<AttributionResponse>('/risk/attribution', {
+      params: portfolioId != null ? { portfolio_id: portfolioId } : undefined,
+    })
+    .then((r) => r.data)
+
+// ── LLM-Ready Portfolio Insights ─────────────────────────────────────────────
+
+/** GET /api/risk/insights[?portfolio_id=N] */
+export const fetchInsights = (portfolioId?: number | null): Promise<PortfolioInsight> =>
+  api
+    .get<PortfolioInsight>('/risk/insights', {
+      params: portfolioId != null ? { portfolio_id: portfolioId } : undefined,
+    })
+    .then((r) => r.data)
+
+// ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────
+
+export const fetchAccountHistory = (
+  portfolioId: number | null | undefined,
+  benchmarks:  string[],
+): Promise<AccountHistoryResponse> =>
+  api
+    .get<AccountHistoryResponse>('/risk/history', {
+      params: {
+        ...(portfolioId != null ? { portfolio_id: portfolioId } : {}),
+        benchmarks: benchmarks.join(','),
+      },
+    })
+    .then((r) => r.data)

@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ───────────────────────────────────────────────────────────── */
+:root { color-scheme: dark; }
+
+body {
+  @apply bg-app text-slate-200;
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar            { width: 5px; height: 5px; }
+::-webkit-scrollbar-track      { @apply bg-app; }
+::-webkit-scrollbar-thumb      { @apply bg-line rounded-full; }
+::-webkit-scrollbar-thumb:hover{ @apply bg-slate-600; }
+
+/* ── Table utility classes ───────────────────────────────────────────── */
+.th        { @apply text-xs font-semibold uppercase tracking-wider text-slate-500 px-3 py-2 text-right whitespace-nowrap; }
+.th-left   { @apply text-xs font-semibold uppercase tracking-wider text-slate-500 px-3 py-2 text-left  whitespace-nowrap; }
+.td        { @apply text-sm px-3 py-2.5 text-right  tabular-nums align-middle; }
+.td-left   { @apply text-sm px-3 py-2.5 text-left   align-middle; }
+
+/* ── Badges ──────────────────────────────────────────────────────────── */
+.pill-bull { @apply inline-block rounded px-1.5 py-0.5 text-xs font-semibold bg-green-500/15 text-green-400; }
+.pill-bear { @apply inline-block rounded px-1.5 py-0.5 text-xs font-semibold bg-red-500/15   text-red-400;   }
+.pill-flat { @apply inline-block rounded px-1.5 py-0.5 text-xs font-semibold bg-slate-700    text-slate-300; }
+
+/* ── Input resets ────────────────────────────────────────────────────── */
+input[type='text'],
+input[type='number'],
+input[type='date'],
+select {
+  @apply bg-card border border-line rounded-md text-slate-200 text-sm px-3 py-2 w-full
+         focus:outline-none focus:ring-1 focus:ring-info/50 focus:border-info/50
+         placeholder:text-slate-600;
+}
+
+button { @apply cursor-pointer transition-colors; }
+button:focus-visible { @apply outline-none ring-2 ring-info/50; }
