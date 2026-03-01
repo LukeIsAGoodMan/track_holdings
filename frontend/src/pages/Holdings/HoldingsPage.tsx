@@ -59,6 +59,11 @@ function efficiencyClass(raw: string | null): string {
   return 'bg-slate-700/60 text-slate-400'
 }
 
+// ── Shimmer placeholder for loading Greeks ────────────────────────────────────
+function ShimmerCell() {
+  return <span className="inline-block h-3.5 w-12 bg-slate-700/60 rounded animate-pulse" />
+}
+
 // ── Exit button ────────────────────────────────────────────────────────────────
 function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
   return (
@@ -276,6 +281,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
         const totalLegs  = group.option_legs.length + group.stock_legs.length
         const hasOptions = group.option_legs.length > 0
         const hasStocks  = group.stock_legs.length > 0
+        const greeksLoading = hasOptions && group.option_legs.some(l => l.delta == null)
 
         return (
           <div key={group.symbol}>
@@ -302,10 +308,12 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                   ▶
                 </span>
                 <span className="font-bold text-white text-base">{group.symbol}</span>
-                {group.spot_price && (
+                {group.spot_price ? (
                   <span className="text-xs text-slate-500 tabular-nums">
                     ${fmtNum(group.spot_price)}
                   </span>
+                ) : (
+                  <span className="inline-block h-3 w-14 bg-slate-700/40 rounded animate-pulse" />
                 )}
                 {/* Bell icon — set price alert for this symbol */}
                 <span
@@ -367,9 +375,13 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                   <div className="text-slate-500 uppercase tracking-wider text-[10px]">
                     {t('delta_exposure')}
                   </div>
-                  <div className={`font-bold text-sm ${signClass(group.total_delta_exposure)}`}>
-                    {fmtNum(group.total_delta_exposure)}
-                  </div>
+                  {greeksLoading ? (
+                    <span className="inline-block h-4 w-16 bg-slate-700/40 rounded animate-pulse mt-0.5" />
+                  ) : (
+                    <div className={`font-bold text-sm ${signClass(group.total_delta_exposure)}`}>
+                      {fmtNum(group.total_delta_exposure)}
+                    </div>
+                  )}
                 </div>
 
                 <div className="text-right">
@@ -448,13 +460,15 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                                 </span>
                               </td>
                               <td className="td text-slate-400">${fmtNum(leg.avg_open_price)}</td>
-                              <td className="td text-slate-300">{fmtGreek(leg.delta)}</td>
+                              <td className="td text-slate-300">{leg.delta != null ? fmtGreek(leg.delta) : <ShimmerCell />}</td>
                               <td className="td">
-                                <span className={`font-semibold ${deltaPos ? 'text-green-400' : 'text-red-400'}`}>
-                                  {fmtNum(leg.delta_exposure)}
-                                </span>
+                                {leg.delta_exposure != null ? (
+                                  <span className={`font-semibold ${deltaPos ? 'text-green-400' : 'text-red-400'}`}>
+                                    {fmtNum(leg.delta_exposure)}
+                                  </span>
+                                ) : <ShimmerCell />}
                               </td>
-                              <td className="td text-amber-400">{fmtGreek(leg.theta)}</td>
+                              <td className="td text-amber-400">{leg.theta != null ? fmtGreek(leg.theta) : <ShimmerCell />}</td>
                               <td className="td text-slate-400">{fmtUSD(leg.maintenance_margin)}</td>
                               {/* Exit */}
                               <td className="td pr-3">
