@@ -1,16 +1,11 @@
 """
 Alpha Vantage async wrapper (drop-in replacement for yfinance_client).
 
-Performance strategy: stale-while-revalidate.
-  - REST endpoints NEVER block on Alpha Vantage HTTP calls.
-  - Fresh cache (< 120s) → instant return.
-  - Stale cache (120s – 1h) → instant return + background refresh scheduled.
-  - No cache at all → return None/DEFAULT_SIGMA (let PriceFeedService fill it).
-  - Only PriceFeedService._poll_loop (via get_spot_prices_batch) actually
-    performs blocking AV calls, and it runs in a background asyncio task.
+All HTTP calls are synchronous; wrapped in asyncio.to_thread.
+Same public API as the original yfinance_client — no caller changes needed.
 
 Rate limiting: 5 calls / 60 seconds (Alpha Vantage free tier).
-HTTP timeout: 5 seconds per request (fail fast).
+Caching: 120-second TTL on all price data to stay within limits.
 """
 from __future__ import annotations
 
@@ -19,7 +14,6 @@ import logging
 import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import Decimal
 
@@ -58,12 +52,14 @@ def _wait_for_rate_limit() -> None:
     while True:
         with _rate_lock:
             now = time.monotonic()
-            while _call_times and _call_times[0] < now - _RATE_WINDOW:
+            # Purge calls older than the window
+            while _call_times and now - _call_times[0] > _RATE_WINDOW:
                 _call_times.popleft()
             if len(_call_times) < _RATE_LIMIT:
                 _call_times.append(now)
-                return
+                return  # slot acquired
             wait_time = _RATE_WINDOW - (now - _call_times[0]) + 0.1
+        # Sleep *outside* the lock so other threads aren't blocked
         time.sleep(min(wait_time, 30.0))
 
 
@@ -71,7 +67,7 @@ def _try_rate_limit() -> bool:
     """Non-blocking: acquire a slot if available, else return False."""
     with _rate_lock:
         now = time.monotonic()
-        while _call_times and _call_times[0] < now - _RATE_WINDOW:
+        while _call_times and now - _call_times[0] > _RATE_WINDOW:
             _call_times.popleft()
         if len(_call_times) < _RATE_LIMIT:
             _call_times.append(now)
@@ -79,29 +75,19 @@ def _try_rate_limit() -> bool:
         return False
 
 
-# ── Two-tier cache: fresh (120s) + stale (1h) ────────────────────────────
-_cache: dict[str, tuple[object, float]] = {}   # key → (value, timestamp)
+# ── Response cache (configurable TTL, default 120s) ──────────────────────
+_cache: dict[str, tuple[object, float]] = {}
 _cache_lock = threading.Lock()
-_CACHE_TTL: float = float(settings.av_cache_ttl)   # fresh window (120s)
-_STALE_TTL: float = 3600.0                         # stale window (1h)
+_CACHE_TTL: float = float(settings.av_cache_ttl)
 
 
 def _get_cached(key: str) -> object | None:
-    """Return cached value if within stale window (up to 1h old)."""
-    with _cache_lock:
-        entry = _cache.get(key)
-        if entry and (time.monotonic() - entry[1]) < _STALE_TTL:
-            return entry[0]
-    return None
-
-
-def _is_fresh(key: str) -> bool:
-    """True if cache entry exists and is within the fresh TTL."""
+    """Return cached value if fresh, else None."""
     with _cache_lock:
         entry = _cache.get(key)
         if entry and (time.monotonic() - entry[1]) < _CACHE_TTL:
-            return True
-    return False
+            return entry[0]
+    return None
 
 
 def _set_cached(key: str, value: object) -> None:
@@ -110,34 +96,7 @@ def _set_cached(key: str, value: object) -> None:
         _cache[key] = (value, time.monotonic())
 
 
-# ── Background refresh (single-thread executor) ──────────────────────────
-_bg_pending: set[str] = set()
-_bg_lock = threading.Lock()
-_refresh_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="av-bg")
-
-
-def _schedule_bg_refresh(cache_key: str, fn: object, *args: object) -> None:
-    """Submit a background refresh if not already pending for this key."""
-    with _bg_lock:
-        if cache_key in _bg_pending:
-            return
-        _bg_pending.add(cache_key)
-
-    def _run() -> None:
-        try:
-            fn(*args)
-        except Exception:
-            logger.exception("Background refresh failed for %s", cache_key)
-        finally:
-            with _bg_lock:
-                _bg_pending.discard(cache_key)
-
-    _refresh_pool.submit(_run)
-
-
-# ── HTTP session (5s timeout — fail fast) ─────────────────────────────────
-_HTTP_TIMEOUT = 5  # seconds
-
+# ── HTTP session ──────────────────────────────────────────────────────────
 _session = requests.Session()
 _session.headers.update({
     "User-Agent": (
@@ -153,9 +112,10 @@ def _av_get(params: dict) -> dict | None:
     _wait_for_rate_limit()
     params["apikey"] = _API_KEY
     try:
-        resp = _session.get(_BASE_URL, params=params, timeout=_HTTP_TIMEOUT)
+        resp = _session.get(_BASE_URL, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
+        # Alpha Vantage returns errors/warnings in the JSON body
         if "Error Message" in data:
             logger.warning("Alpha Vantage error: %s", data["Error Message"])
             return None
@@ -163,9 +123,6 @@ def _av_get(params: dict) -> dict | None:
             logger.warning("Alpha Vantage rate limit note: %s", data["Note"])
             return None
         return data
-    except requests.Timeout:
-        logger.warning("Alpha Vantage timeout (>%ds) for %s", _HTTP_TIMEOUT, params.get("symbol"))
-        return None
     except Exception:
         logger.exception("Alpha Vantage request failed")
         return None
@@ -177,7 +134,7 @@ def _av_get_nonblocking(params: dict) -> dict | None:
         return None
     params["apikey"] = _API_KEY
     try:
-        resp = _session.get(_BASE_URL, params=params, timeout=_HTTP_TIMEOUT)
+        resp = _session.get(_BASE_URL, params=params, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         if "Error Message" in data:
@@ -187,39 +144,24 @@ def _av_get_nonblocking(params: dict) -> dict | None:
             logger.warning("Alpha Vantage rate limit note: %s", data["Note"])
             return None
         return data
-    except requests.Timeout:
-        logger.warning("Alpha Vantage timeout (>%ds) for %s", _HTTP_TIMEOUT, params.get("symbol"))
-        return None
     except Exception:
         logger.exception("Alpha Vantage request failed")
         return None
 
 
-# ── Internal fetch helpers (do actual HTTP) ──────────────────────────────
-
-def _do_fetch_spot(upper: str) -> Decimal | None:
-    """Actually call GLOBAL_QUOTE and cache the result."""
-    sym = _av_symbol(upper)
-    data = _av_get({"function": "GLOBAL_QUOTE", "symbol": sym})
-    if not data or "Global Quote" not in data:
-        return None
-    price_str = data["Global Quote"].get("05. price")
-    if not price_str:
-        return None
-    try:
-        price = Decimal(price_str).quantize(Decimal("0.0001"))
-        if price > 0:
-            _set_cached(f"spot:{upper}", price)
-            return price
-    except Exception:
-        pass
-    return None
-
-
-def _do_fetch_daily_series(ticker: str, full: bool = False) -> dict[str, dict] | None:
-    """Actually call TIME_SERIES_DAILY and cache the result."""
+# ── Daily time-series helper (shared by vol, ytd, history, 1y) ───────────
+def _fetch_daily_series(ticker: str, full: bool = False) -> dict[str, dict] | None:
+    """
+    Fetch TIME_SERIES_DAILY for a ticker.
+    Returns the "Time Series (Daily)" dict or None.
+    Uses cache keyed on (ticker, outputsize).
+    """
     size = "full" if full else "compact"
-    cache_key = f"daily:{ticker}:{size}"
+    cache_key = f"daily:{ticker.upper()}:{size}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
     sym = _av_symbol(ticker)
     data = _av_get({
         "function": "TIME_SERIES_DAILY",
@@ -228,100 +170,78 @@ def _do_fetch_daily_series(ticker: str, full: bool = False) -> dict[str, dict] |
     })
     if not data or "Time Series (Daily)" not in data:
         return None
+
     ts = data["Time Series (Daily)"]
     _set_cached(cache_key, ts)
     return ts
 
 
-def _do_fetch_hist_vol(upper: str) -> Decimal:
-    """Actually fetch daily series and compute vol."""
-    ts = _fetch_daily_series(upper, full=False)
+# ── Spot price ────────────────────────────────────────────────────────────
+def _fetch_spot(ticker: str) -> Decimal | None:
+    upper = ticker.upper()
+    cache_key = f"spot:{upper}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
+    sym = _av_symbol(upper)
+    data = _av_get({"function": "GLOBAL_QUOTE", "symbol": sym})
+    if not data or "Global Quote" not in data:
+        return None
+
+    quote = data["Global Quote"]
+    price_str = quote.get("05. price")
+    if not price_str:
+        return None
+
+    try:
+        price = Decimal(price_str).quantize(Decimal("0.0001"))
+        if price > 0:
+            _set_cached(cache_key, price)
+            return price
+    except Exception:
+        pass
+    return None
+
+
+# ── Historical volatility ────────────────────────────────────────────────
+def _fetch_hist_vol(ticker: str) -> Decimal:
+    upper = ticker.upper()
+    cache_key = f"hvol:{upper}"
+    cached = _get_cached(cache_key)
+    if cached is not None:
+        return cached
+
+    ts = _fetch_daily_series(upper, full=False)  # compact = ~100 days
     if not ts:
         return DEFAULT_SIGMA
+
+    # Last 30 trading days
     sorted_dates = sorted(ts.keys(), reverse=True)[:30]
     if len(sorted_dates) < 5:
         return DEFAULT_SIGMA
+
     closes: list[float] = []
     for d in reversed(sorted_dates):
         try:
             closes.append(float(ts[d]["4. close"]))
         except (KeyError, ValueError):
             pass
+
     if len(closes) < 5:
         return DEFAULT_SIGMA
+
     vol = compute_historical_vol(closes)
-    _set_cached(f"hvol:{upper}", vol)
+    _set_cached(cache_key, vol)
     return vol
 
 
-# ── Public fetch functions (stale-while-revalidate) ──────────────────────
-
-def _fetch_spot(ticker: str) -> Decimal | None:
-    """
-    Return spot price instantly from cache/stale.
-    Never blocks on AV during a REST request.
-    """
-    upper = ticker.upper()
-    cache_key = f"spot:{upper}"
-    cached = _get_cached(cache_key)
-
-    if cached is not None:
-        if not _is_fresh(cache_key):
-            # Stale — schedule background refresh, return stale now
-            _schedule_bg_refresh(cache_key, _do_fetch_spot, upper)
-        return cached
-
-    # No data at all — schedule background fetch, return None for now
-    _schedule_bg_refresh(cache_key, _do_fetch_spot, upper)
-    return None
-
-
-def _fetch_daily_series(ticker: str, full: bool = False) -> dict[str, dict] | None:
-    """
-    Return daily series from cache/stale.
-    Schedules background refresh if stale.
-    """
-    size = "full" if full else "compact"
-    cache_key = f"daily:{ticker.upper()}:{size}"
-    cached = _get_cached(cache_key)
-
-    if cached is not None:
-        if not _is_fresh(cache_key):
-            _schedule_bg_refresh(cache_key, _do_fetch_daily_series, ticker.upper(), full)
-        return cached
-
-    # No data — schedule background fetch
-    _schedule_bg_refresh(cache_key, _do_fetch_daily_series, ticker.upper(), full)
-    return None
-
-
-def _fetch_hist_vol(ticker: str) -> Decimal:
-    """
-    Return historical vol instantly.
-    Returns DEFAULT_SIGMA (0.30) if no data cached yet.
-    """
-    upper = ticker.upper()
-    cache_key = f"hvol:{upper}"
-    cached = _get_cached(cache_key)
-
-    if cached is not None:
-        if not _is_fresh(cache_key):
-            _schedule_bg_refresh(cache_key, _do_fetch_hist_vol, upper)
-        return cached
-
-    # No data — return default vol, schedule background fetch
-    _schedule_bg_refresh(cache_key, _do_fetch_hist_vol, upper)
-    return DEFAULT_SIGMA
-
-
+# ── YTD return ────────────────────────────────────────────────────────────
 def _fetch_ytd_return(ticker: str) -> Decimal | None:
     upper = ticker.upper()
     cache_key = f"ytd:{upper}"
     cached = _get_cached(cache_key)
     if cached is not None:
-        if _is_fresh(cache_key):
-            return cached
-        # Stale — still return it, bg refresh via daily series will help
         return cached
 
     ts = _fetch_daily_series(upper, full=True)
@@ -331,16 +251,19 @@ def _fetch_ytd_return(ticker: str) -> Decimal | None:
     today = date.today()
     jan1_str = f"{today.year}-01"
 
+    # Find first trading day of the year
     sorted_dates = sorted(ts.keys())
     start_date = None
     for d in sorted_dates:
         if d.startswith(jan1_str):
             start_date = d
             break
+
     if not start_date:
         return None
 
     latest_date = sorted_dates[-1]
+
     try:
         start_price = float(ts[start_date]["4. close"])
         current_price = float(ts[latest_date]["4. close"])
@@ -353,6 +276,7 @@ def _fetch_ytd_return(ticker: str) -> Decimal | None:
         return None
 
 
+# ── Price history ─────────────────────────────────────────────────────────
 def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
     upper = ticker.upper()
     cache_key = f"phist:{upper}:{start_date}"
@@ -371,17 +295,18 @@ def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
                 result[d] = float(values["4. close"])
             except (KeyError, ValueError):
                 pass
+
     if result:
         _set_cached(cache_key, result)
     return result
 
 
-# ── Batch spot prices (for PriceFeedService — runs in background) ────────
+# ── Batch spot prices (for PriceFeedService) ─────────────────────────────
 def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
     """
     Fetch spot prices for multiple tickers.
-    This is called by PriceFeedService in a background task, so it CAN
-    wait for rate limits. Returns cached + freshly fetched prices.
+    Returns cached values immediately; fetches uncached symbols up to rate limit.
+    Symbols that can't be fetched this cycle will be retried next poll.
     """
     if not tickers:
         return {}
@@ -389,17 +314,17 @@ def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
     result: dict[str, Decimal] = {}
     uncached: list[str] = []
 
-    # 1. Serve from cache first (fresh or stale)
+    # 1. Serve from cache first
     for t in tickers:
         upper = t.upper()
         cache_key = f"spot:{upper}"
         cached = _get_cached(cache_key)
-        if cached is not None and _is_fresh(cache_key):
+        if cached is not None:
             result[upper] = cached
         else:
             uncached.append(upper)
 
-    # 2. Fetch uncached/stale symbols (non-blocking rate limit)
+    # 2. Fetch uncached symbols (non-blocking rate limit — skip if exhausted)
     for sym in uncached:
         av_sym = _av_symbol(sym)
         data = _av_get_nonblocking({"function": "GLOBAL_QUOTE", "symbol": av_sym})
@@ -414,18 +339,8 @@ def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
                 except Exception:
                     pass
         elif data is None:
-            # Rate limited — return stale value if we have one, skip rest
-            stale = _get_cached(f"spot:{sym}")
-            if stale is not None:
-                result[sym] = stale
-            remaining = len(uncached) - uncached.index(sym) - 1
-            if remaining > 0:
-                logger.debug("Rate limit reached in batch, %d symbols deferred", remaining)
-                # Add stale values for remaining symbols
-                for rem in uncached[uncached.index(sym) + 1:]:
-                    rem_stale = _get_cached(f"spot:{rem}")
-                    if rem_stale is not None:
-                        result[rem] = rem_stale
+            # Rate limited — stop trying, remaining symbols retry next cycle
+            logger.debug("Rate limit reached in batch, %d symbols deferred", len(uncached) - uncached.index(sym))
             break
 
     return result
@@ -437,47 +352,25 @@ def _fetch_1y_closes(ticker: str) -> list[float]:
     cache_key = f"1y:{upper}"
     cached = _get_cached(cache_key)
     if cached is not None:
-        if _is_fresh(cache_key):
-            return cached
-        # Stale but usable — schedule refresh
-        _schedule_bg_refresh(cache_key, _do_fetch_1y_closes, upper)
         return cached
 
-    # No data — schedule and return empty
-    _schedule_bg_refresh(cache_key, _do_fetch_1y_closes, upper)
-    return []
-
-
-def _do_fetch_1y_closes(upper: str) -> list[float]:
-    """Actually fetch 1-year closes for scanner."""
-    ts = _do_fetch_daily_series(upper, full=True)
+    ts = _fetch_daily_series(upper, full=True)
     if not ts:
         return []
+
+    # Last ~252 trading days
     sorted_dates = sorted(ts.keys(), reverse=True)[:252]
+
     closes: list[float] = []
     for d in reversed(sorted_dates):
         try:
             closes.append(float(ts[d]["4. close"]))
         except (KeyError, ValueError):
             pass
+
     if closes:
-        _set_cached(f"1y:{upper}", closes)
+        _set_cached(cache_key, closes)
     return closes
-
-
-# ── Pre-warm: fetch key symbols on startup ───────────────────────────────
-
-def _do_prewarm(symbols: list[str]) -> None:
-    """Synchronously fetch spot prices for a list of symbols (startup only)."""
-    for sym in symbols:
-        upper = sym.upper()
-        logger.info("Pre-warming price cache: %s", upper)
-        _do_fetch_spot(upper)
-
-
-async def prewarm(symbols: list[str]) -> None:
-    """Pre-fetch spot prices during startup so cache is warm."""
-    await asyncio.to_thread(_do_prewarm, symbols)
 
 
 # ── Async wrappers (public API — identical signatures to original) ───────

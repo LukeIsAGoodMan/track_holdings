@@ -37,7 +37,6 @@ from app.services.macro_service import MacroService
 from app.services.scanner_service import MarketScannerService
 from app.services.seed import run_seed
 from app.services.ws_manager import ConnectionManager
-from app.services.yfinance_client import prewarm as prewarm_prices
 
 logger = logging.getLogger(__name__)
 
@@ -81,23 +80,6 @@ async def lifespan(_app: FastAPI):
             await process_expired_trades(db)
     except Exception:
         pass
-
-    # ── Pre-warm price cache (SPY, VIX + scanner symbols) ─────────────────
-    prewarm_syms = ["SPY", "VIX"] + [
-        s.strip() for s in settings.scanner_symbols.split(",") if s.strip()
-    ]
-    # Deduplicate while preserving order
-    seen_syms: set[str] = set()
-    unique_syms: list[str] = []
-    for s in prewarm_syms:
-        if s not in seen_syms:
-            seen_syms.add(s)
-            unique_syms.append(s)
-    try:
-        await prewarm_prices(unique_syms[:5])  # first 5 within rate limit
-        logger.info("Price cache pre-warmed: %s", unique_syms[:5])
-    except Exception:
-        logger.warning("Price pre-warm failed (non-fatal)")
 
     # ── Start real-time price feed ────────────────────────────────────────
     ws_router.init_ws_globals(ws_manager, price_cache)
