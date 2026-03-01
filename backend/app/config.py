@@ -32,10 +32,6 @@ class Settings(BaseSettings):
     ai_max_tokens: int = 600
     ai_timeout: int = 15            # seconds — httpx timeout for LLM API call
 
-    # Alpha Vantage (replaces yfinance on Render)
-    alpha_vantage_api_key: str = ""           # ALPHA_VANTAGE_API_KEY env var
-    av_cache_ttl: int = 120                   # seconds — 2-minute cache for all AV data
-
     # Macro service settings (Phase 12a)
     macro_poll_interval: int = 30             # seconds between macro ticker updates
     macro_symbols: str = "^GSPC,^VIX"        # tickers for macro tracking (mapped internally)
