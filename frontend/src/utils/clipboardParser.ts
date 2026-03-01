@@ -99,7 +99,6 @@ export function parseClipboard(text: string): ParsedTrade {
 
   const raw = text.trim()
   const tUp  = raw.toUpperCase()
-  const tLow = raw.toLowerCase()
 
   function push(field: string) {
     if (!result.matched.includes(field)) result.matched.push(field)

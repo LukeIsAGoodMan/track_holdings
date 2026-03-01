@@ -153,9 +153,10 @@ export default function PnlChart({
               fontSize: '12px',
             }}
             labelStyle={{ color: '#94a3b8' }}
-            formatter={(value: number, name: string) => {
-              if (name === 'nlv') return [fmtUSD(value), t('pnl_nlv')]
-              return [fmtUSDSigned(value), t('pnl_unrealized')]
+            formatter={(value: number | string, name: string) => {
+              const n = typeof value === 'string' ? parseFloat(value) : value
+              if (name === 'nlv') return [fmtUSD(n), t('pnl_nlv')]
+              return [fmtUSDSigned(n), t('pnl_unrealized')]
             }}
             labelFormatter={(label: string) => `${t('pnl_time')}: ${label}`}
           />

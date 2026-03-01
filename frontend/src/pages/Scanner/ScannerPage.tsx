@@ -128,7 +128,7 @@ export default function ScannerPage() {
 
                       {/* Price */}
                       <td className="px-4 py-3 text-right tabular-nums text-slate-300">
-                        {opp.spot_price ? `$${fmtNum(opp.spot_price, 2)}` : '—'}
+                        {opp.spot_price ? `$${fmtNum(opp.spot_price)}` : '—'}
                       </td>
 
                       {/* IV Rank bar */}

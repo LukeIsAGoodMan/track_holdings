@@ -17,6 +17,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useLanguage } from '@/context/LanguageContext'
 import type { CoachResult } from '@/types'
+import type { TKey } from '@/i18n/translations'
 
 // ── Assessment badge ───────────────────────────────────────────────────────────
 const ASSESSMENT_CLASSES: Record<string, string> = {
@@ -43,7 +44,7 @@ function Cursor() {
 }
 
 // ── Structured result cards ────────────────────────────────────────────────────
-function ResultCards({ result, t }: { result: CoachResult; t: (k: string) => string }) {
+function ResultCards({ result, t }: { result: CoachResult; t: (k: TKey) => string }) {
   return (
     <div className="space-y-3">
       {/* Assessment */}

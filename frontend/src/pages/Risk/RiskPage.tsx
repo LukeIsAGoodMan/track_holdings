@@ -543,7 +543,7 @@ function DeltaContribChart({ holdings, label }: { holdings: HoldingGroup[]; labe
           <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
           <Tooltip contentStyle={{ background: '#10131c', border: '1px solid #1e2436', borderRadius: 8, fontSize: 12 }}
             labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#94a3b8' }}
-            formatter={(v: number) => [v.toFixed(2), 'Δ Exposure']} />
+            formatter={(v: number | string) => [Number(v).toFixed(2), 'Δ Exposure']} />
           <Bar dataKey="delta" name="Delta Exposure" radius={[4, 4, 0, 0]}>
             {data.map((d, i) => <Cell key={i} fill={d.delta >= 0 ? '#22c55e' : '#ef4444'} />)}
           </Bar>

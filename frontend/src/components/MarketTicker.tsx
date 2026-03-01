@@ -11,7 +11,6 @@
  */
 import { useLanguage } from '@/context/LanguageContext'
 import { useWebSocket } from '@/context/WebSocketContext'
-import type { MacroTickerData } from '@/types'
 
 const VIX_TERM_COLORS: Record<string, string> = {
   low:      'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',

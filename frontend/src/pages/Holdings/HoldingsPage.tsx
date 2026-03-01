@@ -116,10 +116,10 @@ function CashCard({ cash }: { cash: CashSummary | null }) {
 
 // ── Stock legs table ───────────────────────────────────────────────────────────
 function StockLegsTable({
-  legs, spot, symbol, onClose,
+  legs, symbol, onClose,
 }: {
   legs: StockLeg[]
-  spot: string | null
+  spot?: string | null
   symbol: string
   onClose: (symbol: string, leg: StockLeg) => void
 }) {
