@@ -3,7 +3,9 @@ fastapi==0.115.6
 uvicorn[standard]==0.32.1
 sqlalchemy==2.0.36
 aiosqlite==0.20.0
-yfinance==0.2.50
+# yfinance removed — Yahoo Finance dead on Render; using Alpha Vantage now
+# requests (stdlib transitive dep) handles Alpha Vantage HTTP calls
+requests>=2.31.0
 python-dotenv==1.0.1
 pydantic-settings==2.7.0
 pydantic==2.10.0

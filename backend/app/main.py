@@ -155,7 +155,7 @@ app.include_router(scanner_router.router,  prefix="/api")
 app.include_router(alerts_router.router,   prefix="/api")
 app.include_router(tts_router.router,     prefix="/api")
 app.include_router(ws_router.router,       prefix="/api")
-app.include_router(test_greeks_router.router, prefix="/api")
+app.include_router(test_greeks_router.router, prefix="/api/test")
 
 
 @app.get("/health", tags=["system"])

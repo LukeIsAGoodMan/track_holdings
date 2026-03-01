@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["debug"])
 
 
-@router.get("/test/greeks")
+@router.get("/greeks")
 async def test_greeks(
     symbol: str = Query(..., description="Underlying ticker, e.g. NVDA"),
     strike: float = Query(..., description="Strike price"),
