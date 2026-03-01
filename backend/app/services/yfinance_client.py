@@ -9,14 +9,32 @@ import asyncio
 from datetime import date
 from decimal import Decimal
 
+import requests
 import yfinance as yf
 
 from app.services.black_scholes import compute_historical_vol, DEFAULT_SIGMA
 
+# ── Custom session with User-Agent to avoid Yahoo Finance 403 blocks ─────
+_session = requests.Session()
+_session.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+})
+
+
+def _ticker(sym: str) -> yf.Ticker:
+    """Create a yf.Ticker with our custom session attached."""
+    t = yf.Ticker(sym.upper())
+    t.session = _session
+    return t
+
 
 def _fetch_spot(ticker: str) -> Decimal | None:
     try:
-        price = yf.Ticker(ticker.upper()).fast_info.last_price
+        price = _ticker(ticker).fast_info.last_price
         if price and float(price) > 0:
             return Decimal(str(round(float(price), 4)))
     except Exception:
@@ -26,7 +44,7 @@ def _fetch_spot(ticker: str) -> Decimal | None:
 
 def _fetch_hist_vol(ticker: str) -> Decimal:
     try:
-        df = yf.Ticker(ticker.upper()).history(
+        df = _ticker(ticker).history(
             period="1mo", interval="1d", auto_adjust=True
         )
         if df.empty or len(df) < 5:
@@ -44,7 +62,7 @@ def _fetch_ytd_return(ticker: str) -> Decimal | None:
     try:
         today   = date.today()
         jan1    = date(today.year, 1, 1)
-        t       = yf.Ticker(ticker.upper())
+        t       = _ticker(ticker)
         hist    = t.history(
             start=jan1.strftime("%Y-%m-%d"),
             interval="1d",
@@ -82,7 +100,7 @@ def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
     Returns empty dict on any failure.
     """
     try:
-        t    = yf.Ticker(ticker.upper())
+        t    = _ticker(ticker)
         hist = t.history(start=start_date, interval="1d", auto_adjust=True)
         if hist.empty:
             return {}
@@ -111,7 +129,7 @@ def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
         return {}
     try:
         upper = [t.upper() for t in tickers]
-        df = yf.download(upper, period="1d", interval="1m", progress=False)
+        df = yf.download(upper, period="1d", interval="1m", progress=False, session=_session)
         if df.empty:
             return {}
 
@@ -152,7 +170,7 @@ def _fetch_1y_closes(ticker: str) -> list[float]:
     Returns empty list on any failure.
     """
     try:
-        df = yf.Ticker(ticker.upper()).history(
+        df = _ticker(ticker).history(
             period="1y", interval="1d", auto_adjust=True
         )
         if df.empty:

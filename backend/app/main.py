@@ -25,6 +25,7 @@ from app.routers import lifecycle as lifecycle_router
 from app.routers import scanner as scanner_router
 from app.routers import tts as tts_router
 from app.routers import ws as ws_router
+from app.routers import test_greeks as test_greeks_router
 from app.services.alert_engine import AlertEngine
 from app.services.lifecycle import process_expired_trades
 from app.services.ai_engine import AiInsightService, create_provider as create_ai_provider, set_vol_cache_ref as set_ai_vol_cache_ref
@@ -154,6 +155,7 @@ app.include_router(scanner_router.router,  prefix="/api")
 app.include_router(alerts_router.router,   prefix="/api")
 app.include_router(tts_router.router,     prefix="/api")
 app.include_router(ws_router.router,       prefix="/api")
+app.include_router(test_greeks_router.router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])
