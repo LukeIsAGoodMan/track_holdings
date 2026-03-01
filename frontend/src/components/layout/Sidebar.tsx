@@ -17,6 +17,7 @@
  */
 import { NavLink } from 'react-router-dom'
 import { usePortfolio } from '@/context/PortfolioContext'
+import { useWebSocket } from '@/context/WebSocketContext'
 import type { Portfolio } from '@/types'
 import { fmtCompact } from '@/utils/format'
 
@@ -24,6 +25,7 @@ import { fmtCompact } from '@/utils/format'
 const IconTable   = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
 const IconPlus    = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 5v14M5 12h14"/></svg>
 const IconShield  = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+const IconRadar   = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 6a6 6 0 0 1 6 6"/><path d="M12 10a2 2 0 0 1 2 2"/></svg>
 const IconRefresh = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
 const IconFolder  = () => <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z"/></svg>
 
@@ -77,13 +79,29 @@ function PortfolioNode({
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 export default function Sidebar() {
   const { portfolios, triggerRefresh, loading } = usePortfolio()
+  const { connected } = useWebSocket()
 
   return (
     <aside className="w-56 shrink-0 flex flex-col h-screen bg-card border-r border-line sticky top-0 overflow-y-auto">
       {/* Brand */}
       <div className="px-4 pt-5 pb-4 border-b border-line">
-        <div className="text-info font-bold text-base tracking-tight leading-none">
-          Track Holdings
+        <div className="flex items-center justify-between">
+          <div className="text-info font-bold text-base tracking-tight leading-none">
+            Track Holdings
+          </div>
+          {/* Live connection indicator */}
+          <div className="flex items-center gap-1.5" title={connected ? 'Live' : 'Disconnected'}>
+            <span className={[
+              'w-2 h-2 rounded-full',
+              connected ? 'bg-green-400 shadow-[0_0_6px_rgba(74,222,128,0.5)]' : 'bg-red-400',
+            ].join(' ')} />
+            <span className={[
+              'text-[10px] font-medium uppercase tracking-wide',
+              connected ? 'text-green-400' : 'text-red-400',
+            ].join(' ')}>
+              {connected ? 'Live' : 'Off'}
+            </span>
+          </div>
         </div>
         <div className="text-slate-600 text-xs mt-1">Options Portfolio</div>
       </div>
@@ -117,6 +135,15 @@ export default function Sidebar() {
         >
           <IconShield />
           Risk
+        </NavLink>
+        <NavLink
+          to="/opportunities"
+          className={({ isActive }) =>
+            `${navBase} ${isActive ? navActive : navIdle}`
+          }
+        >
+          <IconRadar />
+          Opportunities
         </NavLink>
       </nav>
 

@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import Portfolio, CashLedger
+from app.models.user import User
 from app.schemas.portfolio import PortfolioCreate, PortfolioNode
 from app.services import position_engine, yfinance_client
 from app.services.black_scholes import (
@@ -76,9 +78,14 @@ async def _portfolio_stats(portfolio_id: int, db: AsyncSession) -> dict:
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @router.get("/portfolios", response_model=list[PortfolioNode])
-async def list_portfolios(db: AsyncSession = Depends(get_db)):
+async def list_portfolios(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """Return the full portfolio hierarchy as a nested tree."""
-    result = await db.execute(select(Portfolio).order_by(Portfolio.id))
+    result = await db.execute(
+        select(Portfolio).where(Portfolio.user_id == user.id).order_by(Portfolio.id)
+    )
     all_portfolios = result.scalars().all()
 
     # Build flat node map
@@ -111,11 +118,12 @@ async def list_portfolios(db: AsyncSession = Depends(get_db)):
 @router.post("/portfolios", response_model=PortfolioNode, status_code=201)
 async def create_portfolio(
     body: PortfolioCreate,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if body.parent_id is not None:
         parent = await db.get(Portfolio, body.parent_id)
-        if parent is None:
+        if parent is None or parent.user_id != user.id:
             raise HTTPException(
                 status_code=404,
                 detail=f"Parent portfolio {body.parent_id} not found",
@@ -125,6 +133,7 @@ async def create_portfolio(
         name=body.name,
         description=body.description,
         parent_id=body.parent_id,
+        user_id=user.id,
     )
     db.add(portfolio)
     await db.commit()

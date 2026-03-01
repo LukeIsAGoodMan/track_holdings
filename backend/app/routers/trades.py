@@ -14,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_current_user
+from app.models.user import User
 from app.models import (
     CashLedger,
     Instrument,
@@ -24,7 +26,7 @@ from app.models import (
     TradeAction,
     TradeStatus,
 )
-from app.schemas.trade import TradeCreate, TradeResponse
+from app.schemas.trade import TradeCreate, TradeResponse, TradeUpdate, VALID_STRATEGY_TAGS
 from app.services.position_engine import calculate_positions
 
 router = APIRouter(tags=["trades"])
@@ -93,6 +95,7 @@ def _compute_cash_impact(
 @router.post("/trades", response_model=TradeResponse, status_code=201)
 async def create_trade(
     body: TradeCreate,
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -103,9 +106,9 @@ async def create_trade(
     - If either insert fails the whole operation is rolled back.
     - cash_impact and net_contracts_after are returned in the response.
     """
-    # ── 0. Validate portfolio exists ──────────────────────────────────────
+    # ── 0. Validate portfolio exists and belongs to user ─────────────────
     portfolio = await db.get(Portfolio, body.portfolio_id)
-    if portfolio is None:
+    if portfolio is None or portfolio.user_id != user.id:
         raise HTTPException(
             status_code=404,
             detail=f"Portfolio {body.portfolio_id} not found",
@@ -122,15 +125,21 @@ async def create_trade(
         # 2. Create TradeEvent (immutable ledger entry)
         # Pack Trading Coach fields into JSON metadata if provided
         coaching: dict | None = None
-        if body.confidence_score is not None or body.trade_reason is not None:
+        if body.confidence_score is not None or body.trade_reason is not None or body.strategy_tags is not None:
             coaching = {}
             if body.confidence_score is not None:
                 coaching["confidence_score"] = body.confidence_score
             if body.trade_reason is not None:
                 coaching["trade_reason"] = body.trade_reason
+            if body.strategy_tags is not None:
+                invalid = set(body.strategy_tags) - VALID_STRATEGY_TAGS
+                if invalid:
+                    raise HTTPException(400, f"Invalid strategy tags: {invalid}")
+                coaching["strategy_tags"] = body.strategy_tags
 
         trade = TradeEvent(
             portfolio_id=body.portfolio_id,
+            user_id=user.id,
             instrument_id=instrument.id,
             action=TradeAction(body.action),
             quantity=body.quantity,
@@ -159,6 +168,7 @@ async def create_trade(
         sign_str = "+" if cash_impact >= 0 else ""
         cash_entry = CashLedger(
             portfolio_id=body.portfolio_id,
+            user_id=user.id,
             trade_event_id=trade.id,
             amount=cash_impact,
             description=(
@@ -186,6 +196,7 @@ async def create_trade(
         0,
     )
 
+    meta = trade.trade_metadata or {}
     return TradeResponse(
         id=trade.id,
         portfolio_id=trade.portfolio_id,
@@ -200,4 +211,77 @@ async def create_trade(
         cash_impact=cash_impact,
         net_contracts_after=net_after,
         trade_date=trade.trade_date,
+        confidence_score=meta.get("confidence_score"),
+        strategy_tags=meta.get("strategy_tags"),
+    )
+
+
+# ── PATCH — update coaching metadata on existing trade ────────────────────────
+
+@router.patch("/trades/{trade_id}", response_model=TradeResponse)
+async def update_trade_metadata(
+    trade_id: int,
+    body: TradeUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Update coaching/annotation metadata on an existing trade.
+
+    Only trade_metadata fields (confidence, reason, tags) are mutable.
+    The financial record (price, quantity, action) is immutable.
+    """
+    result = await db.execute(
+        select(TradeEvent).where(TradeEvent.id == trade_id),
+    )
+    trade = result.scalar_one_or_none()
+    if not trade or trade.user_id != user.id:
+        raise HTTPException(404, "Trade not found")
+
+    meta = dict(trade.trade_metadata or {})
+    updates = body.model_dump(exclude_unset=True)
+
+    if "strategy_tags" in updates and updates["strategy_tags"] is not None:
+        invalid = set(updates["strategy_tags"]) - VALID_STRATEGY_TAGS
+        if invalid:
+            raise HTTPException(400, f"Invalid strategy tags: {invalid}")
+
+    for field in ("confidence_score", "trade_reason", "strategy_tags"):
+        if field in updates:
+            if updates[field] is not None:
+                meta[field] = updates[field]
+            else:
+                meta.pop(field, None)
+
+    trade.trade_metadata = meta if meta else None
+    await db.commit()
+    await db.refresh(trade)
+
+    # Load instrument for response
+    inst_result = await db.execute(
+        select(Instrument).where(Instrument.id == trade.instrument_id),
+    )
+    inst = inst_result.scalar_one()
+
+    positions = await calculate_positions(db, portfolio_id=trade.portfolio_id)
+    net_after = next(
+        (p.net_contracts for p in positions if p.instrument.id == inst.id), 0,
+    )
+
+    return TradeResponse(
+        id=trade.id,
+        portfolio_id=trade.portfolio_id,
+        instrument_id=inst.id,
+        symbol=inst.symbol,
+        option_type=inst.option_type.value if inst.option_type else None,
+        strike=inst.strike,
+        expiry=inst.expiry,
+        action=trade.action.value,
+        quantity=trade.quantity,
+        price=trade.price,
+        cash_impact=Decimal("0"),
+        net_contracts_after=net_after,
+        trade_date=trade.trade_date,
+        confidence_score=meta.get("confidence_score"),
+        strategy_tags=meta.get("strategy_tags"),
     )

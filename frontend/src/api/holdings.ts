@@ -16,6 +16,10 @@ import type {
   LifecycleResult,
   SettledTradesResponse,
   PortfolioInsight,
+  MarketOpportunity,
+  Alert,
+  AlertCreate,
+  AlertStatus,
 } from '@/types'
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
@@ -137,6 +141,37 @@ export const fetchInsights = (portfolioId?: number | null): Promise<PortfolioIns
       params: portfolioId != null ? { portfolio_id: portfolioId } : undefined,
     })
     .then((r) => r.data)
+
+// ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────
+
+// ── Market Scanner ──────────────────────────────────────────────────────────
+
+/** GET /api/scanner/opportunities */
+export const fetchOpportunities = (): Promise<MarketOpportunity[]> =>
+  api.get<MarketOpportunity[]>('/scanner/opportunities').then((r) => r.data)
+
+// ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────
+
+// ── Alerts ────────────────────────────────────────────────────────────────────
+
+/** GET /api/alerts */
+export const fetchAlerts = (): Promise<Alert[]> =>
+  api.get<Alert[]>('/alerts').then((r) => r.data)
+
+/** POST /api/alerts */
+export const createAlert = (body: AlertCreate): Promise<Alert> =>
+  api.post<Alert>('/alerts', body).then((r) => r.data)
+
+/** PATCH /api/alerts/:id */
+export const updateAlert = (
+  id: number,
+  body: Partial<AlertCreate & { status: AlertStatus }>,
+): Promise<Alert> =>
+  api.patch<Alert>(`/alerts/${id}`, body).then((r) => r.data)
+
+/** DELETE /api/alerts/:id */
+export const deleteAlert = (id: number): Promise<void> =>
+  api.delete(`/alerts/${id}`)
 
 // ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────
 

@@ -3,10 +3,12 @@
  */
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
+import { useAuth } from '@/context/AuthContext'
 import { useLanguage } from '@/context/LanguageContext'
 
 export default function Layout() {
   const { lang, toggle } = useLanguage()
+  const { user, logout } = useAuth()
 
   return (
     <div className="flex min-h-screen bg-app">
@@ -23,6 +25,19 @@ export default function Layout() {
           </span>
 
           <div className="flex items-center gap-3">
+            {/* User + logout */}
+            {user && (
+              <>
+                <span className="text-xs text-slate-400">{user.username}</span>
+                <button
+                  onClick={logout}
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                >
+                  Logout
+                </button>
+                <span className="text-slate-700">|</span>
+              </>
+            )}
             {/* Language toggle */}
             <button
               onClick={toggle}

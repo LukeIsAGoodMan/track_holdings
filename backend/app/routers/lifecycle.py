@@ -15,7 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import InstrumentType, TradeEvent, TradeStatus
+from app.models.user import User
 from app.models.instrument import Instrument
 from app.schemas.lifecycle import LifecycleResult, SettledTrade, SettledTradesResponse
 from app.services.lifecycle import process_expired_trades
@@ -25,14 +27,15 @@ router = APIRouter(tags=["lifecycle"])
 
 @router.post("/lifecycle/process", response_model=LifecycleResult)
 async def trigger_lifecycle(
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Trigger the expired-option settlement sweep across all portfolios.
+    Trigger the expired-option settlement sweep for the current user's portfolios.
     Idempotent — safe to call repeatedly; only ACTIVE trades are touched.
     Returns a summary of what was processed.
     """
-    result = await process_expired_trades(db)
+    result = await process_expired_trades(db, user_id=user.id)
     return LifecycleResult(
         expired=result.expired,
         assigned=result.assigned,
@@ -49,6 +52,7 @@ async def get_settled_trades(
         description="If set, return only trades settled within this many hours. "
                     "Omit for full history.",
     ),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -74,6 +78,7 @@ async def get_settled_trades(
         .order_by(TradeEvent.closed_date.desc(), TradeEvent.id.desc())
         .limit(100)
     )
+    stmt = stmt.where(TradeEvent.user_id == user.id)
     if portfolio_id is not None:
         stmt = stmt.where(TradeEvent.portfolio_id == portfolio_id)
     if since_hours is not None:
@@ -92,6 +97,7 @@ async def get_settled_trades(
         )
         .options(selectinload(TradeEvent.instrument))
     )
+    auto_stmt = auto_stmt.where(TradeEvent.user_id == user.id)
     if portfolio_id is not None:
         auto_stmt = auto_stmt.where(TradeEvent.portfolio_id == portfolio_id)
 

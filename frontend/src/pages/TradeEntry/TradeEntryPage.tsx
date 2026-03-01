@@ -33,7 +33,13 @@ type FormState = {
   confidenceScore: number   // 1-5
   tradeReason:     string
   nearSupport:     boolean
+  strategyTags:    string[]
 }
+
+const STRATEGY_TAGS = [
+  'Hedge', 'Speculative', 'Earnings', 'Income',
+  'Momentum', 'Mean Reversion', 'Wheel', 'Volatility',
+] as const
 
 const ACTION_LABELS: Record<TradeAction, string> = {
   SELL_OPEN:  'Sell Open  (short)',
@@ -47,6 +53,7 @@ const INITIAL: FormState = {
   strike: '', expiry: '', action: 'SELL_OPEN',
   quantity: '1', price: '', notes: '',
   confidenceScore: 3, tradeReason: '', nearSupport: false,
+  strategyTags: [],
 }
 
 /** Build initial form from a ClosePositionState passed via react-router navigation state. */
@@ -62,6 +69,7 @@ function fromCloseState(cs: ClosePositionState): FormState {
     quantity:       cs.quantity,
     price:          '',   // user must enter market price
     tradeReason:    `Closing position for ${cs.symbol}`,
+    strategyTags:   [],
   }
 }
 
@@ -107,6 +115,44 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
         >★</button>
       ))}
       <span className="text-xs text-slate-500 ml-2">{value}/5</span>
+    </div>
+  )
+}
+
+// ── Tag picker ───────────────────────────────────────────────────────────
+function TagPicker({
+  selected, onChange, tags,
+}: {
+  selected: string[]
+  onChange: (tags: string[]) => void
+  tags: readonly string[]
+}) {
+  function toggle(tag: string) {
+    onChange(
+      selected.includes(tag)
+        ? selected.filter((t) => t !== tag)
+        : [...selected, tag]
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.map((tag) => {
+        const active = selected.includes(tag)
+        return (
+          <button
+            key={tag} type="button" onClick={() => toggle(tag)}
+            className={[
+              'px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors',
+              active
+                ? 'bg-info/20 border-info/40 text-info'
+                : 'bg-transparent border-line text-slate-500 hover:border-slate-400 hover:text-slate-300',
+            ].join(' ')}
+          >
+            {tag}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -356,10 +402,11 @@ export default function TradeEntryPage() {
         notes:           form.notes || null,
         confidence_score: form.confidenceScore,
         trade_reason:    reasonFull || null,
+        strategy_tags:   form.strategyTags.length > 0 ? form.strategyTags : null,
       })
       setLastImpact(res.cash_impact)
       triggerRefresh()
-      setForm((prev) => ({ ...prev, price: '', quantity: '1', notes: '', tradeReason: '', nearSupport: false }))
+      setForm((prev) => ({ ...prev, price: '', quantity: '1', notes: '', tradeReason: '', nearSupport: false, strategyTags: [] }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
@@ -515,6 +562,18 @@ export default function TradeEntryPage() {
               {t('coach_confidence')}
             </label>
             <StarRating value={form.confidenceScore} onChange={(v) => setField('confidenceScore', v)} />
+          </div>
+
+          {/* Strategy Tags */}
+          <div>
+            <label className="block text-xs text-slate-500 uppercase tracking-wider mb-2">
+              {t('coach_tags')}
+            </label>
+            <TagPicker
+              selected={form.strategyTags}
+              onChange={(tags) => setField('strategyTags', tags)}
+              tags={STRATEGY_TAGS}
+            />
           </div>
 
           {/* Trade reason */}

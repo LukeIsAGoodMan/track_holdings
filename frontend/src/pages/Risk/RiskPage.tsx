@@ -14,6 +14,7 @@
  * · i18n via useLanguage()
  */
 import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -21,9 +22,12 @@ import {
 } from 'recharts'
 import { usePortfolio } from '@/context/PortfolioContext'
 import { useLanguage }  from '@/context/LanguageContext'
+import { useWebSocket } from '@/context/WebSocketContext'
 import { fetchRiskDashboard, fetchHoldings, fetchAccountHistory, fetchAttribution, fetchInsights } from '@/api/holdings'
 import type { RiskDashboard, HoldingGroup, AccountHistoryResponse, AttributionResponse, PortfolioInsight } from '@/types'
 import { fmtNum, fmtUSD, fmtGreek, signClass } from '@/utils/format'
+import CoachPanel from './CoachPanel'
+import AlertsPanel from './AlertsPanel'
 
 // ── Scenario computation (pure client-side, no API call) ──────────────────────
 /**
@@ -951,6 +955,9 @@ function StressTestPanel({
 export default function RiskPage() {
   const { selectedPortfolioId, refreshKey } = usePortfolio()
   const { t } = useLanguage()
+  const { lastRiskUpdate, lastHoldingsUpdate } = useWebSocket()
+  const location = useLocation()
+  const prefillAlert = (location.state as { prefillAlert?: { symbol: string; spotPrice: string | null } } | null)?.prefillAlert
 
   const [dashboard, setDashboard] = useState<RiskDashboard | null>(null)
   const [holdings,  setHoldings]  = useState<HoldingGroup[]>([])
@@ -968,6 +975,20 @@ export default function RiskPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [selectedPortfolioId, refreshKey])
+
+  // ── Live WS risk updates ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!lastRiskUpdate) return
+    if (lastRiskUpdate.portfolioId !== selectedPortfolioId) return
+    setDashboard((prev) => prev ? { ...prev, ...lastRiskUpdate.data } : prev)
+  }, [lastRiskUpdate, selectedPortfolioId])
+
+  // ── Live WS holdings updates (for scenario computation) ───────────────────
+  useEffect(() => {
+    if (!lastHoldingsUpdate) return
+    if (lastHoldingsUpdate.portfolioId !== selectedPortfolioId) return
+    setHoldings(lastHoldingsUpdate.data)
+  }, [lastHoldingsUpdate, selectedPortfolioId])
 
   const hasSector    = dashboard && Object.keys(dashboard.sector_exposure ?? {}).length > 0
   const hasBenchmark = dashboard && (dashboard.benchmark_ytd ?? []).length > 0
@@ -1056,6 +1077,12 @@ export default function RiskPage() {
             noAlertLabel={t('no_alerts')}
           />
 
+          {/* ── Price Alerts (Phase 7e) ──────────────────────── */}
+          <AlertsPanel
+            prefillSymbol={prefillAlert?.symbol}
+            prefillSpot={prefillAlert?.spotPrice}
+          />
+
           {/* ── Charts ────────────────────────────────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ExpiryChart dashboard={dashboard} label={t('expiry_dist')} />
@@ -1080,6 +1107,9 @@ export default function RiskPage() {
           </p>
         </>
       ) : null}
+
+      {/* ── AI Coach sidebar (fixed-position, portfolio-aware) ── */}
+      <CoachPanel portfolioId={selectedPortfolioId} />
     </div>
   )
 }

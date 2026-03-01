@@ -97,3 +97,71 @@ def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
 async def get_price_history(ticker: str, start_date: str) -> dict[str, float]:
     """Async wrapper around _fetch_price_history."""
     return await asyncio.to_thread(_fetch_price_history, ticker, start_date)
+
+
+# ── Batch fetch (for PriceFeedService) ────────────────────────────────────
+
+def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
+    """
+    Fetch latest prices for multiple tickers in a single yf.download() call.
+    Returns {symbol: Decimal_price} for successfully fetched symbols.
+    Much more efficient than N individual Ticker().fast_info calls.
+    """
+    if not tickers:
+        return {}
+    try:
+        upper = [t.upper() for t in tickers]
+        df = yf.download(upper, period="1d", interval="1m", progress=False)
+        if df.empty:
+            return {}
+
+        result: dict[str, Decimal] = {}
+        if len(upper) == 1:
+            # yf.download returns flat columns for single ticker
+            sym = upper[0]
+            if "Close" in df.columns and len(df) > 0:
+                last = float(df["Close"].iloc[-1])
+                if last > 0:
+                    result[sym] = Decimal(str(round(last, 4)))
+        else:
+            # Multi-ticker: MultiIndex columns (metric, ticker)
+            if "Close" in df.columns:
+                last_row = df["Close"].iloc[-1]
+                for sym in upper:
+                    try:
+                        val = float(last_row[sym])
+                        if val > 0:
+                            result[sym] = Decimal(str(round(val, 4)))
+                    except (KeyError, TypeError, ValueError):
+                        pass
+        return result
+    except Exception:
+        return {}
+
+
+async def get_spot_prices_batch(tickers: list[str]) -> dict[str, Decimal]:
+    """Async wrapper: fetch multiple spot prices in one yfinance call."""
+    return await asyncio.to_thread(_fetch_spots_batch, tickers)
+
+
+# ── 1-year daily closes (for MarketScannerService IV Rank) ────────────────
+
+def _fetch_1y_closes(ticker: str) -> list[float]:
+    """
+    Fetch 1 year of daily closing prices for IV rank computation.
+    Returns empty list on any failure.
+    """
+    try:
+        df = yf.Ticker(ticker.upper()).history(
+            period="1y", interval="1d", auto_adjust=True
+        )
+        if df.empty:
+            return []
+        return [float(c) for c in df["Close"].dropna().tolist()]
+    except Exception:
+        return []
+
+
+async def get_1y_closes(ticker: str) -> list[float]:
+    """Async wrapper around _fetch_1y_closes."""
+    return await asyncio.to_thread(_fetch_1y_closes, ticker)

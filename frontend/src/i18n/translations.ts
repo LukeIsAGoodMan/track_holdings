@@ -79,6 +79,7 @@ export const TRANSLATIONS = {
   coach_support:   { en: 'Near support level?',   zh: '接近支撑位？' },
   coach_reason_ph: { en: 'e.g. IV rank high, wheel strategy, support at 580',
                      zh: '例：IV rank偏高，Wheel策略，支撑位在580' },
+  coach_tags:      { en: 'Strategy Tags',           zh: '策略标签' },
 
   // ── Capital Efficiency ────────────────────────────────────────────────────
   capital_efficiency: { en: 'Capital Efficiency', zh: '资本效率' },
@@ -120,6 +121,15 @@ export const TRANSLATIONS = {
   settled_eff_cost: { en: 'Eff. Cost',                   zh: '有效成本' },
   settled_24h:      { en: 'Last 24h',                    zh: '最近24h' },
   settled_all_hist: { en: 'All',                         zh: '全部' },
+
+  // ── AI Trading Coach ──────────────────────────────────────────────────────
+  coach_title:     { en: 'AI Trading Coach',  zh: 'AI 交易教练' },
+  coach_diagnose:  { en: 'Diagnose',          zh: '诊断' },
+  coach_streaming: { en: 'Analyzing...',      zh: '分析中...' },
+  coach_weekly:    { en: 'Weekly Review',     zh: '本周复盘' },
+  coach_weakness:  { en: 'Key Weakness',      zh: '主要风险' },
+  coach_steps:     { en: 'Actionable Steps',  zh: '操作建议' },
+  coach_no_key:    { en: 'API key not set',   zh: 'API 密钥未配置' },
 
   // ── P&L Attribution ───────────────────────────────────────────────────────
   pnl_attribution:   { en: 'P&L Attribution',             zh: '盈亏归因' },
@@ -184,6 +194,95 @@ export const TRANSLATIONS = {
                           zh: '置信度较低 — 请在填入前核对字段' },
   clipboard_hint:      { en: 'Supported: OCC ticker · STO/BTO/BTC/STC · "Sell to open" · "-1 NVDA 600P …"',
                           zh: '支持：OCC格式 · STO/BTO/BTC/STC缩写 · "Sell to open"短语 · "-1 NVDA 600P …"' },
+
+  // ── Market Scanner / Opportunities ────────────────────────────────────────
+  nav_scanner:       { en: 'Opportunities',            zh: '机会扫描' },
+  scanner_title:     { en: 'Market Scanner',            zh: '市场扫描' },
+  scanner_sub:       { en: 'IV Rank & Percentile — 52-week rolling HV analysis',
+                       zh: 'IV排名 & 百分位 — 52周滚动历史波动率分析' },
+  col_iv_rank:       { en: 'IV Rank',                   zh: 'IV排名' },
+  col_iv_pctl:       { en: 'IV Pctl',                   zh: 'IV百分位' },
+  col_current_hv:    { en: 'Current HV',                zh: '当前HV' },
+  col_hv_range:      { en: '52w HV Range',              zh: '52周HV区间' },
+  col_suggestion:    { en: 'Suggestion',                 zh: '建议' },
+  scanner_loading:   { en: 'Scanning market...',         zh: '正在扫描市场...' },
+  scanner_empty:     { en: 'No scanner data yet. Waiting for first sweep...',
+                       zh: '暂无扫描数据，等待首次扫描...' },
+  signal_high_iv:    { en: 'High IV',                    zh: '高IV' },
+  signal_elevated:   { en: 'Elevated',                   zh: '偏高' },
+  signal_low_iv:     { en: 'Low IV',                     zh: '低IV' },
+  signal_neutral:    { en: 'Neutral',                    zh: '中性' },
+
+  // ── Price Alerts ────────────────────────────────────────────────────────
+  alerts_title:      { en: 'Price Alerts',                zh: '价格提醒' },
+  alert_add:         { en: 'Add Alert',                   zh: '添加提醒' },
+  alert_symbol:      { en: 'Symbol',                      zh: '标的代码' },
+  alert_type:        { en: 'Alert Type',                  zh: '提醒类型' },
+  alert_threshold:   { en: 'Target Price',                zh: '目标价格' },
+  alert_pct_threshold: { en: 'Change %',                  zh: '变动%' },
+  alert_note:        { en: 'Note (optional)',              zh: '备注（可选）' },
+  alert_create:      { en: 'Create Alert',                zh: '创建提醒' },
+  alert_creating:    { en: 'Creating...',                 zh: '创建中...' },
+  alert_none:        { en: 'No alerts set. Add one to get started.',
+                       zh: '暂无提醒，点击添加。' },
+  alert_enable:      { en: 'Active',                      zh: '已启用' },
+  alert_disable:     { en: 'Disabled',                    zh: '已禁用' },
+  alert_delete:      { en: 'Delete',                      zh: '删除' },
+  alert_triggered:   { en: 'Triggered',                   zh: '已触发' },
+  alert_set_for:     { en: 'Set alert for',               zh: '设置提醒：' },
+
+  // ── Intraday P&L Chart (Phase 7f) ────────────────────────────────────────
+  pnl_title:         { en: 'Intraday P&L',              zh: '日内盈亏' },
+  pnl_nlv:           { en: 'Net Liquidation Value',      zh: '净清算价值' },
+  pnl_day_pnl:       { en: 'Day P&L',                   zh: '当日盈亏' },
+  pnl_prev_close:    { en: 'Prev Close',                zh: '昨日收盘' },
+  pnl_no_data:       { en: 'Waiting for data...',       zh: '等待数据...' },
+  pnl_unrealized:    { en: 'Unrealized P&L',            zh: '未实现盈亏' },
+  pnl_time:          { en: 'Time',                      zh: '时间' },
+  pnl_value:         { en: 'Value',                     zh: '价值' },
+
+  // ── AI Risk Insights (Phase 8b) ──────────────────────────────────────────
+  ai_title:        { en: 'AI Risk Insights',              zh: 'AI 风险洞察' },
+  ai_scanning:     { en: 'AI scanning risk structure...', zh: 'AI 正在扫描风险结构...' },
+  ai_generated:    { en: 'Generated',                     zh: '生成于' },
+  ai_safe:         { en: 'Safe',                          zh: '安全' },
+  ai_caution:      { en: 'Caution',                       zh: '注意' },
+  ai_warning:      { en: 'Warning',                       zh: '警告' },
+  ai_danger:       { en: 'Danger',                        zh: '危险' },
+  ai_cat_delta:    { en: 'Delta',                         zh: 'Delta' },
+  ai_cat_gamma:    { en: 'Gamma',                         zh: 'Gamma' },
+  ai_cat_theta:    { en: 'Theta',                         zh: 'Theta' },
+  ai_cat_vega:     { en: 'Vega',                          zh: 'Vega' },
+  ai_cat_expiry:   { en: 'Expiry',                        zh: '到期' },
+  ai_cat_diversification: { en: 'Diversification',        zh: '分散化' },
+
+  // ── TTS / Voice (Phase 10a) ─────────────────────────────────────────────
+  tts_play:    { en: 'Play voice summary',  zh: '播放语音摘要' },
+  tts_playing: { en: 'Playing...',          zh: '播放中...' },
+  tts_muted:   { en: 'Voice muted',         zh: '语音已静音' },
+  tts_unmuted: { en: 'Voice enabled',       zh: '语音已开启' },
+
+  // ── Macro Ticker (Phase 12a) ─────────────────────────────────────────────
+  macro_spx:      { en: 'S&P 500',           zh: '\u6807\u666e500' },
+  macro_vix:      { en: 'VIX',               zh: '\u6050\u614c\u6307\u6570' },
+  macro_event:    { en: 'Next Event',        zh: '\u4e0b\u4e00\u4e8b\u4ef6' },
+  macro_low:      { en: 'Low Vol',           zh: '\u4f4e\u6ce2\u52a8' },
+  macro_normal:   { en: 'Normal',            zh: '\u6b63\u5e38' },
+  macro_elevated: { en: 'Elevated',          zh: '\u504f\u9ad8' },
+  macro_crisis:   { en: 'Crisis',            zh: '\u5371\u673a' },
+  macro_days:     { en: 'd',                 zh: '\u65e5' },
+  macro_no_event: { en: 'No upcoming event', zh: '\u65e0\u8fd1\u671f\u4e8b\u4ef6' },
+
+  // ── Auth ─────────────────────────────────────────────────────────────────
+  auth_login:        { en: 'Sign In',                       zh: '登录' },
+  auth_register:     { en: 'Register',                      zh: '注册' },
+  auth_logout:       { en: 'Logout',                        zh: '退出' },
+  auth_username:     { en: 'Username',                      zh: '用户名' },
+  auth_password:     { en: 'Password',                      zh: '密码' },
+  auth_login_sub:    { en: 'Sign in to your portfolio.',    zh: '登录您的投资组合。' },
+  auth_register_sub: { en: 'Create an account to start.',   zh: '创建账户开始使用。' },
+  auth_no_acct:      { en: "Don't have an account?",        zh: '还没有账户？' },
+  auth_have_acct:    { en: 'Already have an account?',      zh: '已有账户？' },
 } as const
 
 export type TKey = keyof typeof TRANSLATIONS

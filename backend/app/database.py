@@ -1,6 +1,9 @@
 """
-Async SQLAlchemy engine + session factory for SQLite/aiosqlite.
-Pattern mirrored from stocksage/backend/app/database.py.
+Async SQLAlchemy engine + session factory.
+
+Supports both SQLite (local dev) and PostgreSQL (production on Render).
+Render provides DATABASE_URL as postgres:// which needs conversion to
+postgresql+asyncpg:// for SQLAlchemy async.
 """
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
@@ -12,7 +15,17 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
-engine = create_async_engine(settings.database_url, echo=False)
+
+def _normalize_db_url(url: str) -> str:
+    """Convert Render's postgres:// to postgresql+asyncpg:// for async SA."""
+    if url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+asyncpg://", 1)
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    return url
+
+
+engine = create_async_engine(_normalize_db_url(settings.database_url), echo=False)
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
@@ -45,7 +58,13 @@ async def _migrate_db():
     Additive-only SQLite migrations.
     Each block checks for a missing column via PRAGMA and adds it if absent.
     Safe to run on every startup — no-ops when columns already exist.
+
+    Skipped on PostgreSQL — create_all() creates the complete schema.
     """
+    if "sqlite" not in str(engine.url):
+        await _seed_instrument_tags()
+        return
+
     async with engine.begin() as conn:
         # ── instruments.tags ─────────────────────────────────────────────
         result = await conn.execute(text("PRAGMA table_info(instruments)"))
@@ -59,6 +78,40 @@ async def _migrate_db():
         if "trade_metadata" not in te_cols:
             await conn.execute(
                 text("ALTER TABLE trade_events ADD COLUMN trade_metadata JSON")
+            )
+
+        # ── portfolios.user_id ──────────────────────────────────────────
+        result = await conn.execute(text("PRAGMA table_info(portfolios)"))
+        port_cols = {row[1] for row in result.fetchall()}
+        if "user_id" not in port_cols:
+            await conn.execute(
+                text("ALTER TABLE portfolios ADD COLUMN user_id INTEGER REFERENCES users(id)")
+            )
+
+        # ── trade_events.user_id ────────────────────────────────────────
+        # Re-read: te_cols was read above for trade_metadata migration
+        result = await conn.execute(text("PRAGMA table_info(trade_events)"))
+        te_cols2 = {row[1] for row in result.fetchall()}
+        if "user_id" not in te_cols2:
+            await conn.execute(
+                text("ALTER TABLE trade_events ADD COLUMN user_id INTEGER REFERENCES users(id)")
+            )
+
+        # ── cash_ledger.user_id ─────────────────────────────────────────
+        result = await conn.execute(text("PRAGMA table_info(cash_ledger)"))
+        cl_cols = {row[1] for row in result.fetchall()}
+        if "user_id" not in cl_cols:
+            await conn.execute(
+                text("ALTER TABLE cash_ledger ADD COLUMN user_id INTEGER REFERENCES users(id)")
+            )
+
+        # ── alerts table (Phase 7e) ─────────────────────────────────────
+        # New table created by create_all(); guard future column adds here.
+        result = await conn.execute(text("PRAGMA table_info(alerts)"))
+        alert_cols = {row[1] for row in result.fetchall()}
+        if alert_cols and "trigger_count" not in alert_cols:
+            await conn.execute(
+                text("ALTER TABLE alerts ADD COLUMN trigger_count INTEGER DEFAULT 0")
             )
 
     # ── Seed instrument tags (data migration) ─────────────────────────────

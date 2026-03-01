@@ -31,6 +31,24 @@ class TradeCreate(BaseModel):
         None, max_length=500,
         description="Free-text rationale, e.g. 'IV rank > 50, support at 580'",
     )
+    strategy_tags: list[str] | None = Field(
+        None,
+        description="Strategy tags, e.g. ['Hedge', 'Income']. Validated against VALID_STRATEGY_TAGS.",
+    )
+
+
+# Predefined strategy tag vocabulary (Phase 10.5)
+VALID_STRATEGY_TAGS = frozenset({
+    "Hedge", "Speculative", "Earnings", "Income",
+    "Momentum", "Mean Reversion", "Wheel", "Volatility",
+})
+
+
+class TradeUpdate(BaseModel):
+    """Updatable coaching fields on an existing trade (trade_metadata only)."""
+    confidence_score: int | None = Field(None, ge=1, le=5)
+    trade_reason: str | None = Field(None, max_length=500)
+    strategy_tags: list[str] | None = None
 
 
 class TradeResponse(BaseModel):
@@ -50,3 +68,5 @@ class TradeResponse(BaseModel):
     cash_impact:          DecStr   # signed: + for inflow, - for outflow
     net_contracts_after:  int      # net position post-trade (signed)
     trade_date:           datetime
+    confidence_score:     int | None = None
+    strategy_tags:        list[str] | None = None

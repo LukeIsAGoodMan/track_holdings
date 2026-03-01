@@ -79,6 +79,7 @@ export interface TradeCreate {
   // Trading Coach fields
   confidence_score?:          number | null    // 1–5
   trade_reason?:              string | null
+  strategy_tags?:             string[] | null  // Phase 10.5
 }
 
 export interface TradeResponse {
@@ -95,6 +96,8 @@ export interface TradeResponse {
   cash_impact:          string          // DecStr — signed
   net_contracts_after:  number
   trade_date:           string          // ISO datetime
+  confidence_score?:    number | null   // Phase 10.5
+  strategy_tags?:       string[] | null // Phase 10.5
 }
 
 // ── Risk dashboard ────────────────────────────────────────────────────────────
@@ -226,6 +229,131 @@ export interface SettledTrade {
 export interface SettledTradesResponse {
   trades: SettledTrade[]
   total:  number
+}
+
+// ── AI Coach ──────────────────────────────────────────────────────────────────
+
+/** SSE event from GET /api/coach/analyze */
+export interface CoachChunk {
+  t:           'chunk' | 'done' | 'error'
+  v?:          string             // text fragment (chunk) or error message
+  assessment?: 'Safe' | 'Warning' | 'Danger'
+  weakness?:   string
+  steps?:      string[]
+  weekly?:     string
+}
+
+export interface CoachResult {
+  assessment: 'Safe' | 'Warning' | 'Danger'
+  weakness:   string
+  steps:      string[]
+  weekly:     string
+}
+
+// ── Market Scanner / Opportunities ───────────────────────────────────────────
+export interface MarketOpportunity {
+  symbol:        string
+  spot_price:    string | null   // DecStr
+  current_hv:    string          // "0.4523"
+  iv_rank:       string          // "0.82" = 82%
+  iv_percentile: string          // "0.78" = 78%
+  hv_52w_high:   string          // DecStr
+  hv_52w_low:    string          // DecStr
+  suggestion:    string          // human-readable suggestion
+  signal:        'HIGH_IV' | 'ELEVATED_IV' | 'LOW_IV' | 'NEUTRAL'
+}
+
+// ── Price Alerts ──────────────────────────────────────────────────────────────
+export type AlertType   = 'PRICE_ABOVE' | 'PRICE_BELOW' | 'PCT_CHANGE_UP' | 'PCT_CHANGE_DOWN'
+export type AlertStatus = 'ACTIVE' | 'TRIGGERED' | 'DISABLED'
+
+export interface Alert {
+  id:               number
+  user_id:          number
+  symbol:           string
+  alert_type:       AlertType
+  status:           AlertStatus
+  threshold:        string          // DecStr
+  reference_price:  string | null   // DecStr
+  repeat:           boolean
+  cooldown_seconds: number
+  note:             string | null
+  created_at:       string          // ISO datetime
+  triggered_at:     string | null   // ISO datetime
+  trigger_count:    number
+  expires_at:       string | null   // ISO datetime
+}
+
+export interface AlertCreate {
+  symbol:            string
+  alert_type:        AlertType
+  threshold:         string
+  reference_price?:  string | null
+  repeat?:           boolean
+  cooldown_seconds?: number
+  note?:             string | null
+  expires_at?:       string | null
+}
+
+export interface AlertTriggered {
+  alert_id:      number
+  symbol:        string
+  alert_type:    string
+  threshold:     string
+  spot_price:    string
+  note:          string | null
+  triggered_at:  string
+}
+
+// ── AI Insight (Phase 8a) ────────────────────────────────────────────────────
+export interface AiDiagnostic {
+  severity:    'info' | 'warning' | 'critical'
+  category:    string    // "delta" | "gamma" | "theta" | "vega" | "expiry" | "diversification"
+  title:       string
+  explanation: string
+  suggestion:  string
+}
+
+export interface AiInsightData {
+  overall_assessment: 'Safe' | 'Caution' | 'Warning' | 'Danger'
+  diagnostics:        AiDiagnostic[]
+  generated_at:       string        // ISO datetime
+  audio_url:          string | null // TTS audio URL (Phase 10a), null when no TTS
+}
+
+// ── Intraday P&L (Phase 7f) ──────────────────────────────────────────────────
+export interface PnlDataPoint {
+  t: string          // "HH:MM:SS"
+  nlv: string        // DecStr
+  pnl: string        // DecStr — unrealized_pnl vs prev close
+}
+
+export interface PnlSnapshot {
+  portfolioId: number
+  current: PnlDataPoint
+  prevCloseNlv: string    // DecStr
+  dayPnlPct: string       // DecStr — percentage change
+  series: PnlDataPoint[]
+}
+
+// ── Macro Ticker (Phase 12a) ──────────────────────────────────────────────────
+export interface MacroTickerData {
+  spx_price:          number
+  spx_change_pct:     number
+  vix_level:          number
+  vix_term:           string   // "low" | "normal" | "elevated" | "crisis"
+  days_to_next_event: number | null
+  next_event_name:    string | null
+  market_regime:      string
+  as_of:              string   // ISO datetime
+}
+
+// ── Auth ──────────────────────────────────────────────────────────────────────
+export interface TokenResponse {
+  access_token: string
+  token_type:   string
+  user_id:      number
+  username:     string
 }
 
 // ── Cash ledger ───────────────────────────────────────────────────────────────

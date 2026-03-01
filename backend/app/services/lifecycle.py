@@ -45,16 +45,19 @@ class ProcessResult:
     details:  list[str] = field(default_factory=list)
 
 
-async def process_expired_trades(db: AsyncSession) -> ProcessResult:
+async def process_expired_trades(
+    db: AsyncSession, user_id: int | None = None,
+) -> ProcessResult:
     """
-    Sweep all portfolios for expired options and settle them.
+    Sweep portfolios for expired options and settle them.
+    If user_id is provided, only processes that user's trades.
     Commits internally; caller does NOT need to commit.
     """
     today = date.today()
     result = ProcessResult()
 
     # ── 1. All ACTIVE trades on expired option instruments ────────────────────
-    rows = (await db.execute(
+    stmt = (
         select(TradeEvent)
         .join(Instrument, TradeEvent.instrument_id == Instrument.id)
         .where(
@@ -64,7 +67,10 @@ async def process_expired_trades(db: AsyncSession) -> ProcessResult:
         )
         .options(selectinload(TradeEvent.instrument))
         .order_by(TradeEvent.instrument_id, TradeEvent.trade_date.asc())
-    )).scalars().all()
+    )
+    if user_id is not None:
+        stmt = stmt.where(TradeEvent.user_id == user_id)
+    rows = (await db.execute(stmt)).scalars().all()
 
     if not rows:
         return result
@@ -203,8 +209,10 @@ async def process_expired_trades(db: AsyncSession) -> ProcessResult:
                 await db.flush()
 
             # Auto-assignment TradeEvent — price = effective cost basis (premium-adjusted)
+            trade_user_id = trades[0].user_id  # inherit from expired trade
             auto_trade = TradeEvent(
                 portfolio_id=portfolio_id,
+                user_id=trade_user_id,
                 instrument_id=stock_inst.id,
                 action=stock_action,
                 quantity=total_shares,
@@ -235,6 +243,7 @@ async def process_expired_trades(db: AsyncSession) -> ProcessResult:
             )
             db.add(CashLedger(
                 portfolio_id=portfolio_id,
+                user_id=trade_user_id,
                 trade_event_id=auto_trade.id,
                 amount=cash_amount,
                 description=(

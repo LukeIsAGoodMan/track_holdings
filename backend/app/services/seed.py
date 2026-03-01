@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import (
@@ -105,3 +105,19 @@ async def run_seed(db: AsyncSession) -> bool:
     db.add(cash_entry)
 
     return True
+
+
+async def assign_orphan_data(db: AsyncSession, user_id: int) -> int:
+    """
+    Assign all rows with user_id=NULL to the given user.
+    Called once when the first user registers — migrates pre-auth legacy data.
+    Returns total number of rows updated.
+    """
+    count = 0
+    for table in ("portfolios", "trade_events", "cash_ledger"):
+        result = await db.execute(
+            text(f"UPDATE {table} SET user_id = :uid WHERE user_id IS NULL"),
+            {"uid": user_id},
+        )
+        count += result.rowcount
+    return count

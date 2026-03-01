@@ -23,6 +23,9 @@ class Portfolio(Base):
     parent_id   = Column(
         Integer, ForeignKey("portfolios.id"), nullable=True, index=True
     )
+    user_id     = Column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
     # Self-referential hierarchy

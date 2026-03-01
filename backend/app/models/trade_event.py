@@ -63,6 +63,9 @@ class TradeEvent(Base):
     instrument_id = Column(
         Integer, ForeignKey("instruments.id"), nullable=False, index=True
     )
+    user_id       = Column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
 
     action   = Column(SAEnum(TradeAction,  native_enum=False), nullable=False)
     quantity = Column(Integer, nullable=False)  # always positive; direction = action

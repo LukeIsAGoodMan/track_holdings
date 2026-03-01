@@ -30,6 +30,9 @@ class CashLedger(Base):
     trade_event_id = Column(
         Integer, ForeignKey("trade_events.id"), nullable=True
     )
+    user_id        = Column(
+        Integer, ForeignKey("users.id"), nullable=True, index=True
+    )
 
     # Signed amount: positive = inflow, negative = outflow.
     # Decimal(18, 6) — sub-cent precision, eliminates float rounding risk.

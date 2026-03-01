@@ -15,7 +15,9 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import CashLedger
+from app.models.user import User
 from app.schemas.base import DecStr
 
 router = APIRouter(tags=["cash"])
@@ -38,19 +40,21 @@ class CashSummary(BaseModel):
 @router.get("/cash", response_model=CashSummary)
 async def get_cash(
     portfolio_id: int | None = Query(None, description="Filter by portfolio ID"),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Return current cash balance and recent ledger (last 50 entries)."""
-    # Balance
-    stmt_sum = select(func.sum(CashLedger.amount))
+    # Balance — always scoped to user
+    stmt_sum = select(func.sum(CashLedger.amount)).where(CashLedger.user_id == user.id)
     if portfolio_id is not None:
         stmt_sum = stmt_sum.where(CashLedger.portfolio_id == portfolio_id)
     raw = await db.execute(stmt_sum)
     balance = Decimal(str(raw.scalar() or 0))
 
-    # Ledger
+    # Ledger — always scoped to user
     stmt_entries = (
         select(CashLedger)
+        .where(CashLedger.user_id == user.id)
         .order_by(CashLedger.created_at.desc())
         .limit(50)
     )

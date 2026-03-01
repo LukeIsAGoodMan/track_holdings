@@ -16,12 +16,17 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePortfolio } from '@/context/PortfolioContext'
 import { useLanguage }  from '@/context/LanguageContext'
+import { useWebSocket } from '@/context/WebSocketContext'
 import { fetchHoldings, fetchCash, fetchSettledTrades, triggerLifecycle } from '@/api/holdings'
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
   TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
+  PnlDataPoint,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
+import PnlChart from '@/components/PnlChart'
+import AiInsightPanel from '@/components/AiInsightPanel'
+import MarketTicker from '@/components/MarketTicker'
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -302,6 +307,25 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                     ${fmtNum(group.spot_price)}
                   </span>
                 )}
+                {/* Bell icon — set price alert for this symbol */}
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    navigate('/risk', {
+                      state: { prefillAlert: { symbol: group.symbol, spotPrice: group.spot_price } },
+                    })
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.click() }}
+                  title={`${t('alert_set_for')} ${group.symbol}`}
+                  className="cursor-pointer px-1 py-0.5 rounded text-slate-600 hover:text-amber-400 hover:bg-amber-500/10 transition-colors"
+                >
+                  <svg className="w-3.5 h-3.5 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-700 text-slate-400 font-semibold">
                   {totalLegs} leg{totalLegs !== 1 ? 's' : ''}
                 </span>
@@ -473,7 +497,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
               </>
             )}
           </div>
-          </div>  {/* strategy section wrapper */}
+          </div>
         )
       })}
     </div>
@@ -690,12 +714,20 @@ function SettledTradesSection({
 export default function HoldingsPage() {
   const { selectedPortfolioId, refreshKey, triggerRefresh } = usePortfolio()
   const { t } = useLanguage()
+  const { lastHoldingsUpdate, lastPnlSnapshot } = useWebSocket()
 
   const [holdings,        setHoldings]        = useState<HoldingGroup[]>([])
   const [cash,            setCash]            = useState<CashSummary | null>(null)
   const [loading,         setLoading]         = useState(true)
   const [error,           setError]           = useState<string | null>(null)
   const [lifecycleResult, setLifecycleResult] = useState<LifecycleResult | null>(null)
+
+  // ── P&L chart state (Phase 7f) ──────────────────────────────────────────
+  const [pnlSeries,    setPnlSeries]    = useState<PnlDataPoint[]>([])
+  const [prevCloseNlv, setPrevCloseNlv] = useState<string | null>(null)
+  const [dayPnlPct,    setDayPnlPct]    = useState<string | null>(null)
+  const [currentNlv,   setCurrentNlv]   = useState<string | null>(null)
+  const [currentPnl,   setCurrentPnl]   = useState<string | null>(null)
 
   // ── Main data fetch ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -709,6 +741,33 @@ export default function HoldingsPage() {
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
   }, [selectedPortfolioId, refreshKey])
+
+  // ── Live WS holdings updates ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!lastHoldingsUpdate) return
+    if (lastHoldingsUpdate.portfolioId !== selectedPortfolioId) return
+    setHoldings(lastHoldingsUpdate.data)
+  }, [lastHoldingsUpdate, selectedPortfolioId])
+
+  // ── Live WS P&L snapshot (Phase 7f) ──────────────────────────────────────
+  useEffect(() => {
+    if (!lastPnlSnapshot) return
+    if (lastPnlSnapshot.portfolioId !== selectedPortfolioId) return
+    setPnlSeries(lastPnlSnapshot.series)
+    setPrevCloseNlv(lastPnlSnapshot.prevCloseNlv)
+    setDayPnlPct(lastPnlSnapshot.dayPnlPct)
+    setCurrentNlv(lastPnlSnapshot.current.nlv)
+    setCurrentPnl(lastPnlSnapshot.current.pnl)
+  }, [lastPnlSnapshot, selectedPortfolioId])
+
+  // Clear P&L chart on portfolio change
+  useEffect(() => {
+    setPnlSeries([])
+    setPrevCloseNlv(null)
+    setDayPnlPct(null)
+    setCurrentNlv(null)
+    setCurrentPnl(null)
+  }, [selectedPortfolioId])
 
   // ── Lifecycle sweep on portfolio change (fire-and-forget) ─────────────────
   // Runs once per portfolio selection; if trades were settled, triggers a
@@ -768,7 +827,16 @@ export default function HoldingsPage() {
         </div>
       ) : (
         <>
+          <MarketTicker />
           <CashCard cash={cash} />
+          <PnlChart
+            series={pnlSeries}
+            prevCloseNlv={prevCloseNlv}
+            dayPnlPct={dayPnlPct}
+            currentNlv={currentNlv}
+            currentPnl={currentPnl}
+          />
+          <AiInsightPanel />
           <HoldingsTable groups={holdings} />
           <SettledTradesSection portfolioId={selectedPortfolioId} />
         </>

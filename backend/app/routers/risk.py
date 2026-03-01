@@ -28,7 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.dependencies import get_current_user
 from app.models import InstrumentType
+from app.models.user import User
 from app.models.trade_event import TradeEvent, TradeAction
 from app.models.cash_ledger import CashLedger
 from app.schemas.risk import (
@@ -43,6 +45,8 @@ from app.schemas.risk import (
     ScenarioResult,
 )
 from app.services import position_engine, yfinance_client
+from app.services.portfolio_resolver import resolve_portfolio_ids
+from app.services.risk_engine import compute_risk_summary
 from app.services.black_scholes import (
     DEFAULT_SIGMA,
     MULTIPLIER,
@@ -63,53 +67,17 @@ _EMPTY_BUCKETS = [
     ExpiryBucket(label=">90d",   net_contracts=0, delta_exposure=Decimal("0")),
 ]
 
-# Gamma crash alert threshold: alert when delta doubles within this % move
-_GAMMA_ALERT_THRESHOLD_PCT = 20.0
-
-
-def _build_risk_alerts(
-    sym_delta: dict[str, Decimal],
-    sym_gamma: dict[str, Decimal],
-    spot_map:  dict[str, Decimal | None],
-) -> list[str]:
-    """
-    For each symbol, compute the price move (%) at which portfolio delta doubles.
-    Delta doubles when: gamma_exp × ΔP ≈ delta_exp → ΔP = delta_exp / gamma_exp.
-    Alert if that crash_pct < _GAMMA_ALERT_THRESHOLD_PCT.
-    """
-    alerts: list[str] = []
-    for sym, delta_exp in sym_delta.items():
-        gamma_exp = sym_gamma.get(sym)
-        if not gamma_exp or gamma_exp == Decimal("0"):
-            continue
-        spot = spot_map.get(sym)
-        if not spot or spot <= 0:
-            continue
-
-        # Dollar move that doubles delta
-        dollar_move = abs(delta_exp / gamma_exp)
-        crash_pct   = float(dollar_move / spot) * 100.0
-
-        if crash_pct < _GAMMA_ALERT_THRESHOLD_PCT:
-            direction = "drop" if float(gamma_exp) < 0 else "rally"
-            alerts.append(
-                f"{sym}: delta exposure doubles within a {crash_pct:.1f}% {direction} "
-                f"(gamma-exp={float(gamma_exp):.4f}, delta-exp={float(delta_exp):.1f})"
-            )
-
-    return sorted(alerts)
-
 
 @router.get("/risk/dashboard", response_model=RiskDashboard)
 async def get_risk_dashboard(
     portfolio_id: int | None = Query(None),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    _internal_user_id: int | None = None,
 ):
-    if portfolio_id is not None:
-        pids = await position_engine.collect_portfolio_ids(db, portfolio_id)
-        positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
-    else:
-        positions = await position_engine.calculate_positions(db)
+    uid = _internal_user_id if _internal_user_id is not None else user.id
+    pids = await resolve_portfolio_ids(db, uid, portfolio_id)
+    positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
 
     # Fetch benchmark YTDs concurrently (independent of positions)
     benchmark_raw = await asyncio.gather(
@@ -141,161 +109,33 @@ async def get_risk_dashboard(
         )
 
     # ── Batch spot prices + historical vols (all symbols for VaR) ────────
-    all_symbols  = list({pos.instrument.symbol for pos in positions})
-    opt_symbols  = list({pos.instrument.symbol for pos in positions
-                         if pos.instrument.option_type is not None})
+    all_symbols = list({pos.instrument.symbol for pos in positions})
     spot_results, vol_results = await asyncio.gather(
         asyncio.gather(*[yfinance_client.get_spot_price(s) for s in all_symbols]),
         asyncio.gather(*[yfinance_client.get_hist_vol(s)   for s in all_symbols]),
     )
-    # spot_map covers ALL symbols; vol_map same
     spot_map: dict[str, Decimal | None] = dict(zip(all_symbols, spot_results))
     vol_map:  dict[str, Decimal]        = dict(zip(all_symbols, vol_results))
-    # Legacy reference: keep opt-only alias for option Greek lookups
-    _ = opt_symbols  # consumed via spot_map
 
-    today = date.today()
-    r_f   = Decimal(str(settings.risk_free_rate))
-
-    # Accumulators
-    total_delta  = Decimal("0")
-    total_gamma  = Decimal("0")
-    total_theta  = Decimal("0")
-    total_vega   = Decimal("0")
-    total_margin = Decimal("0")
-    n_positions  = 0
-
-    sym_theta:  dict[str, Decimal] = {}
-    sym_margin: dict[str, Decimal] = {}
-    sym_gamma:  dict[str, Decimal] = {}  # per-symbol signed gamma exposure
-    sym_delta:  dict[str, Decimal] = {}  # per-symbol signed delta exposure
-
-    sector_exp: dict[str, Decimal] = {}
-
-    buckets: dict[str, dict] = {
-        "≤7d":    {"net_contracts": 0, "delta_exposure": Decimal("0")},
-        "8-30d":  {"net_contracts": 0, "delta_exposure": Decimal("0")},
-        "31-90d": {"net_contracts": 0, "delta_exposure": Decimal("0")},
-        ">90d":   {"net_contracts": 0, "delta_exposure": Decimal("0")},
-    }
-
-    for pos in positions:
-        inst = pos.instrument
-
-        # ── Stock / ETF ───────────────────────────────────────────────────
-        if inst.instrument_type == InstrumentType.STOCK or inst.option_type is None:
-            stock_delta = Decimal(str(pos.net_contracts))
-            total_delta += stock_delta
-            sym_delta[inst.symbol] = sym_delta.get(inst.symbol, Decimal("0")) + stock_delta
-            n_positions += 1
-            tags = inst.tags or []
-            for tag in tags:
-                sector_exp[tag] = sector_exp.get(tag, Decimal("0")) + stock_delta
-            continue
-
-        # ── Option position ───────────────────────────────────────────────
-        if inst.expiry is None:
-            continue
-
-        n_positions += 1
-        dte  = (inst.expiry - today).days
-        T    = Decimal(str(max(dte, 0) / 365.0))
-        spot = spot_map.get(inst.symbol)
-        marg = maintenance_margin(pos.net_contracts, inst.strike)
-        total_margin += marg
-        sym_margin[inst.symbol] = sym_margin.get(inst.symbol, Decimal("0")) + marg
-
-        delta_exp = Decimal("0")
-        if spot and T > 0:
-            g = calculate_greeks(spot, inst.strike, T, inst.option_type.value,
-                                 DEFAULT_SIGMA, r_f)
-            delta_exp       = net_delta_exposure(pos.net_contracts, g)
-            net_contracts_d = Decimal(str(pos.net_contracts))
-            abs_n           = Decimal(str(abs(pos.net_contracts)))
-
-            total_delta += delta_exp
-            theta_exp    = g.theta * net_contracts_d * MULTIPLIER
-            gamma_exp    = g.gamma * net_contracts_d * MULTIPLIER   # signed (short = negative)
-            vega_exp     = g.vega  * abs_n           * MULTIPLIER
-
-            total_theta  += theta_exp
-            total_gamma  += g.gamma * abs_n * MULTIPLIER            # portfolio |gamma|
-            total_vega   += vega_exp
-
-            sym_theta[inst.symbol] = sym_theta.get(inst.symbol, Decimal("0")) + theta_exp
-            sym_gamma[inst.symbol] = sym_gamma.get(inst.symbol, Decimal("0")) + gamma_exp
-            sym_delta[inst.symbol] = sym_delta.get(inst.symbol, Decimal("0")) + delta_exp
-
-            tags = inst.tags or []
-            for tag in tags:
-                sector_exp[tag] = sector_exp.get(tag, Decimal("0")) + delta_exp
-
-        # Assign to expiry bucket
-        if dte <= 7:    bkt = "≤7d"
-        elif dte <= 30: bkt = "8-30d"
-        elif dte <= 90: bkt = "31-90d"
-        else:           bkt = ">90d"
-
-        buckets[bkt]["net_contracts"] += pos.net_contracts
-        buckets[bkt]["delta_exposure"] = buckets[bkt]["delta_exposure"] + delta_exp
-
-    # ── Top capital-efficient underlying ──────────────────────────────────
-    top_efficient: str | None = None
-    best_ratio = Decimal("-999999")
-    for sym in sym_theta:
-        margin = sym_margin.get(sym, Decimal("0"))
-        if margin > Decimal("0"):
-            ratio = sym_theta[sym] / margin
-            if ratio > best_ratio:
-                best_ratio = ratio
-                top_efficient = sym
-
-    # ── Gamma crash risk alerts ───────────────────────────────────────────
-    risk_alerts = _build_risk_alerts(sym_delta, sym_gamma, spot_map)
-
-    # ── 1-day 95% VaR — delta-normal method ──────────────────────────────
-    # For each symbol: dollar_vol_i = |delta_exp_i| × spot_i × σ_daily_i
-    # σ_daily = hist_vol / sqrt(252).  Assuming cross-symbol independence:
-    #   σ_portfolio = sqrt(Σ dollar_vol_i²)
-    #   VaR_1d_95   = 1.645 × σ_portfolio
-    _Z95 = Decimal("1.645")
-    _SQRT252 = Decimal(str(math.sqrt(252)))
-    var_sum_sq = Decimal("0")
-    for sym, d_exp in sym_delta.items():
-        spot_s = spot_map.get(sym)
-        if spot_s is None or spot_s <= 0:
-            continue
-        sigma_annual = vol_map.get(sym, DEFAULT_SIGMA)
-        sigma_daily  = sigma_annual / _SQRT252
-        dollar_vol   = abs(d_exp) * spot_s * sigma_daily
-        var_sum_sq  += dollar_vol * dollar_vol
-    var_1d_95: Decimal | None = None
-    if var_sum_sq > 0:
-        var_1d_95 = _Z95 * Decimal(str(math.sqrt(float(var_sum_sq))))
-
-    sector_str = {tag: str(v) for tag, v in sector_exp.items()}
+    # ── Delegate to risk_engine (shared with WebSocket broadcasts) ───────
+    summary = compute_risk_summary(positions, spot_map, vol_map)
 
     return RiskDashboard(
-        total_net_delta=total_delta,
-        total_gamma=total_gamma,
-        total_theta_daily=total_theta,
-        total_vega=total_vega,
-        maintenance_margin_total=total_margin,
+        total_net_delta=summary["total_net_delta"],
+        total_gamma=summary["total_gamma"],
+        total_theta_daily=summary["total_theta_daily"],
+        total_vega=summary["total_vega"],
+        maintenance_margin_total=summary["maintenance_margin_total"],
         expiry_buckets=[
-            ExpiryBucket(
-                label=k,
-                net_contracts=v["net_contracts"],
-                delta_exposure=v["delta_exposure"],
-            )
-            for k, v in buckets.items()
+            ExpiryBucket(**bkt) for bkt in summary["expiry_buckets"]
         ],
-        positions_count=n_positions,
+        positions_count=summary["positions_count"],
         as_of=datetime.utcnow(),
-        top_efficient_symbol=top_efficient,
-        sector_exposure=sector_str,
+        top_efficient_symbol=summary["top_efficient_symbol"],
+        sector_exposure=summary["sector_exposure"],
         benchmark_ytd=benchmark_ytd,
-        risk_alerts=risk_alerts,
-        var_1d_95=var_1d_95,
+        risk_alerts=summary["risk_alerts"],
+        var_1d_95=summary["var_1d_95"],
     )
 
 
@@ -304,6 +144,7 @@ async def get_scenario(
     portfolio_id:    int | None = Query(None),
     price_change_pct: float    = Query(0.0, description="Fractional price move, e.g. -0.15 for -15%"),
     vol_change_ppt:   float    = Query(0.0, description="Absolute IV shift in pp, e.g. 20 for +20pp"),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -316,11 +157,8 @@ async def get_scenario(
     Price move ΔP = spot × price_change_pct (dollar change in underlying).
     Vega is per 1 percentage-point vol move; vol_change_ppt is pp shift (e.g. 20).
     """
-    if portfolio_id is not None:
-        pids = await position_engine.collect_portfolio_ids(db, portfolio_id)
-        positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
-    else:
-        positions = await position_engine.calculate_positions(db)
+    pids = await resolve_portfolio_ids(db, user.id, portfolio_id)
+    positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
 
     if not positions:
         return ScenarioResult(
@@ -404,6 +242,7 @@ async def get_scenario(
 async def get_account_history(
     portfolio_id: int | None = Query(None),
     benchmarks:   str        = Query("SPY,QQQ", description="Comma-separated benchmark symbols"),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -419,11 +258,7 @@ async def get_account_history(
     are carried forward on days with no new trades.
     """
     # ── 1. Resolve portfolio IDs ─────────────────────────────────────────────
-    if portfolio_id is not None:
-        pids = await position_engine.collect_portfolio_ids(db, portfolio_id)
-    else:
-        result = await db.execute(select(CashLedger.portfolio_id).distinct())
-        pids   = set(result.scalars().all())
+    pids = await resolve_portfolio_ids(db, user.id, portfolio_id)
 
     # ── 2. Fetch all CashLedger entries, sorted chronologically ─────────────
     rows = (await db.execute(
@@ -543,7 +378,9 @@ async def get_account_history(
 @router.get("/risk/attribution", response_model=AttributionResponse)
 async def get_pnl_attribution(
     portfolio_id: int | None = Query(None),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    _internal_user_id: int | None = None,
 ):
     """
     P&L attribution: splits unrealized PnL per position into:
@@ -557,11 +394,9 @@ async def get_pnl_attribution(
     Current option price estimated via Black-Scholes using live spot + historical vol.
     Greeks at open computed using underlying_price_at_trade from the first opening trade.
     """
-    if portfolio_id is not None:
-        pids = await position_engine.collect_portfolio_ids(db, portfolio_id)
-        positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
-    else:
-        positions = await position_engine.calculate_positions(db)
+    uid = _internal_user_id if _internal_user_id is not None else user.id
+    pids = await resolve_portfolio_ids(db, uid, portfolio_id)
+    positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
 
     _zero = Decimal("0")
     if not positions:
@@ -688,7 +523,9 @@ async def get_pnl_attribution(
 @router.get("/risk/insights", response_model=PortfolioInsight)
 async def get_portfolio_insights(
     portfolio_id: int | None = Query(None),
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    _internal_user_id: int | None = None,
 ):
     """
     LLM-Ready structured risk descriptor.
@@ -700,23 +537,17 @@ async def get_portfolio_insights(
     Strategy mix is computed from the holdings endpoint logic; top_positions
     are the three largest contributors by |delta_exposure|.
     """
-    from app.routers.holdings import get_holdings
-    from fastapi import Request
+    uid = _internal_user_id if _internal_user_id is not None else user.id
 
     # ── Re-use the risk dashboard for aggregates + VaR ────────────────────
-    dashboard = await get_risk_dashboard(portfolio_id=portfolio_id, db=db)
+    dashboard = await get_risk_dashboard(
+        portfolio_id=portfolio_id, db=db, user=user, _internal_user_id=uid,
+    )
 
     # ── Re-use holdings for strategy mix + top positions ──────────────────
-    # We call the service layer directly to avoid HTTP overhead.
-    if portfolio_id is not None:
-        pids = await position_engine.collect_portfolio_ids(db, portfolio_id)
-        positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
-    else:
-        positions = await position_engine.calculate_positions(db)
+    pids = await resolve_portfolio_ids(db, uid, portfolio_id)
+    positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
 
-    # Fetch holdings with strategy tags via the holdings endpoint logic
-    from app.routers import holdings as holdings_router
-    from fastapi import Request as FR
     # Build HoldingGroups using the holdings service (same logic as GET /holdings)
     all_syms = list({p.instrument.symbol for p in positions})
     if all_syms:
