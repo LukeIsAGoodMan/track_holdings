@@ -8,6 +8,7 @@ Startup sequence:
   4. process_expired_trades() settles any options that expired since last run
   5. Start WebSocket PriceFeedService (Phase 7 — real-time)
 """
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -37,6 +38,7 @@ from app.services.macro_service import MacroService
 from app.services.scanner_service import MarketScannerService
 from app.services.seed import run_seed
 from app.services.ws_manager import ConnectionManager
+from app.services.yfinance_client import prewarm as prewarm_prices
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,20 @@ async def lifespan(_app: FastAPI):
             await process_expired_trades(db)
     except Exception:
         pass
+
+    # ── Fire-and-forget price pre-warm (non-blocking — Render health check <1s) ─
+    _prewarm_syms = list(dict.fromkeys(
+        ["SPY", "VIX"] + [s.strip() for s in settings.scanner_symbols.split(",") if s.strip()]
+    ))[:5]  # first 5 within rate limit
+
+    async def _bg_prewarm() -> None:
+        try:
+            await prewarm_prices(_prewarm_syms)
+            logger.info("Price cache pre-warmed: %s", _prewarm_syms)
+        except Exception:
+            logger.warning("Price pre-warm failed (non-fatal)")
+
+    asyncio.create_task(_bg_prewarm(), name="prewarm_prices")
 
     # ── Start real-time price feed ────────────────────────────────────────
     ws_router.init_ws_globals(ws_manager, price_cache)

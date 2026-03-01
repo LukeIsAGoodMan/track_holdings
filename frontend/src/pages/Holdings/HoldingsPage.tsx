@@ -59,6 +59,16 @@ function efficiencyClass(raw: string | null): string {
   return 'bg-slate-700/60 text-slate-400'
 }
 
+// ── Shimmer placeholder for loading Greeks ────────────────────────────────────
+function ShimmerCell({ w = 'w-12' }: { w?: string }) {
+  return (
+    <span
+      className={`inline-block h-3.5 ${w} bg-slate-700/60 rounded animate-pulse
+                  transition-opacity duration-300`}
+    />
+  )
+}
+
 // ── Exit button ────────────────────────────────────────────────────────────────
 function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
   return (
@@ -276,6 +286,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
         const totalLegs  = group.option_legs.length + group.stock_legs.length
         const hasOptions = group.option_legs.length > 0
         const hasStocks  = group.stock_legs.length > 0
+        const greeksLoading = hasOptions && group.option_legs.some(l => l.delta == null)
 
         return (
           <div key={group.symbol}>
@@ -302,10 +313,12 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                   ▶
                 </span>
                 <span className="font-bold text-white text-base">{group.symbol}</span>
-                {group.spot_price && (
-                  <span className="text-xs text-slate-500 tabular-nums">
+                {group.spot_price ? (
+                  <span className="text-xs text-slate-500 tabular-nums transition-opacity duration-300">
                     ${fmtNum(group.spot_price)}
                   </span>
+                ) : (
+                  <ShimmerCell w="w-14" />
                 )}
                 {/* Bell icon — set price alert for this symbol */}
                 <span
@@ -367,9 +380,13 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                   <div className="text-slate-500 uppercase tracking-wider text-[10px]">
                     {t('delta_exposure')}
                   </div>
-                  <div className={`font-bold text-sm ${signClass(group.total_delta_exposure)}`}>
-                    {fmtNum(group.total_delta_exposure)}
-                  </div>
+                  {greeksLoading ? (
+                    <ShimmerCell w="w-16" />
+                  ) : (
+                    <div className={`font-bold text-sm transition-opacity duration-300 ${signClass(group.total_delta_exposure)}`}>
+                      {fmtNum(group.total_delta_exposure)}
+                    </div>
+                  )}
                 </div>
 
                 <div className="text-right">
@@ -448,13 +465,23 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                                 </span>
                               </td>
                               <td className="td text-slate-400">${fmtNum(leg.avg_open_price)}</td>
-                              <td className="td text-slate-300">{fmtGreek(leg.delta)}</td>
-                              <td className="td">
-                                <span className={`font-semibold ${deltaPos ? 'text-green-400' : 'text-red-400'}`}>
-                                  {fmtNum(leg.delta_exposure)}
-                                </span>
+                              <td className="td text-slate-300">
+                                {leg.delta != null
+                                  ? <span className="transition-opacity duration-300">{fmtGreek(leg.delta)}</span>
+                                  : <ShimmerCell />}
                               </td>
-                              <td className="td text-amber-400">{fmtGreek(leg.theta)}</td>
+                              <td className="td">
+                                {leg.delta_exposure != null ? (
+                                  <span className={`font-semibold transition-opacity duration-300 ${deltaPos ? 'text-green-400' : 'text-red-400'}`}>
+                                    {fmtNum(leg.delta_exposure)}
+                                  </span>
+                                ) : <ShimmerCell />}
+                              </td>
+                              <td className="td text-amber-400">
+                                {leg.theta != null
+                                  ? <span className="transition-opacity duration-300">{fmtGreek(leg.theta)}</span>
+                                  : <ShimmerCell />}
+                              </td>
                               <td className="td text-slate-400">{fmtUSD(leg.maintenance_margin)}</td>
                               {/* Exit */}
                               <td className="td pr-3">
