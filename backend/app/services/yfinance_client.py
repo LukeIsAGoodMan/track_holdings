@@ -1,13 +1,13 @@
 """
 Financial Modeling Prep (FMP) — 2026 Stable Protocol.
 
-All endpoints use the /stable/ prefix (legacy /v3/ and /v4/ deprecated).
+All endpoints use /stable/ prefix + query parameters (no path segments).
 
 Spot prices:
-  Primary:  /stable/quote/SYM1,SYM2,...     (batch)
-  Fallback: /stable/search-symbol?query=SYM  (per-symbol, data[0]['price'])
+  Primary:  /stable/quote?symbol=SYM1,SYM2,...       (batch via ?symbol=)
+  Fallback: /stable/search-symbol?query=SYM           (per-symbol, data[0]['price'])
 
-Historical: /stable/historical-price-full/{symbol}
+Historical: /stable/historical-price-eod/full?symbol=SYM
 
 SWR cache (PRO — near-real-time):
   Spot fresh   = 60s  (1 min).   Historical fresh = 3600s (1h).
@@ -224,9 +224,9 @@ def _do_fetch_batch_spots(symbols: list[str]) -> dict[str, Decimal]:
 
     result: dict[str, Decimal] = {}
 
-    # ── Primary: batch quote ──────────────────────────────────────────
+    # ── Primary: /stable/quote?symbol=SYM1,SYM2,... ────────────────
     csv_syms = ",".join(dict.fromkeys(fmp_syms))  # deduplicate, keep order
-    data = _fmp_get(f"/quote/{csv_syms}")
+    data = _fmp_get("/quote", {"symbol": csv_syms})
 
     if data and isinstance(data, list):
         for quote in data:
@@ -255,9 +255,12 @@ def _do_fetch_batch_spots(symbols: list[str]) -> dict[str, Decimal]:
 
 
 def _do_fetch_historical(symbol: str, extra_params: dict | None = None) -> list[dict]:
-    """Fetch historical daily data from FMP.  Plain endpoint by default."""
+    """Fetch historical daily data: /stable/historical-price-eod/full?symbol=SYM."""
     fmp_sym = _fmp_sym(symbol)
-    data = _fmp_get(f"/historical-price-full/{fmp_sym}", extra_params)
+    p: dict[str, str] = {"symbol": fmp_sym}
+    if extra_params:
+        p.update(extra_params)
+    data = _fmp_get("/historical-price-eod/full", p)
     if not data or not isinstance(data, dict):
         return []
     hist = data.get("historical", [])
@@ -403,8 +406,8 @@ def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
     try:
         fmp_sym = _fmp_sym(upper)
         data = _fmp_get(
-            f"/historical-price-full/{fmp_sym}",
-            {"from": start_date},
+            "/historical-price-eod/full",
+            {"symbol": fmp_sym, "from": start_date},
         )
         if data and isinstance(data, dict) and "historical" in data:
             result: dict[str, float] = {}
