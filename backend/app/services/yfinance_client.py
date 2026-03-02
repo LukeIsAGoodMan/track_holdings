@@ -1,72 +1,96 @@
 """
-yfinance async wrapper — Phase 12b Robust Anti-Blocking Layer.
+Financial Modeling Prep (FMP) async wrapper — Phase 12c.
 
-Anti-blocking:
-  12 modern browser User-Agent strings, rotated randomly per request.
-  Custom requests.Session injected into every yf.Ticker() call.
+Batch-first architecture:
+  Spot prices: single batch call  /api/v3/quote/SYM1,SYM2,...
+  Background refresher: collects ALL stale symbols → one batch call.
 
-Smart SWR (Stale-While-Revalidate) cache:
-  Fresh hit  (<120s)  → instant return.
-  Stale hit  (120s–1h) → instant return + background refresh scheduled.
-  Empty hit            → return None + schedule bg fetch (NEVER blocks).
-  Zero-Value Guard     → _last_known dict never expires — ultimate fallback.
+SWR cache (credit-conserving):
+  Spot fresh   = 300s (5 min).   Historical fresh = 3600s (1h).
+  Stale window = 2h.            Zero-Value Guard (never expires).
+
+Symbol mapping:  ^GSPC → SPY,  ^VIX → VIX.
+
+Security:
+  API key from FMP_API_KEY env var (set in Render dashboard).
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from decimal import Decimal
 
 import requests
-import yfinance as yf
 
+from app.config import settings
 from app.services.black_scholes import compute_historical_vol, DEFAULT_SIGMA
 
 logger = logging.getLogger(__name__)
 
-# ── User-Agent rotation (12 modern browser strings) ──────────────────────
-_USER_AGENTS: list[str] = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.2 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0",
-    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/116.0.0.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Vivaldi/7.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Brave/131",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
-]
+# ── FMP config ──────────────────────────────────────────────────────────
+_BASE = "https://financialmodelingprep.com/api/v3"
+_API_KEY = settings.fmp_api_key
+_HTTP_TIMEOUT = 5  # seconds — fail fast
+
+# ── Symbol mapping (Yahoo-style → FMP) ──────────────────────────────────
+_SYMBOL_MAP: dict[str, str] = {
+    "^GSPC": "SPY",
+    "^VIX":  "VIX",
+}
 
 
-def _make_session() -> requests.Session:
-    """Create a requests.Session with a randomized User-Agent."""
-    s = requests.Session()
-    s.headers["User-Agent"] = random.choice(_USER_AGENTS)
-    return s
+def _fmp_sym(sym: str) -> str:
+    return _SYMBOL_MAP.get(sym.upper(), sym.upper())
+
+
+# ── HTTP session ────────────────────────────────────────────────────────
+_session = requests.Session()
+_session.headers["User-Agent"] = "TrackHoldings/1.0"
+
+
+def _fmp_get(path: str, params: dict | None = None) -> object | None:
+    """GET to FMP API.  Returns parsed JSON or None on any error."""
+    url = f"{_BASE}{path}"
+    p = {"apikey": _API_KEY}
+    if params:
+        p.update(params)
+    try:
+        resp = _session.get(url, params=p, timeout=_HTTP_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and "Error Message" in data:
+            logger.warning("FMP error: %s", data["Error Message"])
+            return None
+        return data
+    except requests.Timeout:
+        logger.warning("FMP timeout (>%ds) for %s", _HTTP_TIMEOUT, path)
+    except ValueError:
+        logger.warning("FMP invalid JSON for %s", path)
+    except Exception:
+        logger.exception("FMP request failed: %s", path)
+    return None
 
 
 # ── Two-tier SWR cache ────────────────────────────────────────────────────
-# _cache: (value, monotonic_timestamp).  Fresh = 120s, stale = 1h.
+# _cache: (value, monotonic_timestamp).
 # _last_known: zero-value guard — NEVER expires.
 
 _cache: dict[str, tuple[object, float]] = {}
 _last_known: dict[str, object] = {}
 _cache_lock = threading.Lock()
-_CACHE_TTL: float = 120.0   # 2 min fresh
-_STALE_TTL: float = 3600.0  # 1h stale
+_CACHE_TTL: float = 300.0    # 5 min fresh  (spot prices)
+_HIST_TTL:  float = 3600.0   # 1h fresh     (vol, 1Y closes, price history)
+_STALE_TTL: float = 7200.0   # 2h stale window
 
 
-def _get_fresh(key: str) -> object | None:
+def _get_fresh(key: str, ttl: float | None = None) -> object | None:
     with _cache_lock:
         entry = _cache.get(key)
-        if entry and (time.monotonic() - entry[1]) < _CACHE_TTL:
+        if entry and (time.monotonic() - entry[1]) < (ttl or _CACHE_TTL):
             return entry[0]
     return None
 
@@ -90,10 +114,10 @@ def _set_cached(key: str, value: object) -> None:
         _last_known[key] = value
 
 
-# ── Background refresh (2-thread executor) ───────────────────────────────
+# ── Background refresh (per-key, for historical data) ────────────────────
 _bg_pending: set[str] = set()
 _bg_lock = threading.Lock()
-_refresh_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="yf-bg")
+_refresh_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="fmp-bg")
 
 
 def _schedule_bg_refresh(cache_key: str, fn: object, *args: object) -> None:
@@ -115,51 +139,102 @@ def _schedule_bg_refresh(cache_key: str, fn: object, *args: object) -> None:
     _refresh_pool.submit(_run)
 
 
-# ── Internal _do_* helpers (actually hit yfinance) ───────────────────────
+# ── Batch spot refresh (debounced — one call for ALL stale symbols) ──────
+_batch_spot_pending = False
+_batch_spot_lock = threading.Lock()
+_needs_fetch: set[str] = set()        # symbols requested but never fetched
+_needs_fetch_lock = threading.Lock()
 
-def _do_fetch_spot(upper: str) -> Decimal | None:
-    """Fetch spot price from yfinance with randomized UA."""
-    try:
-        session = _make_session()
-        ticker = yf.Ticker(upper, session=session)
-        # fast_info is the lightest endpoint
+
+def _schedule_batch_spot_refresh() -> None:
+    """Collect all stale + never-fetched spot symbols, refresh in one FMP call."""
+    global _batch_spot_pending
+    with _batch_spot_lock:
+        if _batch_spot_pending:
+            return
+        _batch_spot_pending = True
+
+    def _run() -> None:
+        global _batch_spot_pending
         try:
-            price = ticker.fast_info["lastPrice"]
-            if price and float(price) > 0:
-                result = Decimal(str(price)).quantize(Decimal("0.0001"))
-                _set_cached(f"spot:{upper}", result)
-                return result
-        except (KeyError, TypeError, AttributeError):
-            pass
-        # Fallback: 5-day history
-        hist = ticker.history(period="5d")
-        if hist is not None and not hist.empty:
-            close = float(hist["Close"].iloc[-1])
-            if close > 0:
-                result = Decimal(str(close)).quantize(Decimal("0.0001"))
-                _set_cached(f"spot:{upper}", result)
-                return result
-    except Exception:
-        logger.warning("yfinance spot fetch failed for %s", upper, exc_info=True)
-    return None
+            stale_syms: list[str] = []
+            now = time.monotonic()
+            with _cache_lock:
+                for key, (_, ts) in _cache.items():
+                    if key.startswith("spot:") and (now - ts) >= _CACHE_TTL:
+                        stale_syms.append(key[5:])
+            # Also grab symbols that were requested but never had cache entries
+            with _needs_fetch_lock:
+                needs = list(_needs_fetch)
+                _needs_fetch.clear()
+            for s in needs:
+                if s not in stale_syms:
+                    stale_syms.append(s)
+            if stale_syms:
+                _do_fetch_batch_spots(stale_syms)
+                logger.debug("Batch spot refresh: %d symbols", len(stale_syms))
+        except Exception:
+            logger.exception("Batch spot refresh failed")
+        finally:
+            with _batch_spot_lock:
+                _batch_spot_pending = False
+
+    _refresh_pool.submit(_run)
 
 
-def _do_fetch_history(upper: str, period: str = "3mo") -> list[float]:
-    """Fetch daily closes from yfinance."""
-    try:
-        session = _make_session()
-        ticker = yf.Ticker(upper, session=session)
-        hist = ticker.history(period=period)
-        if hist is not None and not hist.empty:
-            return [float(c) for c in hist["Close"].tolist()]
-    except Exception:
-        logger.warning("yfinance history fetch failed for %s (%s)", upper, period)
-    return []
+# ── Internal _do_* helpers (actually hit FMP) ────────────────────────────
+
+def _do_fetch_batch_spots(symbols: list[str]) -> dict[str, Decimal]:
+    """Fetch spot prices for multiple symbols in ONE FMP batch call."""
+    if not symbols:
+        return {}
+
+    fmp_syms = [_fmp_sym(s) for s in symbols]
+    # Reverse mapping: FMP symbol → list of original symbols
+    fmp_to_orig: dict[str, list[str]] = {}
+    for orig, fmp in zip(symbols, fmp_syms):
+        fmp_to_orig.setdefault(fmp, []).append(orig)
+
+    csv_syms = ",".join(dict.fromkeys(fmp_syms))  # deduplicate, keep order
+    data = _fmp_get(f"/quote/{csv_syms}")
+
+    result: dict[str, Decimal] = {}
+    if not data or not isinstance(data, list):
+        return result
+
+    for quote in data:
+        fmp_sym = quote.get("symbol", "")
+        price = quote.get("price")
+        if price is not None and float(price) > 0:
+            dec_price = Decimal(str(price)).quantize(Decimal("0.0001"))
+            # Map back to ALL original symbols (e.g. SPY → [SPY, ^GSPC])
+            for orig_sym in fmp_to_orig.get(fmp_sym, [fmp_sym]):
+                result[orig_sym] = dec_price
+                _set_cached(f"spot:{orig_sym}", dec_price)
+
+    return result
+
+
+def _do_fetch_historical(symbol: str, timeseries: int = 90) -> list[dict]:
+    """Fetch historical daily data from FMP for one symbol."""
+    fmp_sym = _fmp_sym(symbol)
+    data = _fmp_get(
+        f"/historical-price-full/{fmp_sym}",
+        {"timeseries": str(timeseries)},
+    )
+    if not data or not isinstance(data, dict):
+        return []
+    hist = data.get("historical", [])
+    return hist if isinstance(hist, list) else []
 
 
 def _do_fetch_hist_vol(upper: str) -> Decimal:
-    """Compute 30-day historical vol from yfinance daily closes."""
-    closes = _do_fetch_history(upper, period="3mo")
+    """Compute 30-day historical vol from FMP daily closes."""
+    hist = _do_fetch_historical(upper, timeseries=90)
+    if len(hist) < 5:
+        return DEFAULT_SIGMA
+    # FMP returns newest-first → reverse to chronological
+    closes = [float(d["close"]) for d in reversed(hist) if "close" in d]
     if len(closes) < 5:
         return DEFAULT_SIGMA
     closes = closes[-30:]
@@ -169,8 +244,11 @@ def _do_fetch_hist_vol(upper: str) -> Decimal:
 
 
 def _do_fetch_1y_closes(upper: str) -> list[float]:
-    """Fetch 1 year of daily closes from yfinance."""
-    closes = _do_fetch_history(upper, period="1y")
+    """Fetch 1 year of daily closes from FMP (252 trading days)."""
+    hist = _do_fetch_historical(upper, timeseries=252)
+    if not hist:
+        return []
+    closes = [float(d["close"]) for d in reversed(hist) if "close" in d]
     if closes:
         _set_cached(f"1y:{upper}", closes)
     return closes
@@ -182,9 +260,9 @@ def _fetch_spot(ticker: str) -> Decimal | None:
     """
     SWR spot price — NEVER blocks on a network call:
       1. Fresh cache  → instant.
-      2. Stale cache  → instant + bg refresh.
-      3. Last-known   → instant + bg refresh.
-      4. Empty        → None + bg refresh (shimmer in frontend).
+      2. Stale cache  → instant + batch bg refresh.
+      3. Last-known   → instant + batch bg refresh.
+      4. Empty        → None   + batch bg refresh (shimmer in frontend).
     """
     upper = ticker.upper()
     cache_key = f"spot:{upper}"
@@ -195,26 +273,28 @@ def _fetch_spot(ticker: str) -> Decimal | None:
 
     stale = _get_stale(cache_key)
     if stale is not None:
-        _schedule_bg_refresh(cache_key, _do_fetch_spot, upper)
+        _schedule_batch_spot_refresh()
         return stale
 
     last = _get_last_known(cache_key)
     if last is not None:
-        _schedule_bg_refresh(cache_key, _do_fetch_spot, upper)
+        _schedule_batch_spot_refresh()
         logger.info("Zero-Value Guard: returning last_known spot for %s", upper)
         return last
 
-    # No cached data at all — schedule bg fetch, return None
-    _schedule_bg_refresh(cache_key, _do_fetch_spot, upper)
+    # No cached data — register for batch fetch, return None
+    with _needs_fetch_lock:
+        _needs_fetch.add(upper)
+    _schedule_batch_spot_refresh()
     return None
 
 
 def _fetch_hist_vol(ticker: str) -> Decimal:
-    """SWR vol: fresh → stale+bg → last_known+bg → DEFAULT_SIGMA+bg."""
+    """SWR vol (1h fresh): fresh → stale+bg → last_known+bg → DEFAULT_SIGMA+bg."""
     upper = ticker.upper()
     cache_key = f"hvol:{upper}"
 
-    fresh = _get_fresh(cache_key)
+    fresh = _get_fresh(cache_key, ttl=_HIST_TTL)
     if fresh is not None:
         return fresh
 
@@ -236,7 +316,7 @@ def _fetch_ytd_return(ticker: str) -> Decimal | None:
     upper = ticker.upper()
     cache_key = f"ytd:{upper}"
 
-    fresh = _get_fresh(cache_key)
+    fresh = _get_fresh(cache_key, ttl=_HIST_TTL)
     if fresh is not None:
         return fresh
     stale = _get_stale(cache_key)
@@ -244,18 +324,29 @@ def _fetch_ytd_return(ticker: str) -> Decimal | None:
         return stale
 
     try:
-        session = _make_session()
-        t = yf.Ticker(upper, session=session)
-        hist = t.history(period="ytd")
-        if hist is not None and len(hist) >= 2:
-            start_price = float(hist["Close"].iloc[0])
-            current_price = float(hist["Close"].iloc[-1])
-            if start_price > 0:
-                result = Decimal(str(round((current_price - start_price) / start_price, 6)))
-                _set_cached(cache_key, result)
-                return result
+        today = date.today()
+        hist = _do_fetch_historical(upper, timeseries=365)
+        if not hist:
+            return _get_last_known(cache_key)
+        # FMP returns newest-first → reverse
+        hist = list(reversed(hist))
+        jan1_prefix = f"{today.year}-01"
+        start_idx = None
+        for i, d in enumerate(hist):
+            if d.get("date", "").startswith(jan1_prefix):
+                start_idx = i
+                break
+        if start_idx is None:
+            return None
+        start_price = float(hist[start_idx]["close"])
+        current_price = float(hist[-1]["close"])
+        if start_price <= 0:
+            return None
+        result = Decimal(str(round((current_price - start_price) / start_price, 6)))
+        _set_cached(cache_key, result)
+        return result
     except Exception:
-        logger.warning("yfinance YTD return failed for %s", upper)
+        logger.warning("FMP YTD return failed for %s", upper)
 
     return _get_last_known(cache_key)
 
@@ -264,7 +355,7 @@ def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
     upper = ticker.upper()
     cache_key = f"phist:{upper}:{start_date}"
 
-    fresh = _get_fresh(cache_key)
+    fresh = _get_fresh(cache_key, ttl=_HIST_TTL)
     if fresh is not None:
         return fresh
     stale = _get_stale(cache_key)
@@ -272,19 +363,23 @@ def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
         return stale
 
     try:
-        session = _make_session()
-        t = yf.Ticker(upper, session=session)
-        hist = t.history(start=start_date)
-        if hist is not None and not hist.empty:
+        fmp_sym = _fmp_sym(upper)
+        data = _fmp_get(
+            f"/historical-price-full/{fmp_sym}",
+            {"from": start_date},
+        )
+        if data and isinstance(data, dict) and "historical" in data:
             result: dict[str, float] = {}
-            for idx, row in hist.iterrows():
-                date_str = idx.strftime("%Y-%m-%d")
-                result[date_str] = float(row["Close"])
+            for d in data["historical"]:
+                dt = d.get("date")
+                close = d.get("close")
+                if dt and close is not None:
+                    result[dt] = float(close)
             if result:
                 _set_cached(cache_key, result)
             return result
     except Exception:
-        logger.warning("yfinance price history failed for %s", upper)
+        logger.warning("FMP price history failed for %s", upper)
 
     last = _get_last_known(cache_key)
     return last if last is not None else {}
@@ -292,9 +387,8 @@ def _fetch_price_history(ticker: str, start_date: str) -> dict[str, float]:
 
 def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
     """
-    Batch spot prices for PriceFeedService.
-    Uses SWR cache first, then yf.download() for uncached symbols.
-    Fills any remaining gaps from stale/last_known.
+    Batch spot prices — single FMP call for ALL uncached symbols.
+    Used by PriceFeedService (background poll every 5s).
     """
     if not tickers:
         return {}
@@ -304,43 +398,17 @@ def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
 
     for t in tickers:
         upper = t.upper()
-        cache_key = f"spot:{upper}"
-        fresh = _get_fresh(cache_key)
+        fresh = _get_fresh(f"spot:{upper}")
         if fresh is not None:
             result[upper] = fresh
         else:
             uncached.append(upper)
 
     if uncached:
-        try:
-            session = _make_session()
-            df = yf.download(
-                uncached, period="5d", session=session,
-                progress=False, threads=False,
-            )
-            if df is not None and not df.empty:
-                if len(uncached) == 1:
-                    sym = uncached[0]
-                    if "Close" in df.columns and len(df) > 0:
-                        close = float(df["Close"].iloc[-1])
-                        if close > 0:
-                            price = Decimal(str(close)).quantize(Decimal("0.0001"))
-                            result[sym] = price
-                            _set_cached(f"spot:{sym}", price)
-                else:
-                    for sym in uncached:
-                        try:
-                            close = float(df["Close"][sym].iloc[-1])
-                            if close > 0:
-                                price = Decimal(str(close)).quantize(Decimal("0.0001"))
-                                result[sym] = price
-                                _set_cached(f"spot:{sym}", price)
-                        except (KeyError, IndexError, TypeError):
-                            pass
-        except Exception:
-            logger.warning("yfinance batch download failed", exc_info=True)
+        batch_result = _do_fetch_batch_spots(uncached)
+        result.update(batch_result)
 
-        # Fill remaining gaps from stale/last_known
+        # Fill remaining gaps from stale/last_known (zero-value guard)
         for sym in uncached:
             if sym not in result:
                 val = _get_stale(f"spot:{sym}") or _get_last_known(f"spot:{sym}")
@@ -351,10 +419,11 @@ def _fetch_spots_batch(tickers: list[str]) -> dict[str, Decimal]:
 
 
 def _fetch_1y_closes(ticker: str) -> list[float]:
+    """Cache-first 1Y closes — bg refresh only, never blocks scanner."""
     upper = ticker.upper()
     cache_key = f"1y:{upper}"
 
-    fresh = _get_fresh(cache_key)
+    fresh = _get_fresh(cache_key, ttl=_HIST_TTL)
     if fresh is not None:
         return fresh
     stale = _get_stale(cache_key)
@@ -370,21 +439,31 @@ def _fetch_1y_closes(ticker: str) -> list[float]:
     return []
 
 
-# ── Pre-warm (fire-and-forget on startup with randomized UA) ─────────────
+# ── Pre-warm (fire-and-forget on startup) ────────────────────────────────
 
 def _do_prewarm(symbols: list[str]) -> None:
-    """Synchronously pre-fetch spot prices for startup symbols."""
-    for sym in symbols:
-        upper = sym.upper()
-        logger.info("Pre-warming: %s", upper)
+    """Pre-fetch spot prices (batch) + 1Y closes for startup symbols."""
+    if not symbols:
+        return
+    uppers = [s.upper() for s in symbols]
+
+    # 1. Batch spot prices — one FMP call
+    logger.info("Pre-warming spots: %s", uppers)
+    try:
+        _do_fetch_batch_spots(uppers)
+    except Exception:
+        logger.warning("Pre-warm batch spots failed (non-fatal)")
+
+    # 2. Historical data for scanner (per-symbol)
+    for sym in uppers:
         try:
-            _do_fetch_spot(upper)
+            _do_fetch_1y_closes(sym)
         except Exception:
-            logger.warning("Pre-warm failed for %s (non-fatal)", upper)
+            logger.warning("Pre-warm 1Y failed for %s (non-fatal)", sym)
 
 
 async def prewarm(symbols: list[str]) -> None:
-    """Pre-fetch spot prices (runs in thread, safe to fire-and-forget)."""
+    """Pre-fetch spot + historical data (runs in thread, fire-and-forget)."""
     await asyncio.to_thread(_do_prewarm, symbols)
 
 

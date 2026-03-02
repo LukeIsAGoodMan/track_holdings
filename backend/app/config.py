@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     ai_max_tokens: int = 600
     ai_timeout: int = 15            # seconds — httpx timeout for LLM API call
 
+    # FMP (Financial Modeling Prep) — market data provider
+    fmp_api_key: str = ""                    # FMP_API_KEY env var (set in Render dashboard)
+
     # Macro service settings (Phase 12a)
     macro_poll_interval: int = 30             # seconds between macro ticker updates
     macro_symbols: str = "^GSPC,^VIX"        # tickers for macro tracking (mapped internally)

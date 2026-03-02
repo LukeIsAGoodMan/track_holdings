@@ -27,6 +27,9 @@ services:
         value: "3.12"
       - key: USE_MOCK_DATA
         value: "1"
+      # FMP_API_KEY — set manually in Render dashboard (secret)
+      - key: FMP_API_KEY
+        sync: false
 
 databases:
   - name: track-holdings-db
