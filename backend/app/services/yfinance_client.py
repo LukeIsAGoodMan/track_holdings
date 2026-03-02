@@ -1,9 +1,13 @@
 """
-Financial Modeling Prep (FMP) async wrapper — Phase 12c PRO.
+Financial Modeling Prep (FMP) — 2026 Stable Protocol.
 
-Batch-first architecture:
-  Spot prices: single batch call  /api/v3/quote/SYM1,SYM2,...
-  Background refresher: collects ALL stale symbols → one batch call.
+All endpoints use the /stable/ prefix (legacy /v3/ and /v4/ deprecated).
+
+Spot prices:
+  Primary:  /stable/quote/SYM1,SYM2,...     (batch)
+  Fallback: /stable/search-symbol?query=SYM  (per-symbol, data[0]['price'])
+
+Historical: /stable/historical-price-full/{symbol}
 
 SWR cache (PRO — near-real-time):
   Spot fresh   = 60s  (1 min).   Historical fresh = 3600s (1h).
@@ -32,7 +36,7 @@ from app.services.black_scholes import compute_historical_vol, DEFAULT_SIGMA
 logger = logging.getLogger(__name__)
 
 # ── FMP config ──────────────────────────────────────────────────────────
-_BASE = "https://financialmodelingprep.com/api/v3"
+_BASE = "https://financialmodelingprep.com/stable"
 _API_KEY = settings.fmp_api_key
 _HTTP_TIMEOUT = 5  # seconds — fail fast
 
@@ -190,8 +194,25 @@ def _schedule_batch_spot_refresh() -> None:
 
 # ── Internal _do_* helpers (actually hit FMP) ────────────────────────────
 
+def _do_fetch_spot_search(fmp_sym: str) -> Decimal | None:
+    """Fallback: /stable/search-symbol?query=SYM → data[0]['price']."""
+    data = _fmp_get("/search-symbol", {"query": fmp_sym})
+    if not data or not isinstance(data, list) or len(data) == 0:
+        return None
+    price = data[0].get("price")
+    if price is not None and float(price) > 0:
+        return Decimal(str(price)).quantize(Decimal("0.0001"))
+    return None
+
+
 def _do_fetch_batch_spots(symbols: list[str]) -> dict[str, Decimal]:
-    """Fetch spot prices for multiple symbols in ONE FMP batch call."""
+    """
+    Fetch spot prices — batch-first with search-symbol fallback.
+
+    1. Try /stable/quote/SYM1,SYM2,...  (single batch call)
+    2. If batch fails or returns empty, fall back to
+       /stable/search-symbol per symbol.
+    """
     if not symbols:
         return {}
 
@@ -201,22 +222,34 @@ def _do_fetch_batch_spots(symbols: list[str]) -> dict[str, Decimal]:
     for orig, fmp in zip(symbols, fmp_syms):
         fmp_to_orig.setdefault(fmp, []).append(orig)
 
+    result: dict[str, Decimal] = {}
+
+    # ── Primary: batch quote ──────────────────────────────────────────
     csv_syms = ",".join(dict.fromkeys(fmp_syms))  # deduplicate, keep order
     data = _fmp_get(f"/quote/{csv_syms}")
 
-    result: dict[str, Decimal] = {}
-    if not data or not isinstance(data, list):
-        return result
+    if data and isinstance(data, list):
+        for quote in data:
+            fmp_sym = quote.get("symbol", "")
+            price = quote.get("price")
+            if price is not None and float(price) > 0:
+                dec_price = Decimal(str(price)).quantize(Decimal("0.0001"))
+                for orig_sym in fmp_to_orig.get(fmp_sym, [fmp_sym]):
+                    result[orig_sym] = dec_price
+                    _set_cached(f"spot:{orig_sym}", dec_price)
 
-    for quote in data:
-        fmp_sym = quote.get("symbol", "")
-        price = quote.get("price")
-        if price is not None and float(price) > 0:
-            dec_price = Decimal(str(price)).quantize(Decimal("0.0001"))
-            # Map back to ALL original symbols (e.g. SPY → [SPY, ^GSPC])
-            for orig_sym in fmp_to_orig.get(fmp_sym, [fmp_sym]):
-                result[orig_sym] = dec_price
-                _set_cached(f"spot:{orig_sym}", dec_price)
+    # ── Fallback: search-symbol for any symbols batch missed ──────────
+    missed_fmp = [f for f in dict.fromkeys(fmp_syms) if not any(
+        orig in result for orig in fmp_to_orig.get(f, [f])
+    )]
+    if missed_fmp:
+        logger.info("Batch quote missed %d symbols, falling back to search-symbol", len(missed_fmp))
+        for fmp_s in missed_fmp:
+            price = _do_fetch_spot_search(fmp_s)
+            if price is not None:
+                for orig_sym in fmp_to_orig.get(fmp_s, [fmp_s]):
+                    result[orig_sym] = price
+                    _set_cached(f"spot:{orig_sym}", price)
 
     return result
 
