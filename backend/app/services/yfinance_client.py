@@ -1,13 +1,13 @@
 """
-Financial Modeling Prep (FMP) async wrapper — Phase 12c.
+Financial Modeling Prep (FMP) async wrapper — Phase 12c PRO.
 
 Batch-first architecture:
   Spot prices: single batch call  /api/v3/quote/SYM1,SYM2,...
   Background refresher: collects ALL stale symbols → one batch call.
 
-SWR cache (credit-conserving):
-  Spot fresh   = 300s (5 min).   Historical fresh = 3600s (1h).
-  Stale window = 2h.            Zero-Value Guard (never expires).
+SWR cache (PRO — near-real-time):
+  Spot fresh   = 60s  (1 min).   Historical fresh = 3600s (1h).
+  Stale window = 2h.             Zero-Value Guard (never expires).
 
 Symbol mapping:  ^GSPC → SPY,  ^VIX → VIX.
 
@@ -60,6 +60,12 @@ def _fmp_get(path: str, params: dict | None = None) -> object | None:
         p.update(params)
     try:
         resp = _session.get(url, params=p, timeout=_HTTP_TIMEOUT)
+        # ── 403 diagnostic: log full body for IP-whitelist debugging ──
+        if resp.status_code == 403:
+            logger.error(
+                "FMP 403 Forbidden: %s | body=%s", path, resp.text[:500]
+            )
+            return None
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, dict) and "Error Message" in data:
@@ -69,7 +75,7 @@ def _fmp_get(path: str, params: dict | None = None) -> object | None:
     except requests.Timeout:
         logger.warning("FMP timeout (>%ds) for %s", _HTTP_TIMEOUT, path)
     except ValueError:
-        logger.warning("FMP invalid JSON for %s", path)
+        logger.warning("FMP invalid JSON for %s | body=%s", path, resp.text[:200])
     except Exception:
         logger.exception("FMP request failed: %s", path)
     return None
@@ -82,7 +88,7 @@ def _fmp_get(path: str, params: dict | None = None) -> object | None:
 _cache: dict[str, tuple[object, float]] = {}
 _last_known: dict[str, object] = {}
 _cache_lock = threading.Lock()
-_CACHE_TTL: float = 300.0    # 5 min fresh  (spot prices)
+_CACHE_TTL: float = 60.0     # 1 min fresh  (spot prices — PRO plan)
 _HIST_TTL:  float = 3600.0   # 1h fresh     (vol, 1Y closes, price history)
 _STALE_TTL: float = 7200.0   # 2h stale window
 
@@ -215,13 +221,10 @@ def _do_fetch_batch_spots(symbols: list[str]) -> dict[str, Decimal]:
     return result
 
 
-def _do_fetch_historical(symbol: str, timeseries: int = 90) -> list[dict]:
-    """Fetch historical daily data from FMP for one symbol."""
+def _do_fetch_historical(symbol: str, extra_params: dict | None = None) -> list[dict]:
+    """Fetch historical daily data from FMP.  Plain endpoint by default."""
     fmp_sym = _fmp_sym(symbol)
-    data = _fmp_get(
-        f"/historical-price-full/{fmp_sym}",
-        {"timeseries": str(timeseries)},
-    )
+    data = _fmp_get(f"/historical-price-full/{fmp_sym}", extra_params)
     if not data or not isinstance(data, dict):
         return []
     hist = data.get("historical", [])
@@ -230,10 +233,12 @@ def _do_fetch_historical(symbol: str, timeseries: int = 90) -> list[dict]:
 
 def _do_fetch_hist_vol(upper: str) -> Decimal:
     """Compute 30-day historical vol from FMP daily closes."""
-    hist = _do_fetch_historical(upper, timeseries=90)
+    # Plain endpoint — no timeseries param (PRO protocol)
+    hist = _do_fetch_historical(upper)
     if len(hist) < 5:
         return DEFAULT_SIGMA
-    # FMP returns newest-first → reverse to chronological
+    # FMP returns newest-first → take last 90 entries, reverse to chronological
+    hist = hist[:90]
     closes = [float(d["close"]) for d in reversed(hist) if "close" in d]
     if len(closes) < 5:
         return DEFAULT_SIGMA
@@ -244,8 +249,8 @@ def _do_fetch_hist_vol(upper: str) -> Decimal:
 
 
 def _do_fetch_1y_closes(upper: str) -> list[float]:
-    """Fetch 1 year of daily closes from FMP (252 trading days)."""
-    hist = _do_fetch_historical(upper, timeseries=252)
+    """Fetch 1 year of daily closes from FMP (scanner — timeseries allowed)."""
+    hist = _do_fetch_historical(upper, {"timeseries": "252"})
     if not hist:
         return []
     closes = [float(d["close"]) for d in reversed(hist) if "close" in d]
@@ -325,7 +330,7 @@ def _fetch_ytd_return(ticker: str) -> Decimal | None:
 
     try:
         today = date.today()
-        hist = _do_fetch_historical(upper, timeseries=365)
+        hist = _do_fetch_historical(upper)
         if not hist:
             return _get_last_known(cache_key)
         # FMP returns newest-first → reverse

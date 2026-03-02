@@ -26,7 +26,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.12"
       - key: USE_MOCK_DATA
-        value: "1"
+        value: "0"
       # FMP_API_KEY — set manually in Render dashboard (secret)
       - key: FMP_API_KEY
         sync: false
