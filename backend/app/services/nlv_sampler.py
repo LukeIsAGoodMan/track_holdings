@@ -209,6 +209,47 @@ class NlvSamplerService:
                     "NLV sample failed: user=%d pid=%d", user_id, portfolio_id,
                 )
 
+    async def _compute_prev_close_nlv(
+        self, user_id: int, portfolio_id: int,
+    ) -> Decimal | None:
+        """
+        Compute NLV baseline using FMP previousClose prices.
+
+        Fetches yesterday's official closing price for every holding,
+        then reuses compute_nlv() with that prev_close price map.
+        Returns None if no positions or prev_close data unavailable.
+        """
+        from app.services.yfinance_client import get_prev_close
+
+        async with AsyncSessionLocal() as db:
+            pids = await resolve_portfolio_ids(db, user_id, portfolio_id)
+            cash_result = await db.execute(
+                select(func.coalesce(func.sum(CashLedger.amount), 0))
+                .where(CashLedger.portfolio_id.in_(pids))
+            )
+            cash_balance = Decimal(str(cash_result.scalar_one()))
+            positions = await position_engine.calculate_positions(
+                db, portfolio_ids=pids,
+            )
+
+        if not positions:
+            return None
+
+        unique_syms = list({
+            pos.instrument.symbol
+            for pos in positions
+            if pos.instrument is not None
+        })
+        prev_prices = await asyncio.gather(*[get_prev_close(s) for s in unique_syms])
+        prev_map: dict[str, Decimal | None] = dict(zip(unique_syms, prev_prices))
+
+        vol_map: dict[str, Decimal] = {}
+        if _VOL_CACHE_REF is not None:
+            vol_map = dict(_VOL_CACHE_REF)
+
+        result = compute_nlv(cash_balance, positions, prev_map, vol_map)
+        return result if result != Decimal("0.00") else None
+
     async def _compute_and_broadcast(
         self,
         user_id: int,
@@ -222,9 +263,12 @@ class NlvSamplerService:
         else:
             nlv = await self._compute_real_nlv(user_id, portfolio_id)
 
-        # Capture prev_close on first sample of the day
+        # Set daily P&L baseline from FMP previousClose (not from first live sample)
         if key not in self._prev_close:
-            self._prev_close[key] = nlv
+            if not self._mock_mode:
+                prev_nlv = await self._compute_prev_close_nlv(user_id, portfolio_id)
+                self._prev_close[key] = prev_nlv if prev_nlv is not None else nlv
+            # mock mode: _generate_mock_nlv() already initialises _prev_close[key]
 
         prev = self._prev_close[key]
         unrealized = nlv - prev

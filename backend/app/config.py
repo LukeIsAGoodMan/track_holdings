@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     ai_timeout: int = 15            # seconds — httpx timeout for LLM API call
 
     # FMP (Financial Modeling Prep) — market data provider
-    fmp_api_key: str = ""                    # FMP_API_KEY env var (set in Render dashboard)
+    fmp_api_key: str = "UBJ2dnb7tfG2Opik8JSX6wCRfU29RGya"                    # FMP_API_KEY env var (set in Render dashboard)
+
+    # Google Gemini — AI provider (Phase 12f)
+    google_api_key: str = "AIzaSyAoJ5v9m6fbqXSYeHS1--SiUY-HLidSk58"                 # GEMINI_API_KEY env var
 
     # Macro service settings (Phase 12a)
     macro_poll_interval: int = 30             # seconds between macro ticker updates

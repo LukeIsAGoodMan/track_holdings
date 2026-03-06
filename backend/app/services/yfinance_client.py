@@ -53,10 +53,18 @@ def _do_fetch_quote(ticker: str) -> Decimal | None:
     fmp_s = _fmp_sym(ticker)
     data = _fmp_get("/quote", {"symbol": fmp_s})
     if data and isinstance(data, list) and len(data) > 0:
-        price = data[0].get("price")
+        item = data[0]
+        price = item.get("price")
         if price:
             val = Decimal(str(price)).quantize(Decimal("0.0001"))
             _set_cached(f"spot:{ticker.upper()}", val)
+            # Cache previousClose (stable all day — 24h TTL, daily P&L baseline)
+            prev = item.get("previousClose")
+            if prev is not None:
+                _set_cached(
+                    f"prev_close:{ticker.upper()}",
+                    Decimal(str(prev)).quantize(Decimal("0.0001")),
+                )
             return val
     return None
 
@@ -104,6 +112,21 @@ async def get_spot_prices_batch(tickers: list[str]) -> dict[str, Decimal]:
     results = await asyncio.gather(*tasks)
     return {t.upper(): r for t, r in zip(tickers, results) if r is not None}
 
+async def get_prev_close(ticker: str) -> Decimal | None:
+    """
+    Get yesterday's official closing price (FMP /quote previousClose field).
+
+    Cached with a 24h TTL — previousClose is stable for the entire trading day
+    and is the correct baseline for daily P&L calculation.
+    """
+    ticker = ticker.upper()
+    cached = _get_cached(f"prev_close:{ticker}", 86400.0)
+    if cached is not None:
+        return cached
+    # Not cached yet — fetch a full quote to populate both spot and prev_close
+    await asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
+    return _get_cached(f"prev_close:{ticker}", 86400.0)
+
 async def get_hist_vol(ticker: str) -> Decimal:
     ticker = ticker.upper()
     cached = _get_cached(f"hvol:{ticker}", 3600.0)  # 1h cache — avoids repeat FMP calls
@@ -139,8 +162,13 @@ async def get_price_history(ticker: str, start_date: str) -> dict[str, float]:
         return {d["date"]: float(d["close"]) for d in hist if "date" in d and "close" in d}
     return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _fetch)
 
+# Core market indices — always pre-warmed, never screener-excluded
+_CORE_TICKERS: frozenset[str] = frozenset({"SPY", "QQQ", "VIX"})
+
 async def prewarm(symbols: list[str]):
-    await get_spot_prices_batch(symbols)
+    """Prewarm spot cache for given symbols plus the hardcoded core indices."""
+    all_syms = list({s.upper() for s in symbols} | _CORE_TICKERS)
+    await get_spot_prices_batch(all_syms)
 
 
 # ── Company Screener — bulk cache pre-fill + business-layer metadata ──────────
@@ -206,11 +234,14 @@ def is_screener_excluded(sym: str) -> bool:
       - isFund is True  (mutual fund, not tradeable intraday)
       - volume < _MIN_SCREENER_VOLUME
 
-    Unknown symbols (not in last screener result) return False so that
-    hardcoded scanner symbols (e.g. SPY, NVDA) are never silently dropped.
+    Core tickers (SPY, QQQ, VIX) always return False — they are never excluded
+    regardless of screener result. Unknown symbols also return False.
     """
+    sym = sym.upper()
+    if sym in _CORE_TICKERS:
+        return False   # hardcoded core indices always pass
     with _screener_meta_lock:
-        info = _screener_meta.get(sym.upper())
+        info = _screener_meta.get(sym)
     if info is None:
         return False   # not seen in screener → allow by default
     return info["isFund"] or info["volume"] < _MIN_SCREENER_VOLUME

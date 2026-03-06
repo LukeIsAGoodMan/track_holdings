@@ -32,7 +32,7 @@ from app.routers.risk import get_pnl_attribution, get_portfolio_insights
 
 router = APIRouter(tags=["coach"])
 
-_MODEL = "claude-haiku-4-5-20251001"
+_GEMINI_MODEL = "gemini-1.5-flash"
 _MAX_TOKENS = 700
 _TEMPERATURE = 0.0
 
@@ -136,36 +136,72 @@ async def _stream_diagnosis(
     attribution_dict: dict | None,
 ) -> AsyncGenerator[str, None]:
     """
-    Call Claude with streaming and yield SSE-formatted events.
-    Yields text chunks while Claude writes, then a single 'done' event
-    with parsed structured fields.
-    """
-    import anthropic
+    Stream Gemini 1.5 Flash diagnosis via streamGenerateContent SSE.
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    Yields text chunks token-by-token for a "typing" effect, then a single
+    'done' event with parsed structured fields once the stream completes.
+    """
+    import httpx
+
+    api_key = (
+        os.environ.get("GOOGLE_API_KEY")
+        or os.environ.get("AI_API_KEY")
+    )
     if not api_key:
-        yield f'data: {json.dumps({"t":"error","v":"ANTHROPIC_API_KEY not set"})}\n\n'
+        yield f'data: {json.dumps({"t":"error","v":"GOOGLE_API_KEY not set"})}\n\n'
         yield "data: [DONE]\n\n"
         return
 
     user_prompt = _build_user_prompt(insight_dict, attribution_dict)
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+
+    payload = {
+        "system_instruction": {"parts": [{"text": _SYSTEM_PROMPT}]},
+        "contents": [{"parts": [{"text": user_prompt}], "role": "user"}],
+        "generationConfig": {
+            "temperature": _TEMPERATURE,
+            "maxOutputTokens": _MAX_TOKENS,
+        },
+    }
+
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{_GEMINI_MODEL}:streamGenerateContent"
+    )
 
     full_text = ""
     try:
-        async with client.messages.stream(
-            model=_MODEL,
-            max_tokens=_MAX_TOKENS,
-            temperature=_TEMPERATURE,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
-        ) as stream:
-            async for chunk in stream.text_stream:
-                full_text += chunk
-                yield f'data: {json.dumps({"t":"chunk","v":chunk})}\n\n'
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream(
+                "POST", url,
+                json=payload,
+                params={"key": api_key, "alt": "sse"},
+                headers={"Content-Type": "application/json"},
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    raw = line[6:].strip()
+                    if not raw or raw == "[DONE]":
+                        continue
+                    try:
+                        event = json.loads(raw)
+                        parts = (
+                            event.get("candidates", [{}])[0]
+                            .get("content", {})
+                            .get("parts", [])
+                        )
+                        for part in parts:
+                            text = part.get("text", "")
+                            if text:
+                                full_text += text
+                                yield f'data: {json.dumps({"t":"chunk","v":text})}\n\n'
+                    except (json.JSONDecodeError, IndexError, KeyError):
+                        continue
 
-    except anthropic.AuthenticationError:
-        yield f'data: {json.dumps({"t":"error","v":"Invalid ANTHROPIC_API_KEY"})}\n\n'
+    except httpx.HTTPStatusError as exc:
+        msg = f"Gemini API error {exc.response.status_code}"
+        yield f'data: {json.dumps({"t":"error","v":msg})}\n\n'
         yield "data: [DONE]\n\n"
         return
     except Exception as exc:
@@ -191,10 +227,10 @@ async def analyze_portfolio(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Stream a Claude-generated portfolio diagnosis as Server-Sent Events.
+    Stream a Gemini 1.5 Flash portfolio diagnosis as Server-Sent Events.
 
-    Uses claude-haiku for fast streaming.  The ANTHROPIC_API_KEY env variable
-    must be set on the server.
+    Token-by-token streaming eliminates perceived wait time.
+    Set GEMINI_API_KEY (or AI_API_KEY) on the server.
 
     Events:
       {"t":"chunk","v":"..."}   — text tokens as they arrive

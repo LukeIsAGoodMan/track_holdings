@@ -436,7 +436,7 @@ class TestCircuitBreakerProvider:
         """A success resets the failure counter to 0."""
         call_count = 0
 
-        async def intermittent(ctx, language="en"):
+        async def intermittent(ctx, language="en", scanner_tops=None):
             nonlocal call_count
             call_count += 1
             if call_count <= 2:
