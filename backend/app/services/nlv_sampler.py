@@ -213,13 +213,13 @@ class NlvSamplerService:
         self, user_id: int, portfolio_id: int,
     ) -> Decimal | None:
         """
-        Compute NLV baseline using FMP previousClose prices.
+        Compute NLV baseline using cached previousClose prices (cache-only, no API).
 
-        Fetches yesterday's official closing price for every holding,
-        then reuses compute_nlv() with that prev_close price map.
-        Returns None if no positions or prev_close data unavailable.
+        Reads yesterday's closing price from the yfinance_client in-memory cache
+        (populated by _do_fetch_quote at startup/prewarm).  Falls back to current
+        spot if prev_close hasn't been cached yet.  Returns None if no positions.
         """
-        from app.services.yfinance_client import get_prev_close
+        from app.services.yfinance_client import get_prev_close_cached_only
 
         async with AsyncSessionLocal() as db:
             pids = await resolve_portfolio_ids(db, user_id, portfolio_id)
@@ -240,18 +240,12 @@ class NlvSamplerService:
             for pos in positions
             if pos.instrument is not None
         })
-        prev_prices = await asyncio.gather(
-            *[get_prev_close(s) for s in unique_syms],
-            return_exceptions=True,
-        )
-        # Fall back to current spot price if prev_close is not yet cached
-        # (happens on first startup before any quote has been fetched)
+
+        # Cache-only: no API calls, no await — pure in-memory read
         prev_map: dict[str, Decimal | None] = {}
-        for sym, price in zip(unique_syms, prev_prices):
-            if isinstance(price, Exception) or price is None:
-                prev_map[sym] = self.cache.get(sym)   # current spot as fallback
-            else:
-                prev_map[sym] = price
+        for sym in unique_syms:
+            cached_prev = get_prev_close_cached_only(sym)
+            prev_map[sym] = cached_prev if cached_prev is not None else self.cache.get(sym)
 
         vol_map: dict[str, Decimal] = {}
         if _VOL_CACHE_REF is not None:
@@ -273,21 +267,11 @@ class NlvSamplerService:
         else:
             nlv = await self._compute_real_nlv(user_id, portfolio_id)
 
-        # Set daily P&L baseline from FMP previousClose (not from first live sample)
+        # Set daily P&L baseline from cached previousClose prices (no API I/O)
         if key not in self._prev_close:
             if not self._mock_mode:
-                try:
-                    prev_nlv = await asyncio.wait_for(
-                        self._compute_prev_close_nlv(user_id, portfolio_id),
-                        timeout=5.0,
-                    )
-                    self._prev_close[key] = prev_nlv if prev_nlv is not None else nlv
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "prev_close NLV timed out for user=%d pid=%d — using live NLV",
-                        user_id, portfolio_id,
-                    )
-                    self._prev_close[key] = nlv
+                prev_nlv = await self._compute_prev_close_nlv(user_id, portfolio_id)
+                self._prev_close[key] = prev_nlv if prev_nlv is not None else nlv
             # mock mode: _generate_mock_nlv() already initialises _prev_close[key]
 
         prev = self._prev_close[key]

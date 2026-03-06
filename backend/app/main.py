@@ -27,6 +27,7 @@ from app.routers import scanner as scanner_router
 from app.routers import tts as tts_router
 from app.routers import ws as ws_router
 from app.routers import test_greeks as test_greeks_router
+from app.routers import portfolio_history as portfolio_history_router
 from app.services.alert_engine import AlertEngine
 from app.services.lifecycle import process_expired_trades
 from app.services.ai_engine import AiInsightService, create_provider as create_ai_provider, set_vol_cache_ref as set_ai_vol_cache_ref
@@ -66,6 +67,7 @@ ai_insight_svc = AiInsightService(
     manager=ws_manager, cache=price_cache, provider=create_ai_provider(),
     voice=_voice_provider, audio_cache=audio_cache,
     macro_service=macro_service,
+    scanner_service=market_scanner,
 )
 
 
@@ -172,6 +174,7 @@ app.include_router(alerts_router.router,   prefix="/api")
 app.include_router(tts_router.router,     prefix="/api")
 app.include_router(ws_router.router,       prefix="/api")
 app.include_router(test_greeks_router.router, prefix="/api/test")
+app.include_router(portfolio_history_router.router, prefix="/api")
 
 
 @app.get("/health", tags=["system"])

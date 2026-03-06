@@ -147,9 +147,22 @@ class PriceFeedService:
         )
 
         # 4. Broadcast spot_update to affected subscribers
+        # Enrich with intraday change / changesPercentage from FMP quote cache
+        change_map: dict[str, str] = {}
+        changepct_map: dict[str, str] = {}
+        for sym in changed:
+            c = yfinance_client.get_change_cached(sym)
+            cp = yfinance_client.get_changepct_cached(sym)
+            if c is not None:
+                change_map[sym] = str(c)
+            if cp is not None:
+                changepct_map[sym] = str(cp)
+
         spot_msg = {
             "type": "spot_update",
             "data": {s: str(p) for s, p in changed.items()},
+            "change": change_map,
+            "changepct": changepct_map,
         }
         # Send to all connections that have at least one changed symbol
         for conn in list(self.manager._connections.values()):

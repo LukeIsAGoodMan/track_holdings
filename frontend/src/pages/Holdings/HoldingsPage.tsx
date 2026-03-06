@@ -21,10 +21,9 @@ import { fetchHoldings, fetchCash, fetchSettledTrades, triggerLifecycle } from '
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
   TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
-  PnlDataPoint,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
-import PnlChart from '@/components/PnlChart'
+import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
 import AiInsightPanel from '@/components/AiInsightPanel'
 import MarketTicker from '@/components/MarketTicker'
 
@@ -741,20 +740,13 @@ function SettledTradesSection({
 export default function HoldingsPage() {
   const { selectedPortfolioId, refreshKey, triggerRefresh } = usePortfolio()
   const { t } = useLanguage()
-  const { lastHoldingsUpdate, lastPnlSnapshot } = useWebSocket()
+  const { lastHoldingsUpdate } = useWebSocket()
 
   const [holdings,        setHoldings]        = useState<HoldingGroup[]>([])
   const [cash,            setCash]            = useState<CashSummary | null>(null)
   const [loading,         setLoading]         = useState(true)
   const [error,           setError]           = useState<string | null>(null)
   const [lifecycleResult, setLifecycleResult] = useState<LifecycleResult | null>(null)
-
-  // ── P&L chart state (Phase 7f) ──────────────────────────────────────────
-  const [pnlSeries,    setPnlSeries]    = useState<PnlDataPoint[]>([])
-  const [prevCloseNlv, setPrevCloseNlv] = useState<string | null>(null)
-  const [dayPnlPct,    setDayPnlPct]    = useState<string | null>(null)
-  const [currentNlv,   setCurrentNlv]   = useState<string | null>(null)
-  const [currentPnl,   setCurrentPnl]   = useState<string | null>(null)
 
   // ── Main data fetch ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -775,26 +767,6 @@ export default function HoldingsPage() {
     if (lastHoldingsUpdate.portfolioId !== selectedPortfolioId) return
     setHoldings(lastHoldingsUpdate.data)
   }, [lastHoldingsUpdate, selectedPortfolioId])
-
-  // ── Live WS P&L snapshot (Phase 7f) ──────────────────────────────────────
-  useEffect(() => {
-    if (!lastPnlSnapshot) return
-    if (lastPnlSnapshot.portfolioId !== selectedPortfolioId) return
-    setPnlSeries(lastPnlSnapshot.series)
-    setPrevCloseNlv(lastPnlSnapshot.prevCloseNlv)
-    setDayPnlPct(lastPnlSnapshot.dayPnlPct)
-    setCurrentNlv(lastPnlSnapshot.current.nlv)
-    setCurrentPnl(lastPnlSnapshot.current.pnl)
-  }, [lastPnlSnapshot, selectedPortfolioId])
-
-  // Clear P&L chart on portfolio change
-  useEffect(() => {
-    setPnlSeries([])
-    setPrevCloseNlv(null)
-    setDayPnlPct(null)
-    setCurrentNlv(null)
-    setCurrentPnl(null)
-  }, [selectedPortfolioId])
 
   // ── Lifecycle sweep on portfolio change (fire-and-forget) ─────────────────
   // Runs once per portfolio selection; if trades were settled, triggers a
@@ -856,13 +828,7 @@ export default function HoldingsPage() {
         <>
           <MarketTicker />
           <CashCard cash={cash} />
-          <PnlChart
-            series={pnlSeries}
-            prevCloseNlv={prevCloseNlv}
-            dayPnlPct={dayPnlPct}
-            currentNlv={currentNlv}
-            currentPnl={currentPnl}
-          />
+          <PortfolioHistoryChart portfolioId={selectedPortfolioId} />
           <AiInsightPanel />
           <HoldingsTable groups={holdings} />
           <SettledTradesSection portfolioId={selectedPortfolioId} />

@@ -20,10 +20,11 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import hashlib
 import json as _json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.schemas.ai import (
@@ -1004,61 +1005,6 @@ def _parse_llm_response(raw: str) -> AiInsight:
     )
 
 
-class ClaudeAiProvider(AiProvider):
-    """
-    Anthropic Claude API provider via async httpx.
-
-    Uses the Messages API directly (no SDK dependency beyond httpx).
-    """
-
-    def __init__(
-        self,
-        api_key: str,
-        model: str = "claude-haiku-4-5-20251001",
-        max_tokens: int = 600,
-        timeout: int = 15,
-    ) -> None:
-        self._api_key = api_key
-        self._model = model
-        self._max_tokens = max_tokens
-        self._timeout = timeout
-
-    async def analyze(
-        self,
-        context: RiskContext,
-        language: str = "en",
-        scanner_tops: list[dict] | None = None,
-    ) -> AiInsight:
-        """Call Claude Messages API, parse structured JSON response."""
-        import httpx
-
-        user_prompt = _build_user_prompt(context, scanner_tops=scanner_tops)
-
-        payload = {
-            "model": self._model,
-            "max_tokens": self._max_tokens,
-            "temperature": 0.0,
-            "system": _get_system_prompt(language),
-            "messages": [{"role": "user", "content": user_prompt}],
-        }
-
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                json=payload,
-                headers={
-                    "x-api-key": self._api_key,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-            )
-            resp.raise_for_status()
-
-        body = resp.json()
-        raw_text = body["content"][0]["text"]
-        return _parse_llm_response(raw_text)
-
-
 # ---------------------------------------------------------------------------
 # CircuitBreakerProvider — wraps LLM provider + auto-fallback to Mock
 # ---------------------------------------------------------------------------
@@ -1194,9 +1140,12 @@ def create_provider() -> AiProvider:
     """
     Create the appropriate AiProvider based on config.
 
-    Returns:
-      - MockAiProvider if ai_provider_type == "mock"
-      - CircuitBreakerProvider(ClaudeAiProvider) if ai_provider_type == "claude"
+    "mock"   → MockAiProvider (rule-based, zero network)
+    anything → CircuitBreakerProvider(GeminiAiProvider) if GOOGLE_API_KEY set
+               MockAiProvider as final fallback
+
+    ClaudeAiProvider removed: api.anthropic.com calls caused 400 errors in prod.
+    Gemini 1.5 Flash is the sole production LLM backend.
     """
     from app.config import settings
 
@@ -1206,31 +1155,18 @@ def create_provider() -> AiProvider:
         logger.info("AI provider: MockAiProvider (rule-based)")
         return MockAiProvider()
 
-    if provider_type == "claude":
-        api_key = settings.ai_api_key
-        if not api_key:
-            logger.warning("AI_API_KEY not set — falling back to MockAiProvider")
-            return MockAiProvider()
-        primary = ClaudeAiProvider(
-            api_key=api_key,
-            model=settings.ai_model,
-            max_tokens=settings.ai_max_tokens,
-            timeout=settings.ai_timeout,
-        )
-        logger.info("AI provider: ClaudeAiProvider (model=%s) with circuit breaker", settings.ai_model)
-        return CircuitBreakerProvider(primary)
+    # Gemini is the only production LLM — covers "gemini", "claude", or any other value
+    api_key = settings.google_api_key or settings.ai_api_key
+    if not api_key:
+        logger.warning("GOOGLE_API_KEY not set — falling back to MockAiProvider")
+        return MockAiProvider()
 
-    if provider_type == "gemini":
-        api_key = settings.google_api_key or settings.ai_api_key
-        if not api_key:
-            logger.warning("GOOGLE_API_KEY not set — falling back to MockAiProvider")
-            return MockAiProvider()
-        primary = GeminiAiProvider(api_key=api_key, timeout=settings.ai_timeout)
-        logger.info("AI provider: GeminiAiProvider (gemini-1.5-flash) with circuit breaker")
-        return CircuitBreakerProvider(primary)
-
-    logger.warning("Unknown ai_provider_type=%r — falling back to MockAiProvider", provider_type)
-    return MockAiProvider()
+    primary = GeminiAiProvider(api_key=api_key, timeout=settings.ai_timeout)
+    logger.info(
+        "AI provider: GeminiAiProvider (gemini-1.5-flash) with circuit breaker"
+        " [config=%s]", provider_type,
+    )
+    return CircuitBreakerProvider(primary)
 
 
 # ---------------------------------------------------------------------------
@@ -1272,6 +1208,8 @@ class AiInsightService:
         self._scanner_service = scanner_service
         self._task: asyncio.Task | None = None
         self._running = False
+        # Hash cache: (user_id, pid) -> (portfolio_hash, date_str, AiInsight)
+        self._insight_cache: dict[tuple[int, int], tuple[str, str, "AiInsight"]] = {}
 
     # -- Lifecycle -----------------------------------------------------------
 
@@ -1395,6 +1333,45 @@ class AiInsightService:
         if not positions:
             return
 
+        # 1b. Hash-based cache dedup: skip LLM if portfolio unchanged today
+        _hash_key = (user_id, portfolio_id)
+        _portfolio_fingerprint = "|".join(sorted(
+            f"{pos.instrument.symbol}:{pos.net_contracts}"
+            for pos in positions
+            if pos.instrument is not None
+        ))
+        _portfolio_hash = hashlib.md5(_portfolio_fingerprint.encode()).hexdigest()
+        _today = date.today().isoformat()
+        _cached = self._insight_cache.get(_hash_key)
+        if _cached and _cached[0] == _portfolio_hash and _cached[1] == _today:
+            # Same portfolio composition, same day — re-broadcast cached insight
+            insight = _cached[2]
+            msg = {
+                "type": "ai_insight",
+                "portfolio_id": portfolio_id,
+                "data": {
+                    "overall_assessment": insight.overall_assessment,
+                    "diagnostics": [
+                        {
+                            "severity": d.severity,
+                            "category": d.category,
+                            "title": d.title,
+                            "explanation": d.explanation,
+                            "suggestion": d.suggestion,
+                        }
+                        for d in insight.diagnostics
+                    ],
+                    "generated_at": insight.generated_at.isoformat(),
+                    "audio_url": None,
+                },
+            }
+            await self._manager.broadcast_to_user(user_id, msg)
+            logger.debug(
+                "AI insight cache hit: user=%d pid=%d (hash=%s)",
+                user_id, portfolio_id, _portfolio_hash[:8],
+            )
+            return
+
         # 2. Get market data from shared caches
         spot_map = self._cache.all_prices()
         vol_map = dict(_vol_cache_ref) if _vol_cache_ref else {}
@@ -1423,6 +1400,8 @@ class AiInsightService:
         insight = await self._provider.analyze(
             risk_context, language=language, scanner_tops=scanner_tops,
         )
+        # Store in hash cache for dedup on next poll
+        self._insight_cache[_hash_key] = (_portfolio_hash, _today, insight)
 
         # 6. TTS synthesis for critical diagnostics (Phase 10a/11: language-aware)
         audio_url = None

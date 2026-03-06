@@ -283,6 +283,13 @@ export const TRANSLATIONS = {
   auth_register_sub: { en: 'Create an account to start.',   zh: '创建账户开始使用。' },
   auth_no_acct:      { en: "Don't have an account?",        zh: '还没有账户？' },
   auth_have_acct:    { en: 'Already have an account?',      zh: '已有账户？' },
+
+  // ── Portfolio History Chart (Phase 13) ───────────────────────────────────
+  hist_title:        { en: '30-Day Portfolio NLV',          zh: '30日投资组合净值' },
+  hist_loading:      { en: 'Loading history…',              zh: '加载中…' },
+  hist_no_data:      { en: 'No stock positions to chart.',   zh: '无股票持仓可展示。' },
+  hist_nlv:          { en: 'NLV',                           zh: '净值' },
+  hist_return:       { en: 'Return',                        zh: '收益率' },
 } as const
 
 export type TKey = keyof typeof TRANSLATIONS

@@ -73,6 +73,13 @@ def _do_fetch_quote(ticker: str) -> Decimal | None:
                     f"prev_close:{ticker.upper()}",
                     Decimal(str(prev)).quantize(Decimal("0.0001")),
                 )
+            # Cache intraday change & changesPercentage for ticker bar enrichment
+            change = item.get("change")
+            if change is not None:
+                _set_cached(f"change:{ticker.upper()}", Decimal(str(change)).quantize(Decimal("0.0001")))
+            change_pct = item.get("changesPercentage")
+            if change_pct is not None:
+                _set_cached(f"changepct:{ticker.upper()}", Decimal(str(change_pct)).quantize(Decimal("0.0001")))
             return val
     return None
 
@@ -134,6 +141,31 @@ async def get_prev_close(ticker: str) -> Decimal | None:
     # Not cached yet — fetch a full quote to populate both spot and prev_close
     await asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
     return _get_cached(f"prev_close:{ticker}", 86400.0)
+
+def get_prev_close_cached_only(ticker: str) -> Decimal | None:
+    """
+    Return prev_close from in-memory cache — zero network I/O.
+
+    Used by NlvSamplerService so NLV computation never triggers API calls.
+    Returns None if prev_close hasn't been populated yet (prewarm not done).
+    """
+    key = f"prev_close:{ticker.upper()}"
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry:
+            return entry[0]
+    return _last_known.get(key)
+
+
+def get_change_cached(ticker: str) -> Decimal | None:
+    """Return cached intraday change (price delta from previous close)."""
+    return _last_known.get(f"change:{ticker.upper()}")
+
+
+def get_changepct_cached(ticker: str) -> Decimal | None:
+    """Return cached changesPercentage from FMP quote."""
+    return _last_known.get(f"changepct:{ticker.upper()}")
+
 
 async def get_hist_vol(ticker: str) -> Decimal:
     ticker = ticker.upper()
@@ -216,7 +248,7 @@ def _do_sync_screener() -> None:
 
     meta: dict[str, dict] = {}
     cached_count = 0
-    for item in data:
+    for idx, item in enumerate(data):
         sym = (item.get("symbol") or "").upper()
         if not sym:
             continue
@@ -232,6 +264,9 @@ def _do_sync_screener() -> None:
             "isFund": bool(item.get("isFund")),
             "volume": int(item.get("volume") or 0),
         }
+        # Yield CPU every 50 items — prevents event-loop starvation on Render
+        if idx % 50 == 49:
+            time.sleep(0.01)
 
     with _screener_meta_lock:
         _screener_meta.update(meta)

@@ -1,10 +1,9 @@
 """
-Tests for Phase 9a -- ClaudeAiProvider + CircuitBreakerProvider + prompt builder.
+Tests for Phase 9a -- GeminiAiProvider + CircuitBreakerProvider + prompt builder.
 
 Covers:
   - _build_user_prompt(): template rendering, field formatting
   - _parse_llm_response(): valid JSON, malformed JSON, missing fields, markdown fences
-  - ClaudeAiProvider.analyze(): mocked httpx, success, HTTP errors, timeouts
   - CircuitBreakerProvider: fallback after N failures, cooldown reset, half-open
   - create_provider(): factory returns correct type based on config
 """
@@ -26,7 +25,7 @@ from app.schemas.ai import (
 )
 from app.services.ai_engine import (
     CircuitBreakerProvider,
-    ClaudeAiProvider,
+    GeminiAiProvider,
     MockAiProvider,
     _build_user_prompt,
     _parse_llm_response,
@@ -229,139 +228,6 @@ class TestParseLlmResponse:
 
 
 # =============================================================================
-# Test ClaudeAiProvider.analyze — mocked httpx
-# =============================================================================
-
-class TestClaudeAiProvider:
-    """ClaudeAiProvider with mocked HTTP calls."""
-
-    @pytest.mark.asyncio
-    async def test_success_returns_insight(self):
-        """Valid API response -> parsed AiInsight."""
-        import httpx
-
-        provider = ClaudeAiProvider(api_key="test-key")
-        ctx = _ctx()
-
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "content": [{"text": _valid_llm_json()}],
-        }
-
-        with patch.object(httpx, "AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post = AsyncMock(return_value=mock_response)
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            insight = await provider.analyze(ctx)
-
-        assert insight.overall_assessment == "Warning"
-        assert len(insight.diagnostics) == 3
-        assert insight.generated_at is not None
-
-    @pytest.mark.asyncio
-    async def test_http_error_raises(self):
-        """Non-2xx response -> httpx.HTTPStatusError raised."""
-        import httpx
-
-        provider = ClaudeAiProvider(api_key="test-key")
-        ctx = _ctx()
-
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "429 Too Many Requests",
-            request=MagicMock(),
-            response=MagicMock(status_code=429),
-        )
-
-        with patch.object(httpx, "AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post = AsyncMock(return_value=mock_response)
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            with pytest.raises(httpx.HTTPStatusError):
-                await provider.analyze(ctx)
-
-    @pytest.mark.asyncio
-    async def test_timeout_raises(self):
-        """Request timeout -> httpx.TimeoutException raised."""
-        import httpx
-
-        provider = ClaudeAiProvider(api_key="test-key", timeout=1)
-        ctx = _ctx()
-
-        with patch.object(httpx, "AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post = AsyncMock(side_effect=httpx.TimeoutException("read timeout"))
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            with pytest.raises(httpx.TimeoutException):
-                await provider.analyze(ctx)
-
-    @pytest.mark.asyncio
-    async def test_malformed_json_from_llm_raises(self):
-        """LLM returns non-JSON text -> ValueError raised."""
-        import httpx
-
-        provider = ClaudeAiProvider(api_key="test-key")
-        ctx = _ctx()
-
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "content": [{"text": "I'm sorry, I can't help with that."}],
-        }
-
-        with patch.object(httpx, "AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post = AsyncMock(return_value=mock_response)
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            with pytest.raises((ValueError, json.JSONDecodeError)):
-                await provider.analyze(ctx)
-
-    @pytest.mark.asyncio
-    async def test_sends_correct_headers(self):
-        """Verify API key and anthropic-version headers are sent."""
-        import httpx
-
-        provider = ClaudeAiProvider(api_key="sk-test-123", model="claude-haiku-4-5-20251001")
-        ctx = _ctx()
-
-        mock_response = MagicMock()
-        mock_response.raise_for_status = MagicMock()
-        mock_response.json.return_value = {
-            "content": [{"text": _valid_llm_json()}],
-        }
-
-        with patch.object(httpx, "AsyncClient") as MockClient:
-            instance = AsyncMock()
-            instance.post = AsyncMock(return_value=mock_response)
-            instance.__aenter__ = AsyncMock(return_value=instance)
-            instance.__aexit__ = AsyncMock(return_value=False)
-            MockClient.return_value = instance
-
-            await provider.analyze(ctx)
-
-            call_args = instance.post.call_args
-            headers = call_args.kwargs["headers"]
-            assert headers["x-api-key"] == "sk-test-123"
-            assert headers["anthropic-version"] == "2023-06-01"
-            payload = call_args.kwargs["json"]
-            assert payload["model"] == "claude-haiku-4-5-20251001"
-            assert payload["temperature"] == 0.0
-
-
-# =============================================================================
 # Test CircuitBreakerProvider
 # =============================================================================
 
@@ -371,7 +237,7 @@ class TestCircuitBreakerProvider:
     @pytest.mark.asyncio
     async def test_success_uses_primary(self):
         """When primary succeeds, use primary result."""
-        primary = AsyncMock(spec=ClaudeAiProvider)
+        primary = AsyncMock(spec=MockAiProvider)
         primary.analyze = AsyncMock(return_value=AiInsight(
             overall_assessment="Warning",
             diagnostics=[DiagnosticItem(severity="warning", category="delta", title="t", explanation="e", suggestion="s")],
@@ -387,7 +253,7 @@ class TestCircuitBreakerProvider:
     @pytest.mark.asyncio
     async def test_single_failure_uses_fallback_then_resets(self):
         """One failure -> falls back, but counter < max -> circuit stays closed."""
-        primary = AsyncMock(spec=ClaudeAiProvider)
+        primary = AsyncMock(spec=MockAiProvider)
         primary.analyze = AsyncMock(side_effect=Exception("API error"))
         fallback = MockAiProvider()
         cb = CircuitBreakerProvider(primary, fallback=fallback, max_failures=3)
@@ -402,7 +268,7 @@ class TestCircuitBreakerProvider:
     @pytest.mark.asyncio
     async def test_three_failures_opens_circuit(self):
         """3 consecutive failures -> circuit opens."""
-        primary = AsyncMock(spec=ClaudeAiProvider)
+        primary = AsyncMock(spec=MockAiProvider)
         primary.analyze = AsyncMock(side_effect=Exception("timeout"))
         cb = CircuitBreakerProvider(primary, max_failures=3, cooldown_seconds=300)
         ctx = _ctx()
@@ -416,7 +282,7 @@ class TestCircuitBreakerProvider:
     @pytest.mark.asyncio
     async def test_circuit_open_skips_primary(self):
         """When circuit is open, don't call primary at all."""
-        primary = AsyncMock(spec=ClaudeAiProvider)
+        primary = AsyncMock(spec=MockAiProvider)
         primary.analyze = AsyncMock(side_effect=Exception("timeout"))
         cb = CircuitBreakerProvider(primary, max_failures=3, cooldown_seconds=300)
         ctx = _ctx()
@@ -447,7 +313,7 @@ class TestCircuitBreakerProvider:
                 generated_at=datetime(2026, 3, 1),
             )
 
-        primary = AsyncMock(spec=ClaudeAiProvider)
+        primary = AsyncMock(spec=MockAiProvider)
         primary.analyze = AsyncMock(side_effect=intermittent)
         cb = CircuitBreakerProvider(primary, max_failures=3)
         ctx = _ctx()
@@ -465,7 +331,7 @@ class TestCircuitBreakerProvider:
     @pytest.mark.asyncio
     async def test_half_open_after_cooldown(self):
         """After cooldown expires, circuit becomes half-open (tries primary again)."""
-        primary = AsyncMock(spec=ClaudeAiProvider)
+        primary = AsyncMock(spec=MockAiProvider)
         primary.analyze = AsyncMock(side_effect=Exception("timeout"))
         cb = CircuitBreakerProvider(primary, max_failures=3, cooldown_seconds=0.1)
         ctx = _ctx()
@@ -499,27 +365,39 @@ class TestCreateProvider:
             provider = create_provider()
             assert isinstance(provider, MockAiProvider)
 
-    def test_claude_provider_with_key(self):
+    def test_gemini_provider_with_key(self):
         with patch("app.config.settings") as mock_settings:
-            mock_settings.ai_provider_type = "claude"
-            mock_settings.ai_api_key = "sk-test-key"
-            mock_settings.ai_model = "claude-haiku-4-5-20251001"
-            mock_settings.ai_max_tokens = 600
+            mock_settings.ai_provider_type = "gemini"
+            mock_settings.google_api_key = "AIza-test-key"
+            mock_settings.ai_api_key = ""
             mock_settings.ai_timeout = 15
             provider = create_provider()
             assert isinstance(provider, CircuitBreakerProvider)
-            assert isinstance(provider._primary, ClaudeAiProvider)
+            assert isinstance(provider._primary, GeminiAiProvider)
 
-    def test_claude_provider_no_key_falls_back(self):
+    def test_any_non_mock_type_with_key_uses_gemini(self):
         with patch("app.config.settings") as mock_settings:
             mock_settings.ai_provider_type = "claude"
+            mock_settings.google_api_key = "AIza-test-key"
+            mock_settings.ai_api_key = ""
+            mock_settings.ai_timeout = 15
+            provider = create_provider()
+            assert isinstance(provider, CircuitBreakerProvider)
+            assert isinstance(provider._primary, GeminiAiProvider)
+
+    def test_no_key_falls_back_to_mock(self):
+        with patch("app.config.settings") as mock_settings:
+            mock_settings.ai_provider_type = "gemini"
+            mock_settings.google_api_key = ""
             mock_settings.ai_api_key = ""
             provider = create_provider()
             assert isinstance(provider, MockAiProvider)
 
-    def test_unknown_type_falls_back(self):
+    def test_unknown_type_no_key_falls_back(self):
         with patch("app.config.settings") as mock_settings:
             mock_settings.ai_provider_type = "gpt-99"
+            mock_settings.google_api_key = ""
+            mock_settings.ai_api_key = ""
             provider = create_provider()
             assert isinstance(provider, MockAiProvider)
 

@@ -348,6 +348,20 @@ export interface MacroTickerData {
   as_of:              string   // ISO datetime
 }
 
+// ── Portfolio History (Phase 13) ─────────────────────────────────────────────
+export interface PortfolioHistoryPoint {
+  date: string   // ISO date "2024-01-02"
+  nlv:  string   // DecStr
+}
+
+export interface PortfolioHistoryResponse {
+  series:     PortfolioHistoryPoint[]
+  start_nlv:  string | null
+  end_nlv:    string | null
+  return_pct: string | null   // DecStr percentage e.g. "4.25"
+  days:       number
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export interface TokenResponse {
   access_token: string

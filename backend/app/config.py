@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./track_holdings.db"
     risk_free_rate: float = 0.045
     default_sigma: float = 0.30
-    jwt_secret_key: str = "CHANGE-ME-IN-PRODUCTION"   # override via .env / JWT_SECRET_KEY
+    jwt_secret_key: str = "super-secret-key-for-track-holdings-2026-v2-change-in-prod"  # override via .env / JWT_SECRET_KEY
     jwt_expire_hours: int = 24
     cors_origins: str = "http://localhost:5173,http://localhost:3000"  # comma-separated
 

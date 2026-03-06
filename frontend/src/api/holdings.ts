@@ -20,6 +20,7 @@ import type {
   Alert,
   AlertCreate,
   AlertStatus,
+  PortfolioHistoryResponse,
 } from '@/types'
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
@@ -172,6 +173,24 @@ export const updateAlert = (
 /** DELETE /api/alerts/:id */
 export const deleteAlert = (id: number): Promise<void> =>
   api.delete(`/alerts/${id}`)
+
+// ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────
+
+// ── Portfolio History (Phase 13) ─────────────────────────────────────────────
+
+/** GET /api/portfolio/history[?portfolio_id=N&days=N] */
+export const fetchPortfolioHistory = (
+  portfolioId?: number | null,
+  days = 30,
+): Promise<PortfolioHistoryResponse> =>
+  api
+    .get<PortfolioHistoryResponse>('/portfolio/history', {
+      params: {
+        ...(portfolioId != null ? { portfolio_id: portfolioId } : {}),
+        days,
+      },
+    })
+    .then((r) => r.data)
 
 // ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────
 
