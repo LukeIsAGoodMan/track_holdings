@@ -93,27 +93,33 @@ def _get_cached(key: str, ttl: float) -> object | None:
 async def get_spot_price(ticker: str) -> Decimal | None:
     ticker = ticker.upper()
     cached = _get_cached(f"spot:{ticker}", 60.0)
-    if cached: 
-        asyncio.get_event_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
+    if cached:
+        # Fire background refresh without blocking — discard the Future
+        asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
         return cached
-    return await asyncio.get_event_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
+    return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
 
 async def get_spot_prices_batch(tickers: list[str]) -> dict[str, Decimal]:
     tasks = [get_spot_price(t) for t in tickers]
     results = await asyncio.gather(*tasks)
-    return {t: r for t, r in zip(tickers, results) if r is not None}
+    return {t.upper(): r for t, r in zip(tickers, results) if r is not None}
 
 async def get_hist_vol(ticker: str) -> Decimal:
     ticker = ticker.upper()
+    cached = _get_cached(f"hvol:{ticker}", 3600.0)  # 1h cache — avoids repeat FMP calls
+    if cached:
+        return cached
     def _calc():
         hist = _do_fetch_hist_data(ticker)
-        if len(hist) < 10: return DEFAULT_SIGMA
+        if len(hist) < 10:
+            return DEFAULT_SIGMA
         closes = [float(d["close"]) for d in reversed(hist[:90]) if "close" in d]
-        return compute_historical_vol(closes[-30:])
-    return await asyncio.get_event_loop().run_in_executor(_refresh_pool, _calc)
+        vol = compute_historical_vol(closes[-30:])
+        _set_cached(f"hvol:{ticker}", vol)
+        return vol
+    return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _calc)
 
 async def get_1y_closes(ticker: str) -> list[float]:
-    """修复导入错误的关键接口"""
     ticker = ticker.upper()
     cache_key = f"1y:{ticker}"
     cached = _get_cached(cache_key, 3600.0)
@@ -122,18 +128,92 @@ async def get_1y_closes(ticker: str) -> list[float]:
     def _fetch():
         hist = _do_fetch_hist_data(ticker)
         closes = [float(d["close"]) for d in reversed(hist[:252]) if "close" in d]
-        if closes: _set_cached(cache_key, closes)
+        if closes:
+            _set_cached(cache_key, closes)
         return closes
-    return await asyncio.get_event_loop().run_in_executor(_refresh_pool, _fetch)
+    return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _fetch)
 
 async def get_price_history(ticker: str, start_date: str) -> dict[str, float]:
     def _fetch():
         hist = _do_fetch_hist_data(ticker, {"from": start_date})
         return {d["date"]: float(d["close"]) for d in hist if "date" in d and "close" in d}
-    return await asyncio.get_event_loop().run_in_executor(_refresh_pool, _fetch)
+    return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _fetch)
 
 async def prewarm(symbols: list[str]):
     await get_spot_prices_batch(symbols)
+
+
+# ── Company Screener — bulk cache pre-fill + business-layer metadata ──────────
+
+_MIN_SCREENER_VOLUME = 500_000
+_screener_meta: dict[str, dict] = {}   # sym → {"isFund": bool, "volume": int}
+_screener_meta_lock = threading.Lock()
+
+
+def _do_sync_screener() -> None:
+    """
+    Call FMP /company-screener, bulk-fill spot:{sym} cache, record metadata.
+
+    Single HTTP call pre-warms the spot cache for all NASDAQ/NYSE equities
+    with volume > 500k before the scanner loop fetches 1-year history.
+    """
+    data = _fmp_get("/company-screener", {
+        "exchange": "NASDAQ,NYSE",
+        "volumeMoreThan": _MIN_SCREENER_VOLUME,
+        "limit": 500,
+    })
+    if not isinstance(data, list):
+        logger.warning("Screener: unexpected response type %s", type(data).__name__)
+        return
+
+    meta: dict[str, dict] = {}
+    cached_count = 0
+    for item in data:
+        sym = (item.get("symbol") or "").upper()
+        if not sym:
+            continue
+        price = item.get("price")
+        if price is not None:
+            try:
+                val = Decimal(str(price)).quantize(Decimal("0.0001"))
+                _set_cached(f"spot:{sym}", val)
+                cached_count += 1
+            except Exception:
+                pass
+        meta[sym] = {
+            "isFund": bool(item.get("isFund")),
+            "volume": int(item.get("volume") or 0),
+        }
+
+    with _screener_meta_lock:
+        _screener_meta.update(meta)
+
+    logger.info(
+        "Screener sync: %d prices cached from %d results", cached_count, len(data)
+    )
+
+
+async def sync_screener_to_cache() -> None:
+    """Async wrapper — runs screener bulk-fill in the thread pool."""
+    await asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_sync_screener)
+
+
+def is_screener_excluded(sym: str) -> bool:
+    """
+    Return True if the symbol should be skipped by the scanner.
+
+    Exclusion criteria (from last screener run):
+      - isFund is True  (mutual fund, not tradeable intraday)
+      - volume < _MIN_SCREENER_VOLUME
+
+    Unknown symbols (not in last screener result) return False so that
+    hardcoded scanner symbols (e.g. SPY, NVDA) are never silently dropped.
+    """
+    with _screener_meta_lock:
+        info = _screener_meta.get(sym.upper())
+    if info is None:
+        return False   # not seen in screener → allow by default
+    return info["isFund"] or info["volume"] < _MIN_SCREENER_VOLUME
 
 async def get_ytd_return(ticker: str) -> Decimal | None:
     closes = await get_1y_closes(ticker)

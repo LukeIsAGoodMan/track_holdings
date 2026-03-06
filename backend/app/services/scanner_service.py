@@ -21,7 +21,12 @@ from decimal import Decimal
 
 from app.config import settings
 from app.services.ws_manager import ConnectionManager
-from app.services.yfinance_client import get_1y_closes, get_spot_price
+from app.services.yfinance_client import (
+    get_1y_closes,
+    get_spot_prices_batch,
+    is_screener_excluded,
+    sync_screener_to_cache,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,9 +141,10 @@ class MarketScannerService:
         return list(self._latest)
 
     async def _scan_loop(self) -> None:
-        """Main loop: scan once, sleep, repeat."""
+        """Main loop: pre-fill spot cache via screener, scan once, sleep 900s, repeat."""
         while True:
             try:
+                await sync_screener_to_cache()
                 await self._scan_once()
             except asyncio.CancelledError:
                 raise
@@ -148,14 +154,19 @@ class MarketScannerService:
 
     async def _scan_once(self) -> None:
         """Fetch 1y data for all symbols, compute metrics, broadcast."""
-        # Fetch 1-year closes and spot prices concurrently
+        # Fetch closes + batch spot prices concurrently (one FMP call for spots)
         close_tasks = [get_1y_closes(sym) for sym in self.symbols]
-        spot_tasks = [get_spot_price(sym) for sym in self.symbols]
-        all_closes = await asyncio.gather(*close_tasks)
-        all_spots = await asyncio.gather(*spot_tasks)
+        all_closes, spot_map = await asyncio.gather(
+            asyncio.gather(*close_tasks),
+            get_spot_prices_batch(self.symbols),
+        )
 
         opportunities: list[dict] = []
-        for sym, closes, spot in zip(self.symbols, all_closes, all_spots):
+        for sym, closes in zip(self.symbols, all_closes):
+            if is_screener_excluded(sym):
+                logger.debug("Scanner: skipping %s (fund or low-volume)", sym)
+                continue
+            spot = spot_map.get(sym.upper())
             metrics = _compute_iv_metrics(closes)
             if metrics is None:
                 continue

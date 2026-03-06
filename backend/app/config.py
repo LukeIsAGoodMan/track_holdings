@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     ws_heartbeat_interval: int = 30      # seconds between server ping messages
 
     # Market Scanner settings
-    scanner_poll_interval: int = 60      # seconds between scanner sweeps
+    scanner_poll_interval: int = 900     # seconds between scanner sweeps (15 min)
     scanner_symbols: str = "SPY,QQQ,NVDA,TSLA,AAPL,MSFT,AMD,AMZN,META,GOOGL"
 
     # Alert engine settings
