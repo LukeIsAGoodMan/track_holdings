@@ -1221,9 +1221,9 @@ def create_provider() -> AiProvider:
         return CircuitBreakerProvider(primary)
 
     if provider_type == "gemini":
-        api_key = settings.gemini_api_key or settings.ai_api_key
+        api_key = settings.google_api_key or settings.ai_api_key
         if not api_key:
-            logger.warning("GEMINI_API_KEY not set — falling back to MockAiProvider")
+            logger.warning("GOOGLE_API_KEY not set — falling back to MockAiProvider")
             return MockAiProvider()
         primary = GeminiAiProvider(api_key=api_key, timeout=settings.ai_timeout)
         logger.info("AI provider: GeminiAiProvider (gemini-1.5-flash) with circuit breaker")

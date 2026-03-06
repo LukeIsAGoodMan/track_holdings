@@ -240,8 +240,18 @@ class NlvSamplerService:
             for pos in positions
             if pos.instrument is not None
         })
-        prev_prices = await asyncio.gather(*[get_prev_close(s) for s in unique_syms])
-        prev_map: dict[str, Decimal | None] = dict(zip(unique_syms, prev_prices))
+        prev_prices = await asyncio.gather(
+            *[get_prev_close(s) for s in unique_syms],
+            return_exceptions=True,
+        )
+        # Fall back to current spot price if prev_close is not yet cached
+        # (happens on first startup before any quote has been fetched)
+        prev_map: dict[str, Decimal | None] = {}
+        for sym, price in zip(unique_syms, prev_prices):
+            if isinstance(price, Exception) or price is None:
+                prev_map[sym] = self.cache.get(sym)   # current spot as fallback
+            else:
+                prev_map[sym] = price
 
         vol_map: dict[str, Decimal] = {}
         if _VOL_CACHE_REF is not None:
@@ -266,8 +276,18 @@ class NlvSamplerService:
         # Set daily P&L baseline from FMP previousClose (not from first live sample)
         if key not in self._prev_close:
             if not self._mock_mode:
-                prev_nlv = await self._compute_prev_close_nlv(user_id, portfolio_id)
-                self._prev_close[key] = prev_nlv if prev_nlv is not None else nlv
+                try:
+                    prev_nlv = await asyncio.wait_for(
+                        self._compute_prev_close_nlv(user_id, portfolio_id),
+                        timeout=5.0,
+                    )
+                    self._prev_close[key] = prev_nlv if prev_nlv is not None else nlv
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "prev_close NLV timed out for user=%d pid=%d — using live NLV",
+                        user_id, portfolio_id,
+                    )
+                    self._prev_close[key] = nlv
             # mock mode: _generate_mock_nlv() already initialises _prev_close[key]
 
         prev = self._prev_close[key]

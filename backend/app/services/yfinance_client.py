@@ -38,16 +38,24 @@ def _fmp_sym(sym: str) -> str:
 def _fmp_get(path: str, params: dict) -> object | None:
     url = f"{_BASE}{path}"
     params["apikey"] = _API_KEY
-    try:
-        resp = _SESSION.get(url, params=params, timeout=_HTTP_TIMEOUT)
-        if resp.status_code == 403:
-            logger.error("FMP 403 Forbidden: %s | body=%s", path, resp.text[:500])
+    last_exc: Exception | None = None
+    for attempt in range(2):   # 1 automatic retry on transient failure
+        try:
+            resp = _SESSION.get(url, params=params, timeout=_HTTP_TIMEOUT)
+            if resp.status_code == 403:
+                logger.error("FMP 403 Forbidden: %s | body=%s", path, resp.text[:500])
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except requests.Timeout as e:
+            last_exc = e
+            if attempt == 0:
+                logger.warning("FMP timeout (attempt 1): %s %s — retrying", path, params.get("symbol"))
+        except Exception as e:
+            logger.error("FMP Request Error: %s %s -> %s", path, params.get("symbol"), e)
             return None
-        resp.raise_for_status()
-        return resp.json()
-    except Exception as e:
-        logger.error(f"FMP Request Error: {path} {params.get('symbol')} -> {e}")
-        return None
+    logger.error("FMP timeout (attempt 2): %s %s -> %s", path, params.get("symbol"), last_exc)
+    return None
 
 def _do_fetch_quote(ticker: str) -> Decimal | None:
     fmp_s = _fmp_sym(ticker)
@@ -82,7 +90,7 @@ def _do_fetch_hist_data(ticker: str, extra_params: dict | None = None) -> list[d
 _cache: dict[str, tuple[object, float]] = {}
 _last_known: dict[str, object] = {}
 _cache_lock = threading.Lock()
-_refresh_pool = ThreadPoolExecutor(max_workers=8)
+_refresh_pool = ThreadPoolExecutor(max_workers=50)
 
 def _set_cached(key: str, value: object):
     with _cache_lock:
@@ -166,9 +174,21 @@ async def get_price_history(ticker: str, start_date: str) -> dict[str, float]:
 _CORE_TICKERS: frozenset[str] = frozenset({"SPY", "QQQ", "VIX"})
 
 async def prewarm(symbols: list[str]):
-    """Prewarm spot cache for given symbols plus the hardcoded core indices."""
-    all_syms = list({s.upper() for s in symbols} | _CORE_TICKERS)
-    await get_spot_prices_batch(all_syms)
+    """
+    Prewarm spot cache for startup — two-phase to keep Render health check fast.
+
+    Phase 1 (blocking): fetch core indices + user symbols concurrently.
+      Guarantees the ticker bar lights up before the health check hits.
+    Phase 2 (background): fire sync_screener_to_cache() as an asyncio Task.
+      Bulk-fills the broader spot cache without blocking the server start.
+    """
+    # Phase 1: core indices first — these make the top-bar live immediately
+    core_task = get_spot_prices_batch(list(_CORE_TICKERS))
+    user_task = get_spot_prices_batch([s.upper() for s in symbols if s.strip()])
+    await asyncio.gather(core_task, user_task)
+
+    # Phase 2: screener bulk-fill in background — no await, no blocking
+    asyncio.create_task(sync_screener_to_cache())
 
 
 # ── Company Screener — bulk cache pre-fill + business-layer metadata ──────────
