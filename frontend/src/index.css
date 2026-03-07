@@ -9,7 +9,13 @@ body {
   @apply bg-app text-slate-200;
   font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   margin: 0;
+}
+
+/* Chrome shell (sidebar + topnav) inherits Plus Jakarta Sans */
+.font-sans {
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────────── */
