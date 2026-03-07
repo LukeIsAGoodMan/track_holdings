@@ -6,15 +6,21 @@ over the past N days, using historical EOD prices from FMP.
 
 Logic:
   1. Fetch current active positions from DB
-  2. For each symbol, fetch historical EOD closes via get_price_history()
-  3. Align all symbols on a common set of dates (last `days` market days)
-  4. NLV[date] = cash_balance + Σ(close[sym][date] × qty[sym])
-     (options not included — their historical price model is unreliable;
-      only stocks/ETF legs are included)
-  5. Return series sorted ascending, plus start/end NLV and return_pct
+  2. Stock positions: use historical EOD closes directly.
+     Option positions: fetch the underlying symbol's historical EOD closes
+     and compute simplified intrinsic value =
+       CALL: max(0, spot - strike) × |contracts| × multiplier
+       PUT:  max(0, strike - spot) × |contracts| × multiplier
+     (multiplied by net_contracts sign so shorts are negative)
+  3. Align on the UNION of all available trading dates, take last `days`.
+     Missing prices are forward-filled (ffill) from the last known value.
+  4. NLV[date] = cash_balance + Σ(historical_value per position)
+  5. If no positions at all, return a flat cash-balance line.
+  6. Return series sorted ascending, plus start/end NLV and return_pct.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -24,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user_flexible
+from app.models import InstrumentType, OptionType
 from app.models.cash_ledger import CashLedger
 from app.models.user import User
 from app.services import position_engine
@@ -31,6 +38,35 @@ from app.services.portfolio_resolver import resolve_portfolio_ids
 from app.services.yfinance_client import get_price_history
 
 router = APIRouter(tags=["portfolio"])
+
+
+def _ffill(sorted_dates: list[str], raw: dict[str, float]) -> dict[str, float]:
+    """Forward-fill missing dates using the last known price."""
+    result: dict[str, float] = {}
+    last: float | None = None
+    for d in sorted_dates:
+        if d in raw:
+            last = raw[d]
+        if last is not None:
+            result[d] = last
+    return result
+
+
+def _flat_cash_response(cash_balance: Decimal, days: int) -> dict:
+    """Return a flat cash-only line when no holdings exist."""
+    today = date.today()
+    nlv_str = str(cash_balance.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    series = [
+        {"date": (today - timedelta(days=days - 1 - i)).isoformat(), "nlv": nlv_str}
+        for i in range(days)
+    ]
+    return {
+        "series": series,
+        "start_nlv": nlv_str,
+        "end_nlv": nlv_str,
+        "return_pct": "0.00",
+        "days": days,
+    }
 
 
 @router.get("/portfolio/history")
@@ -63,69 +99,98 @@ async def get_portfolio_history(
     positions = await position_engine.calculate_positions(db, portfolio_ids=pids)
 
     if not positions:
-        return {"series": [], "start_nlv": None, "end_nlv": None, "return_pct": None, "days": 0}
+        return _flat_cash_response(cash_balance, days)
 
-    # 2. Collect stock positions only (options excluded — BS pricing unreliable historically)
-    from app.models import InstrumentType
-    stock_positions = [
-        pos for pos in positions
-        if pos.instrument is not None
-        and (pos.instrument.instrument_type == InstrumentType.STOCK
-             or pos.instrument.option_type is None)
-    ]
+    # 2. Separate stock and option positions; gather all underlying symbols to fetch
+    #    All symbol keys are normalised to UPPER CASE throughout.
+    stock_sym_qty: dict[str, int] = {}   # sym -> net_contracts
+    # (underlying_sym, strike, option_type, net_contracts, multiplier)
+    option_legs: list[tuple[str, Decimal, OptionType, int, int]] = []
+    all_syms: set[str] = set()
 
-    if not stock_positions:
-        return {"series": [], "start_nlv": None, "end_nlv": None, "return_pct": None, "days": 0}
+    for pos in positions:
+        if pos.instrument is None:
+            continue
+        sym = pos.instrument.symbol.upper()
+        itype = pos.instrument.instrument_type
+        otype = pos.instrument.option_type
 
-    # Build {symbol -> net_qty} map
-    sym_qty: dict[str, int] = {}
-    for pos in stock_positions:
-        sym = pos.instrument.symbol
-        sym_qty[sym] = sym_qty.get(sym, 0) + pos.net_contracts
+        if itype == InstrumentType.STOCK or otype is None:
+            stock_sym_qty[sym] = stock_sym_qty.get(sym, 0) + pos.net_contracts
+            all_syms.add(sym)
+        else:
+            # Option — fetch the underlying's price history for intrinsic value
+            all_syms.add(sym)
+            option_legs.append((
+                sym,
+                Decimal(str(pos.instrument.strike)),
+                otype,
+                pos.net_contracts,
+                pos.instrument.multiplier,
+            ))
 
-    # 3. Fetch historical EOD closes — start from `days + 10` days ago (buffer for weekends)
+    # 3. Fetch historical EOD closes (buffer +15 days for weekends/holidays)
     start_date = (date.today() - timedelta(days=days + 15)).isoformat()
+    sym_list = sorted(all_syms)
 
-    import asyncio
     histories = await asyncio.gather(
-        *[get_price_history(sym, start_date) for sym in sym_qty],
+        *[get_price_history(sym, start_date) for sym in sym_list],
         return_exceptions=True,
     )
 
-    # Build {sym -> {date_str: float}}
+    # Build price_histories with UPPER-CASE keys (fix symbol mismatch)
     price_histories: dict[str, dict[str, float]] = {}
-    for sym, hist in zip(sym_qty.keys(), histories):
+    for sym, hist in zip(sym_list, histories):
+        key = sym.upper()
         if isinstance(hist, Exception) or not hist:
-            price_histories[sym] = {}
+            price_histories[key] = {}
         else:
-            price_histories[sym] = hist
+            price_histories[key] = hist   # date keys already strings
 
-    # 4. Find intersection of available dates across all symbols, take last `days`
+    # 4. UNION of available trading dates (not intersection) → take last `days`
     date_sets = [set(h.keys()) for h in price_histories.values() if h]
-    if not date_sets:
-        return {"series": [], "start_nlv": None, "end_nlv": None, "return_pct": None, "days": 0}
+    if date_sets:
+        all_dates = sorted(set().union(*date_sets))[-days:]
+    else:
+        # No price data at all — fall back to cash flat line
+        return _flat_cash_response(cash_balance, days)
 
-    common_dates = sorted(date_sets[0].intersection(*date_sets[1:]))[-days:]
+    # 5. Forward-fill each symbol over the full union timeline
+    filled: dict[str, dict[str, float]] = {
+        sym: _ffill(all_dates, price_histories.get(sym, {}))
+        for sym in all_syms
+    }
 
-    if not common_dates:
-        return {"series": [], "start_nlv": None, "end_nlv": None, "return_pct": None, "days": 0}
-
-    # 5. Compute daily NLV
+    # 6. Compute daily NLV
     series = []
-    for d_str in common_dates:
+    for d_str in all_dates:
         nlv = cash_balance
-        for sym, qty in sym_qty.items():
-            hist = price_histories.get(sym, {})
-            price = hist.get(d_str)
+
+        # Stock / ETF contributions
+        for sym, qty in stock_sym_qty.items():
+            price = filled.get(sym.upper(), {}).get(d_str)
             if price is not None:
                 nlv += Decimal(str(price)) * qty
+
+        # Option intrinsic-value contributions (simplified — no time value)
+        for (underlying_sym, strike, opt_type, net_contracts, multiplier) in option_legs:
+            price = filled.get(underlying_sym.upper(), {}).get(d_str)
+            if price is None:
+                continue
+            spot = Decimal(str(price))
+            if str(opt_type).upper() in ("CALL", "OPTIONTYPE.CALL"):
+                intrinsic = max(Decimal("0"), spot - strike)
+            else:  # PUT
+                intrinsic = max(Decimal("0"), strike - spot)
+            nlv += intrinsic * net_contracts * multiplier
+
         series.append({
             "date": d_str,
             "nlv": str(nlv.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)),
         })
 
     if not series:
-        return {"series": [], "start_nlv": None, "end_nlv": None, "return_pct": None, "days": 0}
+        return _flat_cash_response(cash_balance, days)
 
     start_nlv = Decimal(series[0]["nlv"])
     end_nlv = Decimal(series[-1]["nlv"])

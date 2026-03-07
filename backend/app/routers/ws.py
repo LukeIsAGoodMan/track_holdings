@@ -38,15 +38,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # These are set by main.py at startup
-_manager = None  # type: ignore
-_cache = None    # type: ignore
+_manager = None        # type: ignore
+_cache = None          # type: ignore
+_macro_service = None  # type: ignore
 
 
-def init_ws_globals(manager, cache):
+def init_ws_globals(manager, cache, macro_service=None):
     """Called from main.py to inject shared singletons."""
-    global _manager, _cache
+    global _manager, _cache, _macro_service
     _manager = manager
     _cache = cache
+    _macro_service = macro_service
 
 
 async def _authenticate_ws(token: str | None) -> int | None:
@@ -130,6 +132,25 @@ async def websocket_endpoint(
                     "portfolio_id": pid,
                     "symbols": sorted(symbols),
                 })
+
+                # Push current macro state so MarketTicker shows on first connect (<1s)
+                if _macro_service is not None:
+                    macro_ctx = _macro_service.get_latest()
+                    if macro_ctx is not None:
+                        from datetime import datetime, timezone
+                        await _manager.send_json(ws, {
+                            "type": "macro_ticker",
+                            "data": {
+                                "spx_price":          macro_ctx.spx_price,
+                                "spx_change_pct":     macro_ctx.spx_change_pct,
+                                "vix_level":          macro_ctx.vix_level,
+                                "vix_term":           macro_ctx.vix_term,
+                                "days_to_next_event": macro_ctx.days_to_next_event,
+                                "next_event_name":    macro_ctx.next_event_name,
+                                "market_regime":      macro_ctx.market_regime,
+                                "as_of":              datetime.now(timezone.utc).isoformat(),
+                            },
+                        })
 
                 # Send initial holdings snapshot
                 asyncio.create_task(

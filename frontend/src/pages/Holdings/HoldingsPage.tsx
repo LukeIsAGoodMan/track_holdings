@@ -204,6 +204,7 @@ function StockLegsTable({
 function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
   const { t }    = useLanguage()
   const navigate = useNavigate()
+  const { lastSpotChangePct } = useWebSocket()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const toggle = (sym: string) =>
@@ -313,8 +314,18 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                 </span>
                 <span className="font-bold text-white text-base">{group.symbol}</span>
                 {group.spot_price ? (
-                  <span className="text-xs text-slate-500 tabular-nums transition-opacity duration-300">
-                    ${fmtNum(group.spot_price)}
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-xs text-slate-500 tabular-nums transition-opacity duration-300">
+                      ${fmtNum(group.spot_price)}
+                    </span>
+                    {lastSpotChangePct?.[group.symbol] != null && (() => {
+                      const pct = parseFloat(lastSpotChangePct![group.symbol])
+                      return (
+                        <span className={`text-[10px] tabular-nums font-semibold ${pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
+                        </span>
+                      )
+                    })()}
                   </span>
                 ) : (
                   <ShimmerCell w="w-14" />
