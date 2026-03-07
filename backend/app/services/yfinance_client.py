@@ -88,6 +88,9 @@ def _do_fetch_hist_data(ticker: str, extra_params: dict | None = None) -> list[d
     p = {"symbol": fmp_s}
     if extra_params: p.update(extra_params)
     data = _fmp_get("/historical-price-eod/full", p)
+    # FMP stable API returns a plain list; v3 wraps in {"historical": [...]}
+    if isinstance(data, list):
+        return data
     if isinstance(data, dict) and "historical" in data:
         return data["historical"]
     return []
@@ -111,14 +114,23 @@ def _get_cached(key: str, ttl: float) -> object | None:
             return entry[0]
     return _last_known.get(key)
 
+def _is_cache_fresh(key: str, ttl: float) -> bool:
+    """True only when entry exists AND is within TTL — never for stale last-known values."""
+    with _cache_lock:
+        entry = _cache.get(key)
+        return bool(entry and (time.monotonic() - entry[1]) < ttl)
+
 # ── 公共 Async 接口 (11 个文件调用的入口) ─────────────────────────────
 
 async def get_spot_price(ticker: str) -> Decimal | None:
     ticker = ticker.upper()
-    cached = _get_cached(f"spot:{ticker}", 60.0)
-    if cached:
-        # Fire background refresh without blocking — discard the Future
-        asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
+    spot_key = f"spot:{ticker}"
+    cached = _get_cached(spot_key, 60.0)
+    if cached is not None:
+        if not _is_cache_fresh(spot_key, 60.0):
+            # Stale last-known value: serve immediately, refresh in background
+            asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
+        # Fresh hit: return as-is — NO background call (eliminates 750+/15min leak)
         return cached
     return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
 

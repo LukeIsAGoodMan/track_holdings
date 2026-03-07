@@ -26,6 +26,8 @@ import type { HoldingGroup, RiskDashboard, MarketOpportunity, AlertTriggered, Pn
 interface WebSocketContextValue {
   connected: boolean
   lastSpotUpdate: Record<string, string> | null
+  lastSpotChange: Record<string, string> | null      // intraday $ change per symbol
+  lastSpotChangePct: Record<string, string> | null   // intraday % change per symbol
   lastHoldingsUpdate: { portfolioId: number; data: HoldingGroup[] } | null
   lastRiskUpdate: { portfolioId: number; data: Partial<RiskDashboard> } | null
   lastOpportunitiesUpdate: MarketOpportunity[] | null
@@ -50,6 +52,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   const [connected, setConnected] = useState(false)
   const [lastSpotUpdate, setLastSpotUpdate] = useState<Record<string, string> | null>(null)
+  const [lastSpotChange, setLastSpotChange] = useState<Record<string, string> | null>(null)
+  const [lastSpotChangePct, setLastSpotChangePct] = useState<Record<string, string> | null>(null)
   const [lastHoldingsUpdate, setLastHoldingsUpdate] = useState<{
     portfolioId: number
     data: HoldingGroup[]
@@ -112,6 +116,8 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
         switch (msg.type) {
           case 'spot_update':
             setLastSpotUpdate(msg.data)
+            if (msg.change)    setLastSpotChange(msg.change)
+            if (msg.changepct) setLastSpotChangePct(msg.changepct)
             break
           case 'holdings_update':
             setLastHoldingsUpdate({ portfolioId: msg.portfolio_id, data: msg.data })
@@ -247,7 +253,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
 
   return (
     <WebSocketContext.Provider
-      value={{ connected, lastSpotUpdate, lastHoldingsUpdate, lastRiskUpdate, lastOpportunitiesUpdate, lastAlertTriggered, lastPnlSnapshot, lastAiInsight, lastMacroTicker }}
+      value={{ connected, lastSpotUpdate, lastSpotChange, lastSpotChangePct, lastHoldingsUpdate, lastRiskUpdate, lastOpportunitiesUpdate, lastAlertTriggered, lastPnlSnapshot, lastAiInsight, lastMacroTicker }}
     >
       {children}
     </WebSocketContext.Provider>
