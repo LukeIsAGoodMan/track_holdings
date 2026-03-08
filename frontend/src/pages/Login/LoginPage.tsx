@@ -1,5 +1,5 @@
 /**
- * LoginPage — unified login / register form.
+ * LoginPage — unified login / register form. Light theme.
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -35,10 +35,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-app flex items-center justify-center">
-      <div className="w-full max-w-sm bg-card rounded-xl border border-line p-8">
+    <div className="min-h-screen bg-app flex items-center justify-center font-sans">
+      <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
         {/* Brand */}
-        <h1 className="text-info font-bold text-xl mb-1">Track Holdings</h1>
+        <h1 className="text-primary font-bold text-xl mb-1">Track Holdings</h1>
         <p className="text-slate-500 text-sm mb-6">
           {isRegister ? t('auth_register_sub') : t('auth_login_sub')}
         </p>
@@ -46,7 +46,7 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Username */}
           <div>
-            <label className="block text-xs text-slate-400 mb-1">{t('auth_username')}</label>
+            <label className="block text-xs text-slate-500 font-medium mb-1">{t('auth_username')}</label>
             <input
               type="text"
               value={username}
@@ -55,40 +55,44 @@ export default function LoginPage() {
               minLength={3}
               maxLength={50}
               autoFocus
-              className="w-full px-3 py-2 bg-app border border-line rounded-md
-                         text-sm text-slate-200 placeholder-slate-600
-                         focus:outline-none focus:border-info"
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg
+                         text-sm text-slate-900 placeholder-slate-400
+                         focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/10
+                         transition-colors"
               placeholder={t('auth_username')}
             />
           </div>
 
           {/* Password */}
           <div>
-            <label className="block text-xs text-slate-400 mb-1">{t('auth_password')}</label>
+            <label className="block text-xs text-slate-500 font-medium mb-1">{t('auth_password')}</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={6}
-              className="w-full px-3 py-2 bg-app border border-line rounded-md
-                         text-sm text-slate-200 placeholder-slate-600
-                         focus:outline-none focus:border-info"
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg
+                         text-sm text-slate-900 placeholder-slate-400
+                         focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/10
+                         transition-colors"
               placeholder={t('auth_password')}
             />
           </div>
 
           {/* Error */}
           {error && (
-            <p className="text-red-400 text-xs">{error}</p>
+            <p className="text-rose-600 text-xs bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+              {error}
+            </p>
           )}
 
           {/* Submit */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2 rounded-md font-semibold text-sm
-                       bg-info text-white hover:bg-info/90
+            className="w-full py-2 rounded-lg font-semibold text-sm
+                       bg-primary text-white hover:bg-primary/90 shadow-sm
                        disabled:opacity-50 disabled:cursor-not-allowed
                        transition-colors"
           >
@@ -101,7 +105,7 @@ export default function LoginPage() {
           {isRegister ? t('auth_have_acct') : t('auth_no_acct')}{' '}
           <button
             onClick={() => { setIsRegister(!isRegister); setError(null) }}
-            className="text-info hover:underline"
+            className="text-primary hover:underline font-medium"
           >
             {isRegister ? t('auth_login') : t('auth_register')}
           </button>

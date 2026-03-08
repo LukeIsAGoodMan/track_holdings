@@ -1,5 +1,5 @@
 /**
- * Risk Dashboard Page
+ * Risk Dashboard Page — light professional theme
  *
  * · Stat cards: Net Δ, Γ, Θ/day, V, Margin
  * · Top Efficient Symbol highlight
@@ -29,6 +29,19 @@ import { fmtNum, fmtUSD, fmtGreek, signClass } from '@/utils/format'
 import CoachPanel from './CoachPanel'
 import AlertsPanel from './AlertsPanel'
 
+// ── Shared light-theme tooltip style ──────────────────────────────────────────
+const TOOLTIP_STYLE = {
+  contentStyle: {
+    background: '#ffffff',
+    border: '1px solid #e2e8f0',
+    borderRadius: 8,
+    fontSize: 12,
+    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+  },
+  labelStyle:   { color: '#0f172a', marginBottom: 4 },
+  itemStyle:    { color: '#475569' },
+}
+
 // ── Scenario computation (pure client-side, no API call) ──────────────────────
 /**
  * 2nd-order Taylor expansion:
@@ -43,8 +56,6 @@ function computeScenarioPnL(
   ivShiftPpt:    number,
   ivSkewEnabled: boolean = false,
 ): { total: number; bySymbol: { symbol: string; pnl: number }[]; effectiveIvShift: number } {
-  // IV Skew: on negative price moves, simulate panic vol compression.
-  // Rule: for every -1% move, add +0.5 vol-point (50pp factor).
   const panicVol = ivSkewEnabled && priceShiftPct < 0
     ? Math.abs(priceShiftPct) * 50
     : 0
@@ -56,19 +67,18 @@ function computeScenarioPnL(
     const spot = group.spot_price != null ? parseFloat(group.spot_price) : null
     if (spot == null || spot <= 0) continue
 
-    const deltaP = spot * priceShiftPct   // dollar change in underlying
+    const deltaP = spot * priceShiftPct
     let symPnl = 0
 
-    // Option legs
     for (const leg of group.option_legs) {
       if (leg.delta == null || leg.gamma == null || leg.vega == null) continue
-      const n = leg.net_contracts  // signed
+      const n = leg.net_contracts
       const delta = parseFloat(leg.delta)
       const gamma = parseFloat(leg.gamma)
       const vega  = parseFloat(leg.vega)
 
       const deltaExp = n * delta * 100
-      const gammaExp = n * gamma * 100   // signed: short = negative
+      const gammaExp = n * gamma * 100
       const vegaExp  = n * vega  * 100
 
       symPnl += deltaExp * deltaP
@@ -76,7 +86,6 @@ function computeScenarioPnL(
                + vegaExp * effectiveIvShift
     }
 
-    // Stock legs (Δ=1/share, Γ=0, V=0)
     for (const leg of group.stock_legs) {
       symPnl += leg.net_shares * deltaP
     }
@@ -91,15 +100,15 @@ function computeScenarioPnL(
 
 // ── Alpha Dashboard colours ───────────────────────────────────────────────────
 const NAMED_COLORS: Record<string, string> = {
-  account: '#22c55e',   // green — always the account
-  SPY:     '#38bdf8',   // sky blue
-  QQQ:     '#f59e0b',   // amber
-  NVDA:    '#a78bfa',   // violet
-  AAPL:    '#fb923c',   // orange
-  MSFT:    '#34d399',   // emerald
-  'BTC-USD': '#f7931a', // bitcoin orange
+  account: '#059669',   // emerald — always the account
+  SPY:     '#0284c7',   // sky-600
+  QQQ:     '#d97706',   // amber-600
+  NVDA:    '#7c3aed',   // violet-600
+  AAPL:    '#ea580c',   // orange-600
+  MSFT:    '#059669',   // emerald-600
+  'BTC-USD': '#b45309', // amber-700
 }
-const EXTRA_COLORS = ['#e879f9', '#60a5fa', '#4ade80', '#fbbf24', '#f87171']
+const EXTRA_COLORS = ['#9333ea', '#2563eb', '#16a34a', '#ca8a04', '#dc2626']
 
 function lineColor(sym: string, extras: string[]): string {
   if (NAMED_COLORS[sym]) return NAMED_COLORS[sym]
@@ -115,7 +124,6 @@ function AlphaDashboard({
 }) {
   const { t } = useLanguage()
 
-  // Benchmarks list includes both default and user-added symbols
   const DEFAULT_BM = ['SPY', 'QQQ']
   const [extraBm,    setExtraBm]    = useState<string[]>([])
   const [inputSym,   setInputSym]   = useState('')
@@ -125,7 +133,6 @@ function AlphaDashboard({
 
   const allBenchmarks = useMemo(() => [...DEFAULT_BM, ...extraBm], [extraBm])
 
-  // Fetch (or re-fetch) when portfolio or benchmark list changes
   const fetchHistory = useCallback(() => {
     setLoading(true)
     setError(null)
@@ -137,7 +144,6 @@ function AlphaDashboard({
 
   useEffect(() => { fetchHistory() }, [fetchHistory])
 
-  // Add a user-supplied benchmark symbol
   function addSymbol() {
     const sym = inputSym.trim().toUpperCase()
     if (!sym || allBenchmarks.includes(sym)) return
@@ -149,7 +155,6 @@ function AlphaDashboard({
     setExtraBm((prev) => prev.filter((s) => s !== sym))
   }
 
-  // ── Build Recharts data array ────────────────────────────────────────────
   const chartData = useMemo(() => {
     if (!history || history.dates.length === 0) return []
     return history.dates.map((date, i) => {
@@ -164,39 +169,34 @@ function AlphaDashboard({
     })
   }, [history])
 
-  // All line keys: account first, then benchmarks
   const lineKeys = useMemo(() => {
     if (!history) return ['account']
     return ['account', ...Object.keys(history.benchmarks)]
   }, [history])
 
-  // X-axis interval: show ~7 labels regardless of data density
   const xInterval = Math.max(0, Math.floor((chartData.length - 1) / 6))
-
-  // ── Render ───────────────────────────────────────────────────────────────
   const hasHistory = history && history.dates.length > 0
 
   return (
-    <div className="bg-card border border-line rounded-xl p-5 space-y-4">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
       {/* Header + stat chips */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {t('alpha_dashboard')}
           </span>
           {hasHistory && (
-            <span className="text-[10px] text-slate-600 font-mono">
+            <span className="text-[10px] text-slate-400 font-mono">
               {t('nlv_normalized')}
             </span>
           )}
         </div>
 
-        {/* Alpha & Sharpe stats */}
         {hasHistory && (
           <div className="flex items-center gap-4 text-xs tabular-nums">
             {history.alpha_vs_spy != null && (
               <div className="text-right">
-                <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">
                   {t('alpha_relative')}
                 </div>
                 <span className={`font-bold text-sm ${history.alpha_vs_spy >= 0 ? 'text-bull' : 'text-bear'}`}>
@@ -206,12 +206,12 @@ function AlphaDashboard({
             )}
             {history.sharpe_ratio != null && (
               <div className="text-right">
-                <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">
                   {t('sharpe_ratio')}
                 </div>
                 <span className={`font-bold text-sm ${history.sharpe_ratio >= 1 ? 'text-bull' : history.sharpe_ratio >= 0 ? 'text-warn' : 'text-bear'}`}>
                   {history.sharpe_ratio.toFixed(2)}
-                  <span className="text-[10px] font-normal text-slate-600 ml-1">{t('indicative')}</span>
+                  <span className="text-[10px] font-normal text-slate-400 ml-1">{t('indicative')}</span>
                 </span>
               </div>
             )}
@@ -221,7 +221,6 @@ function AlphaDashboard({
 
       {/* Benchmark search + pills */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Extra benchmark pills */}
         {extraBm.map((sym) => (
           <span key={sym}
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]
@@ -232,7 +231,6 @@ function AlphaDashboard({
             <button onClick={() => removeExtra(sym)} className="hover:opacity-70 transition-opacity">×</button>
           </span>
         ))}
-        {/* Add input */}
         <div className="flex items-center gap-1.5 ml-auto">
           <input
             type="text"
@@ -240,15 +238,15 @@ function AlphaDashboard({
             onChange={(e) => setInputSym(e.target.value.toUpperCase())}
             onKeyDown={(e) => e.key === 'Enter' && addSymbol()}
             placeholder={t('benchmark_search')}
-            className="w-44 bg-app border border-line rounded-md px-2.5 py-1 text-xs
-                       text-slate-200 placeholder-slate-600
-                       focus:outline-none focus:border-info/50 transition-colors"
+            className="w-44 bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs
+                       text-slate-800 placeholder-slate-400
+                       focus:outline-none focus:border-primary/50 transition-colors"
           />
           <button
             onClick={addSymbol}
             disabled={!inputSym.trim()}
-            className="px-3 py-1 rounded-md bg-info/20 border border-info/40 text-info
-                       text-xs font-semibold hover:bg-info/30 transition-colors
+            className="px-3 py-1 rounded-lg bg-primary/10 border border-primary/30 text-primary
+                       text-xs font-semibold hover:bg-primary/20 transition-colors
                        disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {t('add_benchmark')}
@@ -259,44 +257,37 @@ function AlphaDashboard({
       {/* Chart or state messages */}
       {loading ? (
         <div className="h-64 flex items-center justify-center">
-          <div className="animate-pulse h-full w-full bg-row rounded-lg" />
+          <div className="animate-pulse h-full w-full bg-slate-100 rounded-lg" />
         </div>
       ) : error ? (
-        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+        <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
           {error}
         </div>
       ) : !hasHistory ? (
-        <div className="h-32 flex items-center justify-center text-xs text-slate-600">
+        <div className="h-32 flex items-center justify-center text-xs text-slate-400">
           {t('no_history')}
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={280}>
           <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e2436" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis
               dataKey="date"
               interval={xInterval}
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 10 }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
               domain={['auto', 'auto']}
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 10 }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v: number) => v.toFixed(0)}
               width={40}
             />
             <Tooltip
-              contentStyle={{
-                background: '#10131c',
-                border: '1px solid #1e2436',
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-              labelStyle={{ color: '#e2e8f0', marginBottom: 4 }}
-              itemStyle={{ color: '#94a3b8' }}
+              {...TOOLTIP_STYLE}
               formatter={(v: number, name: string) => [
                 `${v.toFixed(2)}`,
                 name === 'account' ? 'Account NLV' : name,
@@ -321,9 +312,8 @@ function AlphaDashboard({
         </ResponsiveContainer>
       )}
 
-      {/* Reference line note */}
       {hasHistory && history.first_date && (
-        <p className="text-[10px] text-slate-700 text-right">
+        <p className="text-[10px] text-slate-400 text-right">
           Normalized to 100 at {history.first_date} (first trade date)
         </p>
       )}
@@ -332,11 +322,6 @@ function AlphaDashboard({
 }
 
 // ── P&L Attribution Panel ─────────────────────────────────────────────────────
-/**
- * Per-position bar chart: stacked time-decay (amber) + directional (sky-blue).
- * Positive total = profitable position. Negative directional bar hangs down from
- * the top of the theta bar (Recharts stacked bars handle signed values natively).
- */
 function AttributionPanel({
   portfolioId,
 }: {
@@ -356,7 +341,6 @@ function AttributionPanel({
       .finally(() => setLoading(false))
   }, [portfolioId])
 
-  // Build chart data — one entry per position item
   const chartData = data?.items.map((item) => {
     const label =
       item.instrument_type === 'OPTION' && item.strike && item.option_type
@@ -380,37 +364,35 @@ function AttributionPanel({
   const hasData = data && data.items.length > 0
 
   return (
-    <div className="bg-card border border-line rounded-xl p-5 space-y-4">
-      {/* Header */}
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
             {t('pnl_attribution')}
           </span>
           {hasData && (
-            <span className="text-[10px] text-slate-600 ml-2">
+            <span className="text-[10px] text-slate-400 ml-2">
               {t('attr_subtitle')}
             </span>
           )}
         </div>
 
-        {/* Summary stat chips */}
         {hasData && (
           <div className="flex items-center gap-4 text-xs tabular-nums">
             <div className="text-right">
-              <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">{t('attr_time_decay')}</div>
-              <span className={`font-bold text-sm ${totalDecay >= 0 ? 'text-amber-400' : 'text-rose-400'}`}>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{t('attr_time_decay')}</div>
+              <span className={`font-bold text-sm ${totalDecay >= 0 ? 'text-amber-600' : 'text-rose-600'}`}>
                 {fmtUsdShort(totalDecay)}
               </span>
             </div>
             <div className="text-right">
-              <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">{t('attr_directional')}</div>
-              <span className={`font-bold text-sm ${totalDir >= 0 ? 'text-sky-400' : 'text-rose-400'}`}>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{t('attr_directional')}</div>
+              <span className={`font-bold text-sm ${totalDir >= 0 ? 'text-sky-600' : 'text-rose-600'}`}>
                 {fmtUsdShort(totalDir)}
               </span>
             </div>
-            <div className="text-right border-l border-slate-700 pl-4">
-              <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">{t('attr_total')}</div>
+            <div className="text-right border-l border-slate-200 pl-4">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{t('attr_total')}</div>
               <span className={`font-bold text-sm ${totalUnreal >= 0 ? 'text-bull' : 'text-bear'}`}>
                 {fmtUsdShort(totalUnreal)}
               </span>
@@ -419,31 +401,28 @@ function AttributionPanel({
         )}
       </div>
 
-      {/* Chart */}
       {loading ? (
-        <div className="h-56 flex items-center justify-center">
-          <div className="animate-pulse h-full w-full bg-row rounded-lg" />
-        </div>
+        <div className="h-56 animate-pulse bg-slate-100 rounded-lg" />
       ) : error ? (
-        <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
+        <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
           {error}
         </div>
       ) : !hasData ? (
-        <div className="h-32 flex items-center justify-center text-xs text-slate-600">
+        <div className="h-32 flex items-center justify-center text-xs text-slate-400">
           {t('attr_empty')}
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e2436" />
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis
               dataKey="label"
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 10 }}
               axisLine={false}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: '#64748b', fontSize: 10 }}
+              tick={{ fill: '#94a3b8', fontSize: 10 }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v: number) =>
@@ -452,14 +431,7 @@ function AttributionPanel({
               width={52}
             />
             <Tooltip
-              contentStyle={{
-                background: '#10131c',
-                border: '1px solid #1e2436',
-                borderRadius: 8,
-                fontSize: 12,
-              }}
-              labelStyle={{ color: '#e2e8f0', marginBottom: 4 }}
-              itemStyle={{ color: '#94a3b8' }}
+              {...TOOLTIP_STYLE}
               formatter={(v: number, name: string) => [
                 fmtUsdShort(v),
                 name === 'time_decay'  ? 'Time Decay (Theta)' :
@@ -473,11 +445,10 @@ function AttributionPanel({
                 value === 'directional' ? 'Directional (Delta/Gamma)' : value
               }
             />
-            {/* Stacked bars: amber (theta income) + sky-blue (directional) */}
-            <Bar dataKey="time_decay"  stackId="pnl" fill="#f59e0b80" radius={[0, 0, 0, 0]} />
-            <Bar dataKey="directional" stackId="pnl" fill="#38bdf880" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="time_decay"  stackId="pnl" fill="#d9770660" radius={[0, 0, 0, 0]} />
+            <Bar dataKey="directional" stackId="pnl" fill="#0284c760" radius={[4, 4, 0, 0]}>
               {chartData.map((d, i) => (
-                <Cell key={i} fill={d.directional >= 0 ? '#38bdf880' : '#ef444870'} />
+                <Cell key={i} fill={d.directional >= 0 ? '#0284c760' : '#e11d4860'} />
               ))}
             </Bar>
           </BarChart>
@@ -498,10 +469,10 @@ function StatCard({
   highlight?:  boolean
 }) {
   return (
-    <div className={`bg-card border rounded-xl p-4 ${highlight ? 'border-amber-500/40' : 'border-line'}`}>
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">{label}</div>
-      <div className={`text-2xl font-bold tabular-nums ${valueClass ?? 'text-white'}`}>{value}</div>
-      {sub && <div className="text-xs text-slate-600 mt-1">{sub}</div>}
+    <div className={`bg-white border rounded-xl shadow-sm p-4 ${highlight ? 'border-amber-400' : 'border-slate-200'}`}>
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">{label}</div>
+      <div className={`text-2xl font-bold tabular-nums ${valueClass ?? 'text-slate-900'}`}>{value}</div>
+      {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
     </div>
   )
 }
@@ -512,17 +483,16 @@ function ExpiryChart({ dashboard, label }: { dashboard: RiskDashboard; label: st
     label: b.label, contracts: Math.abs(b.net_contracts), delta: parseFloat(b.delta_exposure),
   }))
   return (
-    <div className="bg-card border border-line rounded-xl p-5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">{label}</div>
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{label}</div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e2436" />
-          <XAxis dataKey="label" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={{ background: '#10131c', border: '1px solid #1e2436', borderRadius: 8, fontSize: 12 }}
-            labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#94a3b8' }} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip {...TOOLTIP_STYLE} />
           <Bar dataKey="contracts" name="Contracts" radius={[4, 4, 0, 0]}>
-            {data.map((d, i) => <Cell key={i} fill={d.contracts > 0 ? '#ef444480' : '#22c55e80'} />)}
+            {data.map((d, i) => <Cell key={i} fill={d.contracts > 0 ? '#e11d4870' : '#05966980'} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -534,18 +504,19 @@ function ExpiryChart({ dashboard, label }: { dashboard: RiskDashboard; label: st
 function DeltaContribChart({ holdings, label }: { holdings: HoldingGroup[]; label: string }) {
   const data = holdings.map((g) => ({ symbol: g.symbol, delta: parseFloat(g.total_delta_exposure) }))
   return (
-    <div className="bg-card border border-line rounded-xl p-5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">{label}</div>
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{label}</div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#1e2436" />
-          <XAxis dataKey="symbol" tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: '#64748b', fontSize: 11 }} axisLine={false} tickLine={false} />
-          <Tooltip contentStyle={{ background: '#10131c', border: '1px solid #1e2436', borderRadius: 8, fontSize: 12 }}
-            labelStyle={{ color: '#e2e8f0' }} itemStyle={{ color: '#94a3b8' }}
-            formatter={(v: number | string) => [Number(v).toFixed(2), 'Δ Exposure']} />
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+          <XAxis dataKey="symbol" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+          <Tooltip
+            {...TOOLTIP_STYLE}
+            formatter={(v: number | string) => [Number(v).toFixed(2), 'Δ Exposure']}
+          />
           <Bar dataKey="delta" name="Delta Exposure" radius={[4, 4, 0, 0]}>
-            {data.map((d, i) => <Cell key={i} fill={d.delta >= 0 ? '#22c55e' : '#ef4444'} />)}
+            {data.map((d, i) => <Cell key={i} fill={d.delta >= 0 ? '#059669' : '#e11d48'} />)}
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -561,8 +532,8 @@ function SectorExposurePanel({ sectorExp, label }: { sectorExp: Record<string, s
   const maxAbs  = Math.max(...sorted.map(([, v]) => Math.abs(parseFloat(v))), 1)
 
   return (
-    <div className="bg-card border border-line rounded-xl p-5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">{label}</div>
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{label}</div>
       <div className="space-y-3">
         {sorted.map(([tag, deltaStr]) => {
           const delta = parseFloat(deltaStr)
@@ -571,13 +542,13 @@ function SectorExposurePanel({ sectorExp, label }: { sectorExp: Record<string, s
           return (
             <div key={tag}>
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className="text-slate-300 font-medium">{tag}</span>
-                <span className={`tabular-nums font-semibold ${isLong ? 'text-green-400' : 'text-red-400'}`}>
+                <span className="text-slate-700 font-medium">{tag}</span>
+                <span className={`tabular-nums font-semibold ${isLong ? 'text-emerald-600' : 'text-rose-600'}`}>
                   {isLong ? '+' : ''}{fmtNum(deltaStr)} Δ
                 </span>
               </div>
-              <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                <div className={`h-full rounded-full ${isLong ? 'bg-green-500/60' : 'bg-red-500/60'}`}
+              <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                <div className={`h-full rounded-full ${isLong ? 'bg-emerald-500/60' : 'bg-rose-500/60'}`}
                   style={{ width: `${pct}%` }} />
               </div>
             </div>
@@ -592,19 +563,19 @@ function SectorExposurePanel({ sectorExp, label }: { sectorExp: Record<string, s
 function BenchmarkPanel({ dashboard, label, ytdLabel }: { dashboard: RiskDashboard; label: string; ytdLabel: string }) {
   if (!dashboard.benchmark_ytd?.length) return null
   return (
-    <div className="bg-card border border-line rounded-xl p-5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-4">{label}</div>
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{label}</div>
       <div className="grid grid-cols-2 gap-3">
         {dashboard.benchmark_ytd.map((bench) => {
           const ytd    = bench.ytd_return != null ? parseFloat(bench.ytd_return) : null
           const pctStr = ytd != null ? (ytd * 100).toFixed(2) + '%' : '—'
           const isPos  = ytd != null && ytd >= 0
-          const cls    = ytd == null ? 'text-slate-500' : isPos ? 'text-green-400' : 'text-red-400'
+          const cls    = ytd == null ? 'text-slate-400' : isPos ? 'text-emerald-600' : 'text-rose-600'
           return (
-            <div key={bench.symbol} className="bg-row rounded-lg p-4 text-center">
-              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{bench.symbol}</div>
+            <div key={bench.symbol} className="bg-slate-50 rounded-xl border border-slate-100 p-4 text-center">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">{bench.symbol}</div>
               <div className={`text-2xl font-bold tabular-nums ${cls}`}>{isPos ? '+' : ''}{pctStr}</div>
-              <div className="text-[10px] text-slate-600 mt-1 uppercase tracking-wider">{ytdLabel}</div>
+              <div className="text-[10px] text-slate-400 mt-1 uppercase tracking-wider">{ytdLabel}</div>
             </div>
           )
         })}
@@ -620,23 +591,23 @@ function RiskAlertsPanel({ alerts, label, noAlertLabel }: {
   noAlertLabel: string
 }) {
   return (
-    <div className="bg-card border border-line rounded-xl p-5">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
       <div className="flex items-center gap-2 mb-4">
-        <span className="text-xs font-semibold uppercase tracking-wider text-rose-400/80">{label}</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-rose-600">{label}</span>
         {alerts.length > 0 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 font-bold">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200 font-bold">
             {alerts.length}
           </span>
         )}
       </div>
       {alerts.length === 0 ? (
-        <p className="text-xs text-slate-600">{noAlertLabel}</p>
+        <p className="text-xs text-slate-400">{noAlertLabel}</p>
       ) : (
         <ul className="space-y-2">
           {alerts.map((alert, i) => (
             <li key={i} className="flex items-start gap-2 text-xs">
-              <span className="text-rose-400 mt-0.5 shrink-0">⚠</span>
-              <span className="text-slate-300 font-mono leading-relaxed">{alert}</span>
+              <span className="text-rose-500 mt-0.5 shrink-0">⚠</span>
+              <span className="text-slate-700 font-mono leading-relaxed">{alert}</span>
             </li>
           ))}
         </ul>
@@ -660,60 +631,57 @@ function InsightPanel({ portfolioId }: { portfolioId: number | null | undefined 
   }, [portfolioId])
 
   const POSTURE_COLOR: Record<string, string> = {
-    short_gamma_positive_theta: 'text-amber-400',
-    long_gamma_positive_theta:  'text-green-400',
-    short_gamma_negative_theta: 'text-red-400',
-    long_gamma_negative_theta:  'text-sky-400',
+    short_gamma_positive_theta: 'text-amber-600',
+    long_gamma_positive_theta:  'text-emerald-600',
+    short_gamma_negative_theta: 'text-rose-600',
+    long_gamma_negative_theta:  'text-sky-600',
   }
-  const postureColor = data ? (POSTURE_COLOR[data.risk_posture] ?? 'text-slate-300') : 'text-slate-500'
+  const postureColor = data ? (POSTURE_COLOR[data.risk_posture] ?? 'text-slate-600') : 'text-slate-400'
 
   return (
-    <div className="bg-card border border-line rounded-xl p-5 space-y-4">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           {t('insights_title')}
         </span>
-        <span className="text-[10px] px-2 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/30 font-semibold">
+        <span className="text-[10px] px-2 py-0.5 rounded bg-violet-50 text-violet-700 border border-violet-200 font-semibold">
           LLM-Ready
         </span>
       </div>
 
       {loading ? (
         <div className="space-y-2">
-          {[1, 2, 3].map((i) => <div key={i} className="h-3 bg-slate-800 rounded animate-pulse" />)}
+          {[1, 2, 3].map((i) => <div key={i} className="h-3 bg-slate-200 rounded animate-pulse" />)}
         </div>
       ) : !data ? (
-        <p className="text-xs text-slate-600">{t('var_no_data')}</p>
+        <p className="text-xs text-slate-400">{t('var_no_data')}</p>
       ) : (
         <div className="space-y-3">
-          {/* Risk posture + dominant risk */}
           <div className="flex items-center gap-3 flex-wrap">
             <div>
-              <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">{t('insights_posture')}</div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{t('insights_posture')}</div>
               <span className={`text-xs font-bold font-mono ${postureColor}`}>
                 {data.risk_posture.replace(/_/g, ' ')}
               </span>
             </div>
-            <div className="border-l border-slate-700 pl-3">
-              <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-0.5">{t('dominant_risk')}</div>
-              <span className="text-xs font-bold text-slate-200 uppercase">{data.dominant_risk}</span>
+            <div className="border-l border-slate-200 pl-3">
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">{t('dominant_risk')}</div>
+              <span className="text-xs font-bold text-slate-800 uppercase">{data.dominant_risk}</span>
             </div>
           </div>
 
-          {/* Strategy mix */}
           {Object.keys(data.strategy_mix).length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(data.strategy_mix).map(([strat, count]) => (
                 <span key={strat}
-                  className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-semibold border border-slate-700">
+                  className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold border border-slate-200">
                   {count}× {strat}
                 </span>
               ))}
             </div>
           )}
 
-          {/* Natural language hint */}
-          <p className="text-[11px] text-slate-500 leading-relaxed border-t border-line/50 pt-3">
+          <p className="text-[11px] text-slate-500 leading-relaxed border-t border-slate-100 pt-3">
             {data.natural_language_hint}
           </p>
         </div>
@@ -728,51 +696,49 @@ function RiskWeatherPanel({ dashboard }: { dashboard: RiskDashboard }) {
   const varVal = dashboard.var_1d_95 != null ? parseFloat(dashboard.var_1d_95) : null
   const margin = parseFloat(dashboard.maintenance_margin_total)
 
-  // Weather classification based on VaR as % of margin (or absolute if no margin)
   const varRatio = varVal != null && margin > 0 ? varVal / margin : null
   let icon = '☀️'; let weatherKey: 'var_sunny' | 'var_cloudy' | 'var_stormy' | 'var_thunder' = 'var_sunny'
-  let barColor = 'bg-green-500/60'; let textColor = 'text-green-400'
+  let barColor = 'bg-emerald-500/60'; let textColor = 'text-emerald-600'
   if (varRatio != null) {
-    if (varRatio > 0.05)      { icon = '⛈️'; weatherKey = 'var_thunder'; barColor = 'bg-red-500/70';    textColor = 'text-red-400' }
-    else if (varRatio > 0.03) { icon = '🌩️'; weatherKey = 'var_stormy';  barColor = 'bg-orange-500/70'; textColor = 'text-orange-400' }
-    else if (varRatio > 0.01) { icon = '⛅'; weatherKey = 'var_cloudy';  barColor = 'bg-yellow-500/60'; textColor = 'text-yellow-400' }
+    if (varRatio > 0.05)      { icon = '⛈️'; weatherKey = 'var_thunder'; barColor = 'bg-rose-500/70';    textColor = 'text-rose-600' }
+    else if (varRatio > 0.03) { icon = '🌩️'; weatherKey = 'var_stormy';  barColor = 'bg-orange-500/70'; textColor = 'text-orange-600' }
+    else if (varRatio > 0.01) { icon = '⛅'; weatherKey = 'var_cloudy';  barColor = 'bg-yellow-500/60'; textColor = 'text-yellow-600' }
   }
   const barPct = varRatio != null ? Math.min(varRatio / 0.05, 1) * 100 : 0
 
   return (
-    <div className="bg-card border border-line rounded-xl p-5 space-y-4">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 space-y-4">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
           {t('risk_weather')}
         </span>
         <span className="text-2xl" role="img" aria-label="weather">{icon}</span>
       </div>
 
       {varVal == null ? (
-        <p className="text-xs text-slate-600">{t('var_no_data')}</p>
+        <p className="text-xs text-slate-400">{t('var_no_data')}</p>
       ) : (
         <>
           <div className="flex items-end justify-between gap-3">
             <div>
-              <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1">{t('var_1d_95')}</div>
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">{t('var_1d_95')}</div>
               <div className={`text-2xl font-bold tabular-nums ${textColor}`}>
                 −${varVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
               </div>
             </div>
             <div className="text-right">
-              <div className="text-[10px] uppercase tracking-wider text-slate-600 mb-1">vs Margin</div>
-              <div className="text-sm font-semibold text-slate-400 tabular-nums">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 mb-1">vs Margin</div>
+              <div className="text-sm font-semibold text-slate-500 tabular-nums">
                 {varRatio != null ? (varRatio * 100).toFixed(1) + '%' : '—'}
               </div>
             </div>
           </div>
 
-          {/* Risk gauge bar */}
-          <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
+          <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
             <div className={`h-full rounded-full transition-all duration-500 ${barColor}`}
               style={{ width: `${barPct}%` }} />
           </div>
-          <div className="flex justify-between text-[10px] text-slate-600">
+          <div className="flex justify-between text-[10px] text-slate-400">
             <span>Safe</span><span>Moderate</span><span>Critical</span>
           </div>
 
@@ -801,8 +767,8 @@ function StressTestPanel({
     skewHint:   string
   }
 }) {
-  const [priceShiftPct, setPriceShiftPct] = useState(0)   // -20 to +20, displayed as %
-  const [ivShiftPpt,    setIvShiftPpt]    = useState(0)   // -50 to +50 pp
+  const [priceShiftPct, setPriceShiftPct] = useState(0)
+  const [ivShiftPpt,    setIvShiftPpt]    = useState(0)
   const [ivSkewEnabled, setIvSkewEnabled] = useState(false)
 
   const result = useMemo(
@@ -810,15 +776,14 @@ function StressTestPanel({
     [holdings, priceShiftPct, ivShiftPpt, ivSkewEnabled],
   )
 
-  const pnlColor = result.total >= 0 ? 'text-green-400' : 'text-red-400'
+  const pnlColor = result.total >= 0 ? 'text-emerald-600' : 'text-rose-600'
   const pnlSign  = result.total >= 0 ? '+' : ''
 
   return (
-    <div className="bg-card border border-line rounded-xl p-5">
-      {/* Header */}
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
       <div className="flex items-center gap-2 mb-5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-info">{labels.title}</span>
-        <span className="text-[10px] text-slate-600 uppercase tracking-wider">
+        <span className="text-xs font-semibold uppercase tracking-wider text-primary">{labels.title}</span>
+        <span className="text-[10px] text-slate-400 uppercase tracking-wider">
           — {labels.formula}
         </span>
       </div>
@@ -829,9 +794,9 @@ function StressTestPanel({
           {/* Price Shift */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-slate-400 font-medium">{labels.priceShift}</label>
+              <label className="text-xs text-slate-500 font-medium">{labels.priceShift}</label>
               <span className={`text-sm font-bold tabular-nums ${
-                priceShiftPct > 0 ? 'text-green-400' : priceShiftPct < 0 ? 'text-red-400' : 'text-slate-400'
+                priceShiftPct > 0 ? 'text-emerald-600' : priceShiftPct < 0 ? 'text-rose-600' : 'text-slate-400'
               }`}>
                 {priceShiftPct > 0 ? '+' : ''}{priceShiftPct}%
               </span>
@@ -841,9 +806,9 @@ function StressTestPanel({
               value={priceShiftPct}
               onChange={(e) => setPriceShiftPct(Number(e.target.value))}
               className="w-full h-1.5 rounded-full appearance-none cursor-pointer
-                         bg-slate-700 accent-sky-400"
+                         bg-slate-200 accent-sky-500"
             />
-            <div className="flex justify-between text-[10px] text-slate-600 mt-1">
+            <div className="flex justify-between text-[10px] text-slate-400 mt-1">
               <span>-20%</span><span>0</span><span>+20%</span>
             </div>
           </div>
@@ -851,9 +816,9 @@ function StressTestPanel({
           {/* IV Shift */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-slate-400 font-medium">{labels.ivShift}</label>
+              <label className="text-xs text-slate-500 font-medium">{labels.ivShift}</label>
               <span className={`text-sm font-bold tabular-nums ${
-                ivShiftPpt > 0 ? 'text-rose-400' : ivShiftPpt < 0 ? 'text-green-400' : 'text-slate-400'
+                ivShiftPpt > 0 ? 'text-rose-600' : ivShiftPpt < 0 ? 'text-emerald-600' : 'text-slate-400'
               }`}>
                 {ivShiftPpt > 0 ? '+' : ''}{ivShiftPpt}pp
               </span>
@@ -863,34 +828,34 @@ function StressTestPanel({
               value={ivShiftPpt}
               onChange={(e) => setIvShiftPpt(Number(e.target.value))}
               className="w-full h-1.5 rounded-full appearance-none cursor-pointer
-                         bg-slate-700 accent-purple-400"
+                         bg-slate-200 accent-violet-500"
             />
-            <div className="flex justify-between text-[10px] text-slate-600 mt-1">
+            <div className="flex justify-between text-[10px] text-slate-400 mt-1">
               <span>-50pp</span><span>0</span><span>+50pp</span>
             </div>
           </div>
 
           {/* IV Skew toggle */}
-          <div className="flex items-start gap-3 pt-1 border-t border-line/50">
+          <div className="flex items-start gap-3 pt-1 border-t border-slate-100">
             <button
               type="button"
               onClick={() => setIvSkewEnabled((p) => !p)}
               className={`mt-0.5 w-9 h-5 rounded-full relative transition-colors shrink-0
-                ${ivSkewEnabled ? 'bg-violet-500' : 'bg-slate-700'}`}
+                ${ivSkewEnabled ? 'bg-violet-500' : 'bg-slate-200'}`}
             >
               <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform
                 ${ivSkewEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
             </button>
             <div>
-              <div className="text-xs text-slate-300 font-medium">{labels.skewToggle}</div>
+              <div className="text-xs text-slate-700 font-medium">{labels.skewToggle}</div>
               {ivSkewEnabled && priceShiftPct < 0 && (
-                <div className="text-[10px] text-violet-400 mt-0.5">
+                <div className="text-[10px] text-violet-600 mt-0.5">
                   +{(Math.abs(priceShiftPct) * 0.5).toFixed(1)}pp panic vol
                   → effective IV: {(ivShiftPpt + Math.abs(priceShiftPct) * 0.5).toFixed(1)}pp
                 </div>
               )}
               {!ivSkewEnabled && (
-                <div className="text-[10px] text-slate-600">{labels.skewHint}</div>
+                <div className="text-[10px] text-slate-400">{labels.skewHint}</div>
               )}
             </div>
           </div>
@@ -899,7 +864,7 @@ function StressTestPanel({
           {(priceShiftPct !== 0 || ivShiftPpt !== 0) && (
             <button
               onClick={() => { setPriceShiftPct(0); setIvShiftPpt(0) }}
-              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+              className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
             >
               ↺ Reset to baseline
             </button>
@@ -908,8 +873,7 @@ function StressTestPanel({
 
         {/* Result */}
         <div className="flex flex-col justify-between">
-          {/* Total estimated PnL */}
-          <div className="bg-row rounded-xl p-5 text-center mb-4">
+          <div className="bg-slate-50 rounded-xl border border-slate-100 p-5 text-center mb-4">
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
               {labels.estPnl}
             </div>
@@ -918,10 +882,9 @@ function StressTestPanel({
             </div>
           </div>
 
-          {/* Per-symbol breakdown */}
           {result.bySymbol.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-slate-600 font-semibold mb-2">
+              <div className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold mb-2">
                 {labels.bySymbol}
               </div>
               <div className="space-y-1">
@@ -929,14 +892,14 @@ function StressTestPanel({
                   const isPos = pnl >= 0
                   return (
                     <div key={symbol} className="flex items-center justify-between text-xs">
-                      <span className="text-slate-400 font-medium w-16">{symbol}</span>
-                      <div className="flex-1 mx-3 h-1 rounded-full bg-slate-800 overflow-hidden">
+                      <span className="text-slate-500 font-medium w-16">{symbol}</span>
+                      <div className="flex-1 mx-3 h-1 rounded-full bg-slate-100 overflow-hidden">
                         <div
-                          className={`h-full rounded-full ${isPos ? 'bg-green-500/50' : 'bg-red-500/50'}`}
+                          className={`h-full rounded-full ${isPos ? 'bg-emerald-500/50' : 'bg-rose-500/50'}`}
                           style={{ width: `${Math.min(Math.abs(pnl) / Math.abs(result.total || 1) * 100, 100)}%` }}
                         />
                       </div>
-                      <span className={`tabular-nums font-semibold w-24 text-right ${isPos ? 'text-green-400' : 'text-red-400'}`}>
+                      <span className={`tabular-nums font-semibold w-24 text-right ${isPos ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {isPos ? '+' : ''}${Math.abs(pnl).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                       </span>
                     </div>
@@ -976,14 +939,12 @@ export default function RiskPage() {
       .finally(() => setLoading(false))
   }, [selectedPortfolioId, refreshKey])
 
-  // ── Live WS risk updates ──────────────────────────────────────────────────
   useEffect(() => {
     if (!lastRiskUpdate) return
     if (lastRiskUpdate.portfolioId !== selectedPortfolioId) return
     setDashboard((prev) => prev ? { ...prev, ...lastRiskUpdate.data } : prev)
   }, [lastRiskUpdate, selectedPortfolioId])
 
-  // ── Live WS holdings updates (for scenario computation) ───────────────────
   useEffect(() => {
     if (!lastHoldingsUpdate) return
     if (lastHoldingsUpdate.portfolioId !== selectedPortfolioId) return
@@ -994,14 +955,14 @@ export default function RiskPage() {
   const hasBenchmark = dashboard && (dashboard.benchmark_ytd ?? []).length > 0
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
+    <div className="max-w-5xl mx-auto space-y-6 font-sans">
       <div>
-        <h1 className="text-xl font-bold text-white">{t('risk_title')}</h1>
+        <h1 className="text-xl font-bold text-slate-900">{t('risk_title')}</h1>
         <p className="text-sm text-slate-500 mt-0.5">{t('risk_sub')}</p>
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-red-400 text-sm">
+        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-rose-600 text-sm">
           {error}
         </div>
       )}
@@ -1009,12 +970,12 @@ export default function RiskPage() {
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-24 bg-card border border-line rounded-xl animate-pulse" />
+            <div key={i} className="h-24 bg-white border border-slate-200 rounded-xl animate-pulse shadow-sm" />
           ))}
         </div>
       ) : dashboard ? (
         <>
-          {/* ── Alpha Dashboard (NLV vs benchmark line chart) ──── */}
+          {/* ── Alpha Dashboard ─────────────────────────────────── */}
           <AlphaDashboard portfolioId={selectedPortfolioId} />
 
           {/* ── Stat cards ─────────────────────────────────────── */}
@@ -1022,25 +983,25 @@ export default function RiskPage() {
             <StatCard label={t('stat_net_delta')} value={fmtNum(dashboard.total_net_delta)}
               sub="∑ net_contracts × Δ × 100" valueClass={signClass(dashboard.total_net_delta)} />
             <StatCard label={t('stat_gamma')}  value={fmtGreek(dashboard.total_gamma)}
-              sub="convexity risk"     valueClass="text-sky-400" />
+              sub="convexity risk"     valueClass="text-sky-600" />
             <StatCard label={t('stat_theta')}  value={fmtNum(dashboard.total_theta_daily)}
-              sub="time-decay earnings" valueClass="text-amber-400" />
+              sub="time-decay earnings" valueClass="text-amber-600" />
             <StatCard label={t('stat_vega')}   value={fmtGreek(dashboard.total_vega)}
-              sub="per 1% vol move"    valueClass="text-purple-400" />
+              sub="per 1% vol move"    valueClass="text-purple-600" />
             <StatCard label={t('stat_margin')} value={fmtUSD(dashboard.maintenance_margin_total)}
               sub={`${dashboard.positions_count} position${dashboard.positions_count !== 1 ? 's' : ''}`}
-              valueClass="text-slate-200" />
+              valueClass="text-slate-700" />
           </div>
 
           {/* ── Top efficient ──────────────────────────────────── */}
           {dashboard.top_efficient_symbol && (
-            <div className="flex items-center gap-3 bg-amber-500/5 border border-amber-500/20 rounded-xl px-4 py-3">
-              <span className="text-amber-400 text-lg">★</span>
+            <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <span className="text-amber-500 text-lg">★</span>
               <div>
-                <span className="text-xs font-semibold uppercase tracking-wider text-amber-400/70">
+                <span className="text-xs font-semibold uppercase tracking-wider text-amber-700">
                   {t('top_efficient')}
                 </span>
-                <span className="ml-2 text-white font-bold">{dashboard.top_efficient_symbol}</span>
+                <span className="ml-2 text-slate-900 font-bold">{dashboard.top_efficient_symbol}</span>
               </div>
               <span className="text-xs text-slate-500 ml-auto">highest Θ/margin ratio</span>
             </div>
@@ -1055,7 +1016,7 @@ export default function RiskPage() {
           {/* ── P&L Attribution ────────────────────────────────── */}
           <AttributionPanel portfolioId={selectedPortfolioId} />
 
-          {/* ── Scenario Simulation (Stress Test) ─────────────── */}
+          {/* ── Scenario Simulation ────────────────────────────── */}
           <StressTestPanel
             holdings={holdings}
             labels={{
@@ -1077,7 +1038,7 @@ export default function RiskPage() {
             noAlertLabel={t('no_alerts')}
           />
 
-          {/* ── Price Alerts (Phase 7e) ──────────────────────── */}
+          {/* ── Price Alerts ─────────────────────────────────── */}
           <AlertsPanel
             prefillSymbol={prefillAlert?.symbol}
             prefillSpot={prefillAlert?.spotPrice}
@@ -1102,13 +1063,13 @@ export default function RiskPage() {
           )}
 
           {/* ── Last updated ─────────────────────────────────── */}
-          <p className="text-xs text-slate-600 text-right">
+          <p className="text-xs text-slate-400 text-right">
             as of {new Date(dashboard.as_of).toLocaleTimeString()}
           </p>
         </>
       ) : null}
 
-      {/* ── AI Coach sidebar (fixed-position, portfolio-aware) ── */}
+      {/* ── AI Coach sidebar ── */}
       <CoachPanel portfolioId={selectedPortfolioId} />
     </div>
   )

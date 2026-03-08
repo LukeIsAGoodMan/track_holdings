@@ -1,12 +1,6 @@
 /**
  * AlertsPanel — CRUD management for price alerts, embedded in RiskPage.
- *
- * Features:
- * - List all user alerts with status badges
- * - Inline "Add Alert" form (symbol + type + threshold + note)
- * - Toggle enable/disable, delete
- * - Accepts prefillAlert from HoldingsPage nav state
- * - Live highlight when an alert triggers via WS
+ * Light theme
  */
 import { useState, useEffect, useRef } from 'react'
 import { useWebSocket } from '@/context/WebSocketContext'
@@ -17,9 +11,9 @@ import type { Alert, AlertType } from '@/types'
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<string, string> = {
-  ACTIVE:    'bg-green-500/15 text-green-400',
-  TRIGGERED: 'bg-amber-500/15 text-amber-300',
-  DISABLED:  'bg-slate-700/60 text-slate-400',
+  ACTIVE:    'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  TRIGGERED: 'bg-amber-50 text-amber-700 border border-amber-200',
+  DISABLED:  'bg-slate-100 text-slate-400 border border-slate-200',
 }
 
 const TYPE_LABELS_EN: Record<string, string> = {
@@ -43,7 +37,7 @@ interface Props {
 // ── Icons ────────────────────────────────────────────────────────────────────
 
 const IconBell = () => (
-  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+  <svg className="w-4 h-4 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
     <path d="M13.73 21a2 2 0 0 1-3.46 0" />
   </svg>
@@ -96,7 +90,6 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
     if (prefillSymbol) {
       setSymbol(prefillSymbol)
       setShowForm(true)
-      // Suggest a threshold near current spot
       if (prefillSpot) {
         const spot = parseFloat(prefillSpot)
         if (isFinite(spot)) {
@@ -113,7 +106,6 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
   useEffect(() => {
     if (!lastAlertTriggered) return
     setFlashId(lastAlertTriggered.alert_id)
-    // Refresh list to pick up status change
     fetchAlerts().then(setAlerts).catch(() => {})
     const timer = setTimeout(() => setFlashId(null), 3000)
     return () => clearTimeout(timer)
@@ -168,21 +160,21 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
   const typeLabels = lang === 'zh' ? TYPE_LABELS_ZH : TYPE_LABELS_EN
 
   return (
-    <div className="bg-card border border-line rounded-xl overflow-hidden">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-line bg-row/50">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-slate-50">
         <div className="flex items-center gap-2">
           <IconBell />
-          <span className="font-semibold text-sm text-white">{t('alerts_title')}</span>
+          <span className="font-semibold text-sm text-slate-800">{t('alerts_title')}</span>
           {alerts.filter((a) => a.status === 'ACTIVE').length > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 font-bold">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-bold">
               {alerts.filter((a) => a.status === 'ACTIVE').length}
             </span>
           )}
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-info hover:bg-info/10 transition-colors"
+          className="flex items-center gap-1 px-2 py-1 rounded text-xs text-primary hover:bg-primary/5 transition-colors"
         >
           <IconPlus />
           {t('alert_add')}
@@ -191,18 +183,20 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
 
       {/* Inline add form */}
       {showForm && (
-        <div ref={formRef} className="px-5 py-3 border-b border-line bg-app/50 space-y-2">
+        <div ref={formRef} className="px-5 py-3 border-b border-slate-100 bg-slate-50/80 space-y-2">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <input
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               placeholder={t('alert_symbol')}
-              className="bg-row border border-line rounded px-2 py-1.5 text-xs text-white placeholder-slate-600 focus:border-info/50 outline-none"
+              className="bg-white border border-slate-200 rounded px-2 py-1.5 text-xs
+                         text-slate-800 placeholder-slate-400 focus:border-primary/50 outline-none"
             />
             <select
               value={alertType}
               onChange={(e) => setAlertType(e.target.value as AlertType)}
-              className="bg-row border border-line rounded px-2 py-1.5 text-xs text-white focus:border-info/50 outline-none"
+              className="bg-white border border-slate-200 rounded px-2 py-1.5 text-xs
+                         text-slate-800 focus:border-primary/50 outline-none"
             >
               <option value="PRICE_ABOVE">{typeLabels.PRICE_ABOVE}</option>
               <option value="PRICE_BELOW">{typeLabels.PRICE_BELOW}</option>
@@ -215,20 +209,23 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
               placeholder={alertType.startsWith('PCT_') ? t('alert_pct_threshold') : t('alert_threshold')}
               type="number"
               step="any"
-              className="bg-row border border-line rounded px-2 py-1.5 text-xs text-white placeholder-slate-600 focus:border-info/50 outline-none"
+              className="bg-white border border-slate-200 rounded px-2 py-1.5 text-xs
+                         text-slate-800 placeholder-slate-400 focus:border-primary/50 outline-none"
             />
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t('alert_note')}
-              className="bg-row border border-line rounded px-2 py-1.5 text-xs text-white placeholder-slate-600 focus:border-info/50 outline-none"
+              className="bg-white border border-slate-200 rounded px-2 py-1.5 text-xs
+                         text-slate-800 placeholder-slate-400 focus:border-primary/50 outline-none"
             />
           </div>
           <div className="flex justify-end">
             <button
               onClick={handleCreate}
               disabled={submitting || !symbol.trim() || !threshold.trim()}
-              className="px-3 py-1.5 rounded text-xs font-semibold bg-info/15 text-info hover:bg-info/25 disabled:opacity-40 transition-colors"
+              className="px-3 py-1.5 rounded text-xs font-semibold bg-primary/10 text-primary
+                         hover:bg-primary/20 disabled:opacity-40 transition-colors"
             >
               {submitting ? t('alert_creating') : t('alert_create')}
             </button>
@@ -237,11 +234,11 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
       )}
 
       {/* Alert list */}
-      <div className="divide-y divide-line/50">
+      <div className="divide-y divide-slate-100">
         {loading ? (
-          <div className="px-5 py-6 text-center text-xs text-slate-600 animate-pulse">Loading...</div>
+          <div className="px-5 py-6 text-center text-xs text-slate-400 animate-pulse">Loading...</div>
         ) : alerts.length === 0 ? (
-          <div className="px-5 py-6 text-center text-xs text-slate-600">{t('alert_none')}</div>
+          <div className="px-5 py-6 text-center text-xs text-slate-400">{t('alert_none')}</div>
         ) : (
           alerts.map((a) => {
             const isPct = a.alert_type.startsWith('PCT_')
@@ -253,16 +250,16 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
                 key={a.id}
                 className={[
                   'flex items-center justify-between px-5 py-2.5 text-xs transition-colors',
-                  isFlash ? 'bg-amber-500/10 animate-pulse' : 'hover:bg-row/50',
+                  isFlash ? 'bg-amber-50 animate-pulse' : 'hover:bg-slate-50',
                 ].join(' ')}
               >
                 {/* Left: symbol + type + target */}
                 <div className="flex items-center gap-2.5">
-                  <span className="font-bold text-white text-sm">{a.symbol}</span>
+                  <span className="font-bold text-slate-900 text-sm">{a.symbol}</span>
                   <span className="text-slate-500">{typeLabels[a.alert_type]}</span>
-                  <span className="font-semibold text-amber-300 tabular-nums">{target}</span>
+                  <span className="font-semibold text-amber-700 tabular-nums">{target}</span>
                   {a.note && (
-                    <span className="text-slate-600 truncate max-w-[120px]" title={a.note}>
+                    <span className="text-slate-400 truncate max-w-[120px]" title={a.note}>
                       {a.note}
                     </span>
                   )}
@@ -271,7 +268,7 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
                 {/* Right: status + actions */}
                 <div className="flex items-center gap-2">
                   {a.trigger_count > 0 && (
-                    <span className="text-[10px] text-slate-600 tabular-nums">
+                    <span className="text-[10px] text-slate-400 tabular-nums">
                       x{a.trigger_count}
                     </span>
                   )}
@@ -282,7 +279,7 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
                   {a.status !== 'TRIGGERED' && (
                     <button
                       onClick={() => handleToggle(a)}
-                      className="text-slate-600 hover:text-info text-[10px] transition-colors"
+                      className="text-slate-400 hover:text-primary text-[10px] transition-colors"
                     >
                       {a.status === 'ACTIVE' ? t('alert_disable') : t('alert_enable')}
                     </button>
@@ -290,7 +287,7 @@ export default function AlertsPanel({ prefillSymbol, prefillSpot }: Props) {
 
                   <button
                     onClick={() => handleDelete(a.id)}
-                    className="text-slate-600 hover:text-bear transition-colors"
+                    className="text-slate-400 hover:text-rose-600 transition-colors"
                     title={t('alert_delete')}
                   >
                     <IconTrash />

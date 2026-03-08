@@ -4,18 +4,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Base surfaces (dark data area)
-        app:  '#080b12',   // outermost background
-        card: '#10131c',   // card / panel background
-        row:  '#13182a',   // table row hover
+        // ── Page surfaces (light theme) ─────────────────────────────────
+        app:  '#f8fafc',   // page background  (slate-50)
+        card: '#ffffff',   // card/panel        (white)
+        row:  '#f9fafb',   // table row hover   (gray-50)
         // Border
-        line: '#1e2436',   // dividers & borders
-        // Semantic — for financial data
-        bull: '#22c55e',   // positive / long (green-500)
-        bear: '#ef4444',   // negative / short (red-500)
-        info: '#38bdf8',   // neutral accent (sky-400)
-        warn: '#f59e0b',   // caution / expiry near (amber-500)
-        // Chrome (light UI shell — sidebar + topnav)
+        line: '#e2e8f0',   // dividers & borders (slate-200)
+        // ── Semantic — financial data ────────────────────────────────────
+        bull: '#059669',   // positive / long  (emerald-600)
+        bear: '#e11d48',   // negative / short (rose-600)
+        info: '#38bdf8',   // neutral accent   (sky-400, kept for compat)
+        warn: '#d97706',   // caution / expiry (amber-600)
+        // ── Chrome (light UI shell — sidebar + topnav) ───────────────────
         chrome: {
           DEFAULT: '#ffffff',
           border:  '#e8ecf0',
@@ -23,7 +23,7 @@ export default {
           muted:   '#64748b',
           subtle:  '#f5f7fa',
         },
-        // Primary accent
+        // ── Primary accent (indigo blue) ─────────────────────────────────
         primary: {
           DEFAULT: '#3b5bdb',
           soft:    '#eef2ff',
@@ -37,4 +37,3 @@ export default {
   },
   plugins: [],
 }
-

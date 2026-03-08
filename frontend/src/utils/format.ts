@@ -77,22 +77,22 @@ export function fmtCompact(v: string | number | null | undefined): string {
 
 // ── DTE badge helper ──────────────────────────────────────────────────────────
 
-/** Returns a Tailwind colour class based on days to expiry urgency. */
+/** Returns Tailwind colour classes for DTE urgency (light theme). */
 export function dteBadgeClass(dte: number): string {
-  if (dte <= 7)  return 'text-red-400 bg-red-500/10'
-  if (dte <= 30) return 'text-amber-400 bg-amber-500/10'
-  if (dte <= 90) return 'text-sky-400 bg-sky-500/10'
-  return 'text-slate-400 bg-slate-700/50'
+  if (dte <= 7)  return 'text-rose-600 bg-rose-50 border border-rose-200'
+  if (dte <= 30) return 'text-amber-600 bg-amber-50 border border-amber-200'
+  if (dte <= 90) return 'text-sky-600 bg-sky-50 border border-sky-200'
+  return 'text-slate-500 bg-slate-100 border border-slate-200'
 }
 
 // ── Sign-based colour helper ──────────────────────────────────────────────────
 
-/** "text-green-400" for positive, "text-red-400" for negative, "text-slate-400" for zero. */
+/** "text-emerald-600" for positive, "text-rose-600" for negative, "text-slate-400" for zero. */
 export function signClass(v: string | number | null | undefined): string {
   if (v == null || v === '') return 'text-slate-400'
   const n = typeof v === 'string' ? parseFloat(v) : v
   if (isNaN(n) || n === 0) return 'text-slate-400'
-  return n > 0 ? 'text-green-400' : 'text-red-400'
+  return n > 0 ? 'text-emerald-600' : 'text-rose-600'
 }
 
 /** True if the numeric string represents a positive value. */
