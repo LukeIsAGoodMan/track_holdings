@@ -6,7 +6,7 @@ Either both succeed (commit) or both are rolled back (exception propagated as HT
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -195,6 +195,23 @@ async def create_trade(
         (p.net_contracts for p in positions if p.instrument.id == instrument.id),
         0,
     )
+
+    # ── 7. If position is now flat after a closing action, mark opening
+    #       trades as CLOSED immediately (don't wait for lifecycle sweep).
+    if net_after == 0 and body.action in (TradeAction.BUY_CLOSE.value, TradeAction.SELL_CLOSE.value):
+        opening_stmt = select(TradeEvent).where(
+            TradeEvent.instrument_id == instrument.id,
+            TradeEvent.user_id == user.id,
+            TradeEvent.portfolio_id == body.portfolio_id,
+            TradeEvent.status == TradeStatus.ACTIVE,
+        )
+        opening_rows = (await db.execute(opening_stmt)).scalars().all()
+        today = date.today()
+        for t in opening_rows:
+            t.status = TradeStatus.CLOSED
+            t.closed_date = today
+        if opening_rows:
+            await db.commit()
 
     meta = trade.trade_metadata or {}
     return TradeResponse(

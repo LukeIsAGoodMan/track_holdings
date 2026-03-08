@@ -263,25 +263,32 @@ def _do_fetch_1y_closes(ticker: str) -> list[float]:
     return closes
 
 
-def get_perf_cached(ticker: str) -> dict[str, float]:
+async def get_perf_cached(ticker: str) -> dict[str, float]:
     """
     Return multi-period performance from cached 1-year close history.
 
     Periods: 1d (1 close back), 5d (5), 1m (~22 trading days), 3m (~66 trading days).
 
-    If the 1-year history is cold (not yet fetched), schedules a background
-    refresh and returns 0.0 for all periods so the frontend Treemap always has
-    a valid renderable value.  The next REST poll will return actual values once
-    the background task completes (typically within 1–2 seconds).
+    On a cold cache miss, attempts a non-blocking fetch with a 1-second timeout:
+    - Hit within 1s  → returns actual perf values immediately.
+    - Timeout        → background fetch continues; returns 0.0 placeholders.
+    - Warm cache     → returns instantly from _last_known, zero network I/O.
 
     Never returns None — 0.0 is the canonical "no data yet" placeholder.
     """
     key = f"1y:{ticker.upper()}"
     closes = _last_known.get(key)
     if not isinstance(closes, list) or len(closes) < 2:
-        # Schedule one background fetch (deduplicated — concurrent callers share it)
-        _schedule_bg_refresh(key, _do_fetch_1y_closes, ticker.upper())
-        return {"1d": 0.0, "5d": 0.0, "1m": 0.0, "3m": 0.0}
+        # Attempt a quick fetch (non-blocking — runs in thread pool)
+        loop = asyncio.get_running_loop()
+        fut = loop.run_in_executor(_refresh_pool, _do_fetch_1y_closes, ticker.upper())
+        try:
+            closes = await asyncio.wait_for(asyncio.shield(fut), timeout=1.0)
+        except asyncio.TimeoutError:
+            # Fetch still running in background; return zeros now
+            return {"1d": 0.0, "5d": 0.0, "1m": 0.0, "3m": 0.0}
+        if not isinstance(closes, list) or len(closes) < 2:
+            return {"1d": 0.0, "5d": 0.0, "1m": 0.0, "3m": 0.0}
 
     def _pct(n: int) -> float:
         if len(closes) <= n:

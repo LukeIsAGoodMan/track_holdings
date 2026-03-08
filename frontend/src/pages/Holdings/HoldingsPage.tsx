@@ -2,7 +2,7 @@
  * Holdings Page — Tabbed layout (Overview | Details)
  *
  * Overview Tab:
- *   MarketTicker · Hero Banner (4 stats) · History Chart
+ *   Hero Banner (4 stats) · History Chart
  *   Treemap (period filter) · Sector Pie Chart · AI Insights
  *
  * Details Tab:
@@ -33,7 +33,6 @@ import type {
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
 import AiInsightPanel        from '@/components/AiInsightPanel'
-import MarketTicker          from '@/components/MarketTicker'
 
 // ── Period ────────────────────────────────────────────────────────────────────
 type Period = '1d' | '5d' | '1m' | '3m'
@@ -1119,8 +1118,8 @@ export default function HoldingsPage() {
       .map((g) => ({
         name:     g.symbol,
         size:     safeFloat(g.delta_adjusted_exposure) ?? 0,
-        perf:     getEffectivePerf(g, period),
-        rawPerf:  getRawPerf(g, period),
+        perf:     getEffectivePerf(g, period) ?? 0,
+        rawPerf:  getRawPerf(g, period) ?? 0,
         exposure: safeFloat(g.delta_adjusted_exposure) ?? 0,
         isShort:  g.is_short === true,
       }))
@@ -1180,9 +1179,6 @@ export default function HoldingsPage() {
           </div>
         ) : (
           <div className="space-y-5">
-
-            {/* MarketTicker — SPX/VIX macro bar + REST-polled SPY/QQQ/DIA/VIX chips */}
-            <MarketTicker />
 
             {/* Hero Banner — 4 stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
