@@ -253,6 +253,30 @@ def get_changepct_cached(ticker: str) -> Decimal | None:
     return _last_known.get(f"changepct:{ticker.upper()}")
 
 
+def get_perf_cached(ticker: str) -> dict[str, float | None]:
+    """
+    Return multi-period performance from cached 1-year close history — zero network I/O.
+
+    Periods: 1d (1 close back), 5d (5), 1m (~22 trading days), 3m (~66 trading days).
+    Returns None for each period when the cache doesn't have enough data.
+    Used by holdings router to enrich HoldingGroup without triggering API calls.
+    """
+    key = f"1y:{ticker.upper()}"
+    closes = _last_known.get(key)
+    if not isinstance(closes, list) or len(closes) < 2:
+        return {"1d": None, "5d": None, "1m": None, "3m": None}
+
+    def _pct(n: int) -> float | None:
+        if len(closes) <= n:
+            return None
+        base = closes[-1 - n]
+        if not base:
+            return None
+        return round((closes[-1] / base - 1) * 100, 2)
+
+    return {"1d": _pct(1), "5d": _pct(5), "1m": _pct(22), "3m": _pct(66)}
+
+
 async def get_hist_vol(ticker: str) -> Decimal:
     ticker = ticker.upper()
     hvol_key = f"hvol:{ticker}"

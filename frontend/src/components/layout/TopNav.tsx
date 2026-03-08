@@ -22,10 +22,11 @@ const BrandIcon = () => (
 
 // ── Navigation items ──────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { to: '/',             end: true,  en: 'Holdings',     zh: '持仓总览' },
-  { to: '/trade',        end: false, en: 'Trade Entry',  zh: '交易录入' },
-  { to: '/risk',         end: false, en: 'Risk',         zh: '风险看板' },
-  { to: '/opportunities',end: false, en: 'Opportunities',zh: '机会扫描' },
+  { to: '/',              end: true,  en: 'Overview',      zh: '总览' },
+  { to: '/holdings',      end: false, en: 'Holdings',      zh: '持仓明细' },
+  { to: '/trade',         end: false, en: 'Trade Entry',   zh: '交易录入' },
+  { to: '/risk',          end: false, en: 'Risk',          zh: '风险看板' },
+  { to: '/opportunities', end: false, en: 'Opportunities', zh: '机会扫描' },
 ]
 
 // ── TopNav ────────────────────────────────────────────────────────────────────

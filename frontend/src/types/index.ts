@@ -57,6 +57,21 @@ export interface HoldingGroup {
   capital_efficiency:       string | null    // DecStr fraction; multiply × 100 for %
   strategy_type:            string           // SINGLE | VERTICAL | STRADDLE | STRANGLE | IRON_CONDOR | CALENDAR | CUSTOM
   strategy_label:           string           // Human-readable, e.g. "Bull Put Spread"
+
+  // Phase 14 enrichment — derived from cached data, zero extra API calls
+  delta_adjusted_exposure:  string | null    // DecStr — absolute dollar notional (for Treemap area)
+  perf_1d:  string | null   // raw underlying % change (1 trading day)
+  perf_5d:  string | null   // raw underlying % change (~1 week)
+  perf_1m:  string | null   // raw underlying % change (~22 trading days)
+  perf_3m:  string | null   // raw underlying % change (~66 trading days)
+
+  // Phase 14b — directional risk analytics
+  is_short:              boolean          // total net delta < 0 (short/bearish position)
+  signed_delta_notional: string | null    // DecStr — signed net delta × spot (for Hero sum)
+  effective_perf_1d:  string | null   // perf × direction (for Treemap color)
+  effective_perf_5d:  string | null
+  effective_perf_1m:  string | null
+  effective_perf_3m:  string | null
 }
 
 // ── Trades ───────────────────────────────────────────────────────────────────

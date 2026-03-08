@@ -63,4 +63,7 @@ async def get_holdings(
     spot_map: dict[str, Decimal | None] = dict(zip(symbols, spot_results))
     vol_map:  dict[str, Decimal]        = dict(zip(symbols, vol_results))
 
-    return compute_holding_groups(positions, spot_map, vol_map)
+    # Build perf_map from in-memory 1y cache — zero extra API calls
+    perf_map = {s: yfinance_client.get_perf_cached(s) for s in symbols}
+
+    return compute_holding_groups(positions, spot_map, vol_map, perf_map=perf_map)

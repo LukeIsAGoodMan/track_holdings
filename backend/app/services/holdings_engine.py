@@ -30,6 +30,7 @@ def compute_holding_groups(
     positions: list[PositionRow],
     spot_map: dict[str, Decimal | None],
     vol_map: dict[str, Decimal],
+    perf_map: dict[str, dict[str, float | None]] | None = None,
 ) -> list[HoldingGroup]:
     """
     Build HoldingGroup list from positions + market data.
@@ -64,6 +65,7 @@ def compute_holding_groups(
         total_delta_exp = Decimal("0")
         total_margin = Decimal("0")
         total_theta_daily = Decimal("0")
+        delta_adj_exp = Decimal("0")   # dollar notional (always positive)
 
         for pos in by_symbol[sym]:
             inst: Instrument = pos.instrument
@@ -76,6 +78,8 @@ def compute_holding_groups(
                 market_val: Decimal | None = None
                 if spot:
                     market_val = spot * delta_exp
+                    # dollar notional: |shares| × spot
+                    delta_adj_exp += spot * abs(delta_exp)
 
                 stock_legs.append(
                     StockLeg(
@@ -108,6 +112,8 @@ def compute_holding_groups(
                 )
                 delta_exp = net_delta_exposure(pos.net_contracts, g)
                 total_delta_exp += delta_exp
+                # dollar notional for options: spot × |contracts × 100 × |delta||
+                delta_adj_exp += spot * abs(Decimal(str(pos.net_contracts)) * Decimal("100") * abs(g.delta))
 
                 net_contracts_d = Decimal(str(pos.net_contracts))
                 theta_exposure = g.theta * net_contracts_d * Decimal("100")
@@ -158,6 +164,28 @@ def compute_holding_groups(
             ]
             strategy_tag = identify_strategy(leg_snapshots)
 
+            perf = (perf_map or {}).get(sym, {})
+
+            # ── Directional analytics ─────────────────────────────────
+            # is_short: net delta direction is bearish (negative net delta)
+            is_short = total_delta_exp < Decimal("0")
+            dir_sign: int = -1 if is_short else 1
+
+            # Signed dollar-notional: total_delta (in delta units) × spot_price.
+            # Summing across all groups gives portfolio-level net market bias.
+            signed_notional: Decimal | None = None
+            if spot:
+                signed_notional = total_delta_exp * spot
+
+            def _perf_str(val: object) -> str | None:
+                return str(val) if val is not None else None
+
+            def _eff(raw: object) -> str | None:
+                """Apply directional sign: long put gains when underlying falls."""
+                if raw is None:
+                    return None
+                return str(round(float(raw) * dir_sign, 4))
+
             holding_groups.append(
                 HoldingGroup(
                     symbol=sym,
@@ -170,6 +198,17 @@ def compute_holding_groups(
                     capital_efficiency=efficiency,
                     strategy_type=strategy_tag.strategy_type,
                     strategy_label=strategy_tag.label,
+                    delta_adjusted_exposure=delta_adj_exp if delta_adj_exp > 0 else None,
+                    perf_1d=_perf_str(perf.get("1d")),
+                    perf_5d=_perf_str(perf.get("5d")),
+                    perf_1m=_perf_str(perf.get("1m")),
+                    perf_3m=_perf_str(perf.get("3m")),
+                    is_short=is_short,
+                    signed_delta_notional=signed_notional,
+                    effective_perf_1d=_eff(perf.get("1d")),
+                    effective_perf_5d=_eff(perf.get("5d")),
+                    effective_perf_1m=_eff(perf.get("1m")),
+                    effective_perf_3m=_eff(perf.get("3m")),
                 )
             )
 

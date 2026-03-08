@@ -64,3 +64,32 @@ class HoldingGroup(BaseModel):
     # strategy_label is a human-readable sub-label, e.g. "Bull Put Spread".
     strategy_type:            str = "SINGLE"
     strategy_label:           str = "Single"
+
+    # ── Phase 14 enrichment (derived from cached data — zero extra API calls) ──
+    # Dollar-notional exposure magnitude: stock = |shares| × spot;
+    # option = spot × |contracts × 100 × |delta||
+    delta_adjusted_exposure:  DecStr | None = None
+
+    # Multi-period % performance (raw underlying price change), from cached 1y closes.
+    # None when 1y history hasn't been fetched for this symbol yet.
+    perf_1d:  str | None = None   # 1 trading day
+    perf_5d:  str | None = None   # 5 trading days (~1 week)
+    perf_1m:  str | None = None   # ~22 trading days
+    perf_3m:  str | None = None   # ~66 trading days
+
+    # ── Phase 14b — directional risk analytics ────────────────────────────────
+    # is_short: True when total net delta < 0 (short stock, long put, short call…)
+    # Treemap label shows "(S)" for these positions.
+    is_short:             bool = False
+
+    # Signed dollar-notional: total_delta_exposure × spot_price.
+    # Sum across all groups gives portfolio-level net delta exposure (Hero Banner).
+    signed_delta_notional: DecStr | None = None
+
+    # Effective perf = raw_underlying_perf × sign(net_delta).
+    # This is what the position actually GAINS when the underlying moves.
+    # Example: long put (delta<0) gains when underlying falls → effective_perf is positive.
+    effective_perf_1d:  str | None = None
+    effective_perf_5d:  str | None = None
+    effective_perf_1m:  str | None = None
+    effective_perf_3m:  str | None = None
