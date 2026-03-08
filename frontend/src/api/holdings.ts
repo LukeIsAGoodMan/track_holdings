@@ -21,6 +21,7 @@ import type {
   AlertCreate,
   AlertStatus,
   PortfolioHistoryResponse,
+  MarketQuote,
 } from '@/types'
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
@@ -190,6 +191,14 @@ export const fetchPortfolioHistory = (
         days,
       },
     })
+    .then((r) => r.data)
+
+// ── Market Quotes (SPY / QQQ / DIA / VIX) ────────────────────────────────────
+
+/** GET /api/market/quotes?symbols=SPY,QQQ,DIA,VIX */
+export const fetchMarketQuotes = (symbols: string[]): Promise<MarketQuote[]> =>
+  api
+    .get<MarketQuote[]>('/market/quotes', { params: { symbols: symbols.join(',') } })
     .then((r) => r.data)
 
 // ── Alpha Dashboard — account NLV vs benchmark history ───────────────────────

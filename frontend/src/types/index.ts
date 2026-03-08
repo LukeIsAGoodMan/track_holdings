@@ -396,6 +396,13 @@ export interface CashEntry {
 }
 
 export interface CashSummary {
-  balance: string       // DecStr
-  entries: CashEntry[]
+  balance:      string       // DecStr
+  realized_pnl: string       // DecStr — sum of trade-linked cash entries
+  entries:      CashEntry[]
+}
+
+export interface MarketQuote {
+  symbol:     string
+  price:      string | null
+  change_pct: number | null
 }

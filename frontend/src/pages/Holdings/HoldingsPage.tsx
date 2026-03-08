@@ -1103,7 +1103,9 @@ export default function HoldingsPage() {
       }
     }
 
-    return { totalAsset, portfolioValue, cashBal, dayPnl, dayPct }
+    const realizedPnl = safeFloat(cash?.realized_pnl) ?? 0
+
+    return { totalAsset, portfolioValue, cashBal, dayPnl, dayPct, realizedPnl }
   }, [holdings, cash, lastPnlSnapshot, lastSpotChangePct, selectedPortfolioId])
 
   // ── Treemap data ──────────────────────────────────────────────────────────
@@ -1179,8 +1181,8 @@ export default function HoldingsPage() {
         ) : (
           <div className="space-y-5">
 
-            {/* MarketTicker — falls back to holdings REST prices when WS is cold */}
-            <MarketTicker fallbackHoldings={holdings} />
+            {/* MarketTicker — SPX/VIX macro bar + REST-polled SPY/QQQ/DIA/VIX chips */}
+            <MarketTicker />
 
             {/* Hero Banner — 4 stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1214,10 +1216,18 @@ export default function HoldingsPage() {
                 valueClass={heroMetrics.portfolioValue >= 0 ? 'text-slate-900' : 'text-rose-600'}
               />
               <StatCard
-                label={isEn ? 'Buying Power' : '可用资金'}
-                value={fmtUSD(String(Math.round(heroMetrics.cashBal)))}
-                sub={isEn ? 'Available cash' : '账户现金'}
-                valueClass={heroMetrics.cashBal >= 0 ? 'text-slate-900' : 'text-rose-600'}
+                label={isEn ? 'Total Realized P&L' : '已实现盈亏'}
+                value={
+                  heroMetrics.realizedPnl !== 0
+                    ? (heroMetrics.realizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.realizedPnl)))
+                    : '—'
+                }
+                sub={isEn ? 'From closed trades' : '已平仓收益'}
+                valueClass={
+                  heroMetrics.realizedPnl === 0 ? 'text-slate-900'
+                  : heroMetrics.realizedPnl > 0  ? 'text-emerald-600'
+                  : 'text-rose-600'
+                }
               />
             </div>
 
@@ -1303,8 +1313,8 @@ export default function HoldingsPage() {
               <StrategyPieChart holdings={holdings} isEn={isEn} />
             </div>
 
-            {/* AI Insights */}
-            <AiInsightPanel />
+            {/* AI Insights — holdings passed for fingerprint-based localStorage caching */}
+            <AiInsightPanel holdings={holdings} />
           </div>
         )
       )}

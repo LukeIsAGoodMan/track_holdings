@@ -33,8 +33,9 @@ class CashEntry(BaseModel):
 
 
 class CashSummary(BaseModel):
-    balance: DecStr
-    entries: list[CashEntry]
+    balance:      DecStr
+    realized_pnl: DecStr
+    entries:      list[CashEntry]
 
 
 @router.get("/cash", response_model=CashSummary)
@@ -51,6 +52,16 @@ async def get_cash(
     raw = await db.execute(stmt_sum)
     balance = Decimal(str(raw.scalar() or 0))
 
+    # Realized PnL — sum of trade-linked ledger entries (premiums, stock proceeds)
+    stmt_rpnl = select(func.sum(CashLedger.amount)).where(
+        CashLedger.user_id == user.id,
+        CashLedger.trade_event_id.isnot(None),
+    )
+    if portfolio_id is not None:
+        stmt_rpnl = stmt_rpnl.where(CashLedger.portfolio_id == portfolio_id)
+    raw_rpnl = await db.execute(stmt_rpnl)
+    realized_pnl = Decimal(str(raw_rpnl.scalar() or 0))
+
     # Ledger — always scoped to user
     stmt_entries = (
         select(CashLedger)
@@ -66,6 +77,7 @@ async def get_cash(
 
     return CashSummary(
         balance=balance,
+        realized_pnl=realized_pnl,
         entries=[
             CashEntry(
                 id=e.id,

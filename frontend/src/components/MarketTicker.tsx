@@ -1,16 +1,14 @@
 /**
  * MarketTicker — Horizontal market data bar (light theme)
  *
- * Left (pinned): SPX | VIX | Next macro event
- * Right (scroll): real-time portfolio symbol prices from WS spot_update
- *
- * Scrolling uses a CSS marquee animation that duplicates items for
- * a seamless infinite loop. Only activates when WS delivers spot data.
+ * Left (pinned): SPX | VIX | Next macro event  — from WS macro_ticker
+ * Right (static): SPY | QQQ | DIA | VIX         — REST polled every 60s
  */
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import { useLanguage } from '@/context/LanguageContext'
 import { useWebSocket } from '@/context/WebSocketContext'
-import type { HoldingGroup } from '@/types'
+import { fetchMarketQuotes } from '@/api/holdings'
+import type { MarketQuote } from '@/types'
 
 const VIX_TERM_COLORS: Record<string, string> = {
   low:      'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -26,68 +24,55 @@ const VIX_TERM_LABELS: Record<string, { en: string; zh: string }> = {
   crisis:   { en: 'Crisis',   zh: '\u5371\u673a' },
 }
 
-// Symbols shown in the pinned macro section — excluded from scrolling ticker
-const MACRO_SYMBOLS = new Set(['SPY', 'QQQ', 'VIX', 'SPX'])
+const MARKET_SYMBOLS = ['SPY', 'QQQ', 'DIA', 'VIX']
+const POLL_INTERVAL_MS = 60_000
 
-interface TickerItem {
-  symbol: string
-  price: string
-  changePct: string | null
-}
+function MarketChip({ q }: { q: MarketQuote }) {
+  const price = q.price != null ? parseFloat(q.price) : null
+  const pct   = q.change_pct
+  const up    = pct == null || pct >= 0
 
-function TickerChip({ item }: { item: TickerItem }) {
-  const pct = item.changePct != null ? parseFloat(item.changePct) : null
-  const up = pct == null || pct >= 0
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap select-none">
-      <span className="text-xs font-bold text-slate-700">{item.symbol}</span>
-      <span className="text-xs tabular-nums text-slate-500">${parseFloat(item.price).toFixed(2)}</span>
+    <div className="flex items-center gap-1.5 whitespace-nowrap">
+      <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{q.symbol}</span>
+      {price != null ? (
+        <span className="text-sm font-bold tabular-nums text-slate-900">
+          {price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      ) : (
+        <span className="h-4 w-14 bg-slate-100 rounded animate-pulse inline-block" />
+      )}
       {pct != null && (
-        <span className={`text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded border
+        <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded border
           ${up
             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
             : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
           {up ? '+' : ''}{pct.toFixed(2)}%
         </span>
       )}
-      <span className="text-slate-200 mx-2">|</span>
-    </span>
+    </div>
   )
 }
 
-export default function MarketTicker({ fallbackHoldings = [] }: { fallbackHoldings?: HoldingGroup[] }) {
+export default function MarketTicker() {
   const { lang } = useLanguage()
-  const { lastMacroTicker, lastSpotUpdate, lastSpotChangePct } = useWebSocket()
+  const { lastMacroTicker } = useWebSocket()
 
-  // Build scrolling ticker items:
-  // 1st priority: WS live spot_update (real-time prices + % change)
-  // 2nd priority: holdings snapshot from REST (spot_price without change %)
-  // → guarantees the ticker is always populated even on WS cold-start
-  const tickerItems = useMemo<TickerItem[]>(() => {
-    const hasWs = lastSpotUpdate && Object.keys(lastSpotUpdate).length > 0
-    if (hasWs) {
-      return Object.entries(lastSpotUpdate!)
-        .filter(([sym]) => !MACRO_SYMBOLS.has(sym))
-        .map(([sym, price]) => ({
-          symbol: sym,
-          price,
-          changePct: lastSpotChangePct?.[sym] ?? null,
-        }))
-        .sort((a, b) => a.symbol.localeCompare(b.symbol))
+  const [quotes, setQuotes] = useState<MarketQuote[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const fetch = () => {
+      fetchMarketQuotes(MARKET_SYMBOLS)
+        .then((data) => { if (!cancelled) setQuotes(data) })
+        .catch(() => {})
     }
-    // Fallback: use holdings REST snapshot prices (no change %, refreshes every REST poll)
-    if (fallbackHoldings.length > 0) {
-      return fallbackHoldings
-        .filter((g) => g.spot_price != null)
-        .map((g) => ({
-          symbol: g.symbol,
-          price:  g.spot_price!,
-          changePct: null,
-        }))
-        .sort((a, b) => a.symbol.localeCompare(b.symbol))
-    }
-    return []
-  }, [lastSpotUpdate, lastSpotChangePct, fallbackHoldings])
+
+    fetch()
+    const id = setInterval(fetch, POLL_INTERVAL_MS)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [])
 
   if (!lastMacroTicker) {
     return (
@@ -110,12 +95,11 @@ export default function MarketTicker({ fallbackHoldings = [] }: { fallbackHoldin
   const vixLabel = lang === 'zh' ? '\u6050\u6148\u6307\u6570' : 'VIX'
   const dayLabel = lang === 'zh' ? '\u65e5' : 'd'
 
-  const hasScroll = tickerItems.length > 0
-
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm font-sans overflow-hidden">
-      <div className="flex items-center h-11">
-        {/* ── Pinned macro data (left) ────────────────────────────────── */}
+      <div className="flex items-center h-11 gap-0">
+
+        {/* ── Pinned macro data (left) ──────────────────────────────────────── */}
         <div className="flex items-center gap-4 px-4 shrink-0 border-r border-slate-100 h-full">
           {/* SPX */}
           <div className="flex items-center gap-2 whitespace-nowrap">
@@ -156,41 +140,20 @@ export default function MarketTicker({ fallbackHoldings = [] }: { fallbackHoldin
           )}
         </div>
 
-        {/* ── Scrolling portfolio ticker (right) ──────────────────────── */}
-        {hasScroll ? (
-          <div className="flex-1 overflow-hidden h-full flex items-center relative">
-            {/* Fade masks */}
-            <div className="absolute left-0 top-0 bottom-0 w-6 z-10 bg-gradient-to-r from-white to-transparent pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-6 z-10 bg-gradient-to-l from-white to-transparent pointer-events-none" />
+        {/* ── Static market chips (right, REST-polled) ──────────────────────── */}
+        <div className="flex items-center gap-5 px-5 flex-1 overflow-x-auto">
+          {quotes.length === 0
+            ? MARKET_SYMBOLS.map((sym) => (
+                <div key={sym} className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase">{sym}</span>
+                  <span className="h-4 w-14 bg-slate-100 rounded animate-pulse inline-block" />
+                </div>
+              ))
+            : quotes.map((q) => <MarketChip key={q.symbol} q={q} />)
+          }
+        </div>
 
-            {/* Marquee track — duplicate items for seamless loop */}
-            <div
-              className="flex items-center"
-              style={{
-                animation: `ticker-scroll ${Math.max(15, tickerItems.length * 4)}s linear infinite`,
-                willChange: 'transform',
-              }}
-            >
-              {/* Original + duplicate for seamless wrap */}
-              {[...tickerItems, ...tickerItems].map((item, i) => (
-                <TickerChip key={`${item.symbol}-${i}`} item={item} />
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="flex-1 px-4 text-[11px] text-slate-300 italic">
-            {lang === 'zh' ? '等待实时行情...' : 'Waiting for live prices…'}
-          </div>
-        )}
       </div>
-
-      {/* CSS keyframes injected inline */}
-      <style>{`
-        @keyframes ticker-scroll {
-          from { transform: translateX(0); }
-          to   { transform: translateX(-50%); }
-        }
-      `}</style>
     </div>
   )
 }

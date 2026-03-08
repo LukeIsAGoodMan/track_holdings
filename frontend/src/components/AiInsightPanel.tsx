@@ -2,12 +2,51 @@
  * AiInsightPanel — Real-time AI risk diagnostics card (light theme)
  * Phase 8b + 10a Voice
  */
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useWebSocket } from '@/context/WebSocketContext'
 import { usePortfolio } from '@/context/PortfolioContext'
 import { useLanguage } from '@/context/LanguageContext'
-import type { AiDiagnostic, AiInsightData } from '@/types'
+import type { AiDiagnostic, AiInsightData, HoldingGroup } from '@/types'
 import type { TKey } from '@/i18n/translations'
+
+// ── Fingerprint helpers ────────────────────────────────────────────────────────
+function holdingsFingerprint(portfolioId: number | null | undefined, holdings: HoldingGroup[]): string {
+  const pid = portfolioId ?? 0
+  const parts = holdings
+    .map((g) => {
+      const opts = g.option_legs.map((l) => `${l.strike}-${l.expiry}-${l.net_contracts}`).join('|')
+      const stks = g.stock_legs.map((l) => `${l.net_shares}`).join('|')
+      return `${g.symbol}:${opts}:${stks}`
+    })
+    .sort()
+    .join(';')
+  // Simple deterministic hash (djb2-style)
+  let h = 5381
+  const str = `${pid}::${parts}`
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) ^ str.charCodeAt(i)
+    h = h >>> 0  // keep 32-bit unsigned
+  }
+  return `ai_insight_${h}`
+}
+
+function loadCachedInsight(key: string): AiInsightData | null {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return null
+    return JSON.parse(raw) as AiInsightData
+  } catch {
+    return null
+  }
+}
+
+function saveCachedInsight(key: string, data: AiInsightData) {
+  try {
+    localStorage.setItem(key, JSON.stringify(data))
+  } catch {
+    // quota exceeded or private browsing — silently ignore
+  }
+}
 
 // ── Severity styling (light theme) ───────────────────────────────────────────
 
@@ -112,18 +151,36 @@ function DiagnosticRow({ item, t }: { item: AiDiagnostic; t: (key: TKey) => stri
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function AiInsightPanel() {
+export default function AiInsightPanel({ holdings = [] }: { holdings?: HoldingGroup[] }) {
   const { t } = useLanguage()
   const { lastAiInsight } = useWebSocket()
   const { selectedPortfolioId } = usePortfolio()
 
-  const [insight, setInsight] = useState<AiInsightData | null>(null)
+  // Fingerprint key — stable as long as portfolio composition is the same.
+  // Changing tab or language won't recompute (same holdings array reference).
+  const cacheKey = useMemo(
+    () => holdingsFingerprint(selectedPortfolioId, holdings),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedPortfolioId, holdings.length, holdings.map((g) => g.symbol).join(',')],
+  )
+
+  // Hydrate from localStorage on mount or when portfolio/holdings change
+  const [insight, setInsight] = useState<AiInsightData | null>(
+    () => loadCachedInsight(holdingsFingerprint(selectedPortfolioId, holdings))
+  )
   const [pulsing, setPulsing] = useState(false)
   const pulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [muted,   setMuted]   = useState(() => localStorage.getItem('tts_muted') !== 'false')
   const [playing, setPlaying] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // When portfolio changes, load cached insight for the new portfolio immediately
+  useEffect(() => {
+    const cached = loadCachedInsight(cacheKey)
+    setInsight(cached)
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setPlaying(false) }
+  }, [cacheKey])
 
   const toggleMute = useCallback(() => {
     setMuted((prev) => {
@@ -148,17 +205,20 @@ export default function AiInsightPanel() {
     audio.play().catch(() => setPlaying(false))
   }, [])
 
+  // On new WS insight: save to localStorage cache + display
   useEffect(() => {
     if (!lastAiInsight) return
     if (lastAiInsight.portfolioId !== selectedPortfolioId) return
-    setInsight(lastAiInsight.data)
-    const hasCritical = lastAiInsight.data.diagnostics.some((d) => d.severity === 'critical')
+    const data = lastAiInsight.data
+    saveCachedInsight(cacheKey, data)
+    setInsight(data)
+    const hasCritical = data.diagnostics.some((d) => d.severity === 'critical')
     if (hasCritical) {
       setPulsing(true)
       if (pulseTimer.current) clearTimeout(pulseTimer.current)
       pulseTimer.current = setTimeout(() => setPulsing(false), 3000)
     }
-  }, [lastAiInsight, selectedPortfolioId])
+  }, [lastAiInsight, selectedPortfolioId, cacheKey])
 
   useEffect(() => {
     if (!lastAiInsight) return
@@ -168,11 +228,6 @@ export default function AiInsightPanel() {
     if (!data.audio_url) return
     if (data.diagnostics.some((d) => d.severity === 'critical')) playAudio(data.audio_url)
   }, [lastAiInsight, selectedPortfolioId, muted, playAudio])
-
-  useEffect(() => {
-    setInsight(null)
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setPlaying(false) }
-  }, [selectedPortfolioId])
 
   useEffect(() => {
     return () => {
