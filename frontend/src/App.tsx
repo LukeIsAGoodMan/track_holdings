@@ -7,10 +7,9 @@ import { WebSocketProvider } from '@/context/WebSocketContext'
 import ProtectedRoute from '@/components/common/ProtectedRoute'
 import AlertToastListener from '@/components/AlertToastListener'
 import Layout from '@/components/layout/Layout'
-import LoginPage      from '@/pages/Login/LoginPage'
-import OverviewPage   from '@/pages/Overview/OverviewPage'
-import DetailsPage    from '@/pages/Holdings/DetailsPage'
-import TradeEntryPage from '@/pages/TradeEntry/TradeEntryPage'
+import LoginPage       from '@/pages/Login/LoginPage'
+import HoldingsPage    from '@/pages/Holdings/HoldingsPage'
+import TradeEntryPage  from '@/pages/TradeEntry/TradeEntryPage'
 import RiskPage        from '@/pages/Risk/RiskPage'
 import ScannerPage     from '@/pages/Scanner/ScannerPage'
 
@@ -40,8 +39,7 @@ export default function App() {
                   </WebSocketProvider>
                 </PortfolioProvider>
               }>
-                <Route index              element={<OverviewPage />}   />
-                <Route path="holdings"    element={<DetailsPage />}    />
+                <Route index              element={<HoldingsPage />}   />
                 <Route path="trade"       element={<TradeEntryPage />} />
                 <Route path="risk"        element={<RiskPage />}       />
                 <Route path="opportunities" element={<ScannerPage />}  />

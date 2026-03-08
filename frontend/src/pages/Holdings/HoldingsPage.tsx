@@ -1,29 +1,303 @@
 /**
- * Holdings Page — light professional theme
+ * Holdings Page — Tabbed layout (Overview | Details)
+ *
+ * Overview Tab:
+ *   MarketTicker · Hero Banner (4 stats) · History Chart
+ *   Treemap (period filter) · Sector Pie Chart · AI Insights
+ *
+ * Details Tab:
+ *   Positions Table · Transaction History
  */
 
 // Module-level singleton: lifecycle sweep fires at most once per browser session.
-// The backend also enforces a 5-min per-user debounce, but this client-side guard
-// prevents the extra network round-trip on every portfolio switch.
 let _lifecycleCalledThisSession = false
 
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { usePortfolio } from '@/context/PortfolioContext'
-import { useLanguage }  from '@/context/LanguageContext'
-import { useWebSocket } from '@/context/WebSocketContext'
-import { fetchHoldings, fetchCash, fetchSettledTrades, triggerLifecycle } from '@/api/holdings'
+import { useState, useEffect, useMemo } from 'react'
+import { useNavigate }  from 'react-router-dom'
+import {
+  Treemap, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell,
+} from 'recharts'
+import { usePortfolio }  from '@/context/PortfolioContext'
+import { useLanguage }   from '@/context/LanguageContext'
+import { useWebSocket }  from '@/context/WebSocketContext'
+import {
+  fetchHoldings, fetchCash, fetchSettledTrades,
+  triggerLifecycle, fetchRiskDashboard,
+} from '@/api/holdings'
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
   TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
+  RiskDashboard,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
-import AiInsightPanel from '@/components/AiInsightPanel'
-import MarketTicker from '@/components/MarketTicker'
+import AiInsightPanel        from '@/components/AiInsightPanel'
+import MarketTicker          from '@/components/MarketTicker'
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
+// ── Period ────────────────────────────────────────────────────────────────────
+type Period = '1d' | '5d' | '1m' | '3m'
+const PERIOD_LABELS: Record<Period, { en: string; zh: string }> = {
+  '1d': { en: '1D', zh: '1日' },
+  '5d': { en: '5D', zh: '5日' },
+  '1m': { en: '1M', zh: '1月' },
+  '3m': { en: '3M', zh: '3月' },
+}
 
+// ── Safe helpers ──────────────────────────────────────────────────────────────
+function safeFloat(v: string | number | null | undefined): number | null {
+  if (v == null) return null
+  const n = typeof v === 'number' ? v : parseFloat(v)
+  return isFinite(n) ? n : null
+}
+
+// ── Treemap color helpers ─────────────────────────────────────────────────────
+function perfColor(pct: number | null | undefined): string {
+  if (pct == null || !isFinite(pct)) return '#e2e8f0'
+  if (pct >=  4) return '#059669'
+  if (pct >=  2) return '#34d399'
+  if (pct >=  0) return '#a7f3d0'
+  if (pct >= -2) return '#fecaca'
+  if (pct >= -4) return '#f87171'
+  return '#e11d48'
+}
+
+function getEffectivePerf(g: HoldingGroup, period: Period): number | null {
+  const raw = period === '1d' ? g.effective_perf_1d
+    : period === '5d' ? g.effective_perf_5d
+    : period === '1m' ? g.effective_perf_1m
+    : g.effective_perf_3m
+  return safeFloat(raw)
+}
+
+function getRawPerf(g: HoldingGroup, period: Period): number | null {
+  const raw = period === '1d' ? g.perf_1d
+    : period === '5d' ? g.perf_5d
+    : period === '1m' ? g.perf_1m
+    : g.perf_3m
+  return safeFloat(raw)
+}
+
+// ── Treemap custom cell ───────────────────────────────────────────────────────
+// Recharts passes layout (x,y,w,h) + all data-item keys directly as props.
+// Guard every access — Recharts may call content for parent/layout nodes too.
+function CustomCell(props: Record<string, unknown>) {
+  const x       = (typeof props.x      === 'number') ? props.x      : 0
+  const y       = (typeof props.y      === 'number') ? props.y      : 0
+  const width   = (typeof props.width  === 'number') ? props.width  : 0
+  const height  = (typeof props.height === 'number') ? props.height : 0
+  const name    = (typeof props.name   === 'string') ? props.name   : (props.name != null ? String(props.name) : '')
+  const perf    = (typeof props.perf   === 'number' && isFinite(props.perf as number)) ? props.perf as number : null
+  const isShort = (props.isShort === true)
+
+  const fill  = perfColor(perf)
+  const label = isShort ? `${name} (S)` : name
+
+  if (width <= 0 || height <= 0) return null
+
+  const fontSize    = Math.min(13, Math.max(8, width / 6))
+  const subFontSize = Math.min(11, Math.max(8, width / 8))
+  const showText    = width > 36 && height > 22
+
+  // paint-order trick: stroke renders first → creates a dark outline/shadow
+  const shadowStyle = { paintOrder: 'stroke fill' } as React.CSSProperties
+
+  return (
+    <g>
+      <rect
+        x={x + 1} y={y + 1}
+        width={Math.max(0, width - 2)} height={Math.max(0, height - 2)}
+        fill={fill} rx={6} stroke="#ffffff" strokeWidth={2}
+      />
+      {showText && (
+        <>
+          <text
+            x={x + width / 2} y={y + height / 2 - (height > 40 ? 9 : 0)}
+            textAnchor="middle" dominantBaseline="middle"
+            fill="white"
+            stroke="rgba(0,0,0,0.45)" strokeWidth={2.5} strokeLinejoin="round"
+            style={shadowStyle}
+            fontSize={fontSize}
+            fontWeight="800"
+            fontFamily="Plus Jakarta Sans, sans-serif"
+          >
+            {label || '?'}
+          </text>
+          {height > 40 && perf != null && (
+            <text
+              x={x + width / 2} y={y + height / 2 + 10}
+              textAnchor="middle" dominantBaseline="middle"
+              fill="white"
+              stroke="rgba(0,0,0,0.35)" strokeWidth={2} strokeLinejoin="round"
+              style={shadowStyle}
+              fontSize={subFontSize}
+              fontWeight="700"
+              fontFamily="Plus Jakarta Sans, sans-serif"
+            >
+              {perf >= 0 ? '+' : ''}{perf.toFixed(2)}%
+            </text>
+          )}
+        </>
+      )}
+    </g>
+  )
+}
+
+// ── Treemap tooltip ───────────────────────────────────────────────────────────
+function TreemapTooltip({ active, payload }: { active?: boolean; payload?: unknown[] }) {
+  if (!active || !payload?.length) return null
+  const item     = (payload[0] ?? {}) as Record<string, unknown>
+  const name     = (typeof item.name    === 'string') ? item.name    : String(item.name ?? '?')
+  const perf     = (typeof item.perf    === 'number' && isFinite(item.perf))    ? item.perf    : null
+  const rawPerf  = (typeof item.rawPerf === 'number' && isFinite(item.rawPerf)) ? item.rawPerf : null
+  const exposure = (typeof item.exposure === 'number') ? item.exposure : null
+  const isShort  = (item.isShort === true)
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2.5 text-xs font-sans min-w-[165px]">
+      <div className="font-bold text-slate-900 text-sm mb-1.5 flex items-center gap-1.5">
+        {name || '?'}
+        {isShort && (
+          <span className="text-[10px] font-semibold text-rose-500 bg-rose-50 border border-rose-200 px-1 py-0.5 rounded">(S)</span>
+        )}
+      </div>
+      <div className="space-y-0.5 text-slate-500">
+        {exposure != null && (
+          <div>Notional: <span className="font-semibold text-slate-800">{fmtUSD(String(exposure))}</span></div>
+        )}
+        {rawPerf != null && (
+          <div>
+            Underlying:{' '}
+            <span className={`font-semibold ${rawPerf >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {rawPerf >= 0 ? '+' : ''}{rawPerf.toFixed(2)}%
+            </span>
+          </div>
+        )}
+        {perf != null && (
+          <div className="border-t border-slate-100 pt-0.5 mt-0.5">
+            P&L direction:{' '}
+            <span className={`font-bold ${perf >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              {perf >= 0 ? '+' : ''}{perf.toFixed(2)}%
+            </span>
+          </div>
+        )}
+        <div className="text-[10px] text-slate-400 italic mt-1">
+          {isShort ? 'Bearish / net short delta' : 'Bullish / net long delta'}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Hero stat card ────────────────────────────────────────────────────────────
+function StatCard({
+  label, value, sub, valueClass = 'text-slate-900',
+}: {
+  label: string; value: string; sub?: string; valueClass?: string
+}) {
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-4 flex flex-col gap-1">
+      <div className="text-[10px] uppercase tracking-widest font-semibold text-slate-400">{label}</div>
+      <div className={`text-xl font-bold tabular-nums leading-tight ${valueClass}`}>{value || '—'}</div>
+      {sub && <div className="text-xs text-slate-400 mt-0.5">{sub}</div>}
+    </div>
+  )
+}
+
+// ── Sector Pie Chart ──────────────────────────────────────────────────────────
+const SECTOR_COLORS = [
+  '#0284c7', '#7c3aed', '#d97706', '#059669',
+  '#ea580c', '#9333ea', '#2563eb', '#b45309',
+  '#16a34a', '#dc2626', '#0891b2', '#c026d3',
+]
+
+interface SectorDatum { name: string; value: number; delta: number; color: string }
+
+function SectorPieChart({
+  sectorExp, isEn,
+}: {
+  sectorExp: Record<string, string> | null | undefined
+  isEn: boolean
+}) {
+  const entries = sectorExp ? Object.entries(sectorExp) : []
+  if (entries.length === 0) return null
+
+  const sorted = [...entries].sort((a, b) => Math.abs(parseFloat(b[1])) - Math.abs(parseFloat(a[1])))
+  const data: SectorDatum[] = sorted.map(([tag, deltaStr], i) => ({
+    name:  tag,
+    value: Math.max(0.001, Math.abs(parseFloat(deltaStr) || 0)),
+    delta: parseFloat(deltaStr) || 0,
+    color: SECTOR_COLORS[i % SECTOR_COLORS.length],
+  }))
+  const total = data.reduce((s, d) => s + d.value, 0)
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">
+        {isEn ? 'Sector Exposure' : '板块敞口'}
+      </div>
+      <div className="flex items-center gap-6 flex-wrap">
+        {/* Donut */}
+        <div className="shrink-0">
+          <ResponsiveContainer width={190} height={190}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="name"
+                cx="50%" cy="50%"
+                innerRadius={52}
+                outerRadius={82}
+                paddingAngle={2}
+                stroke="none"
+              >
+                {data.map((entry, i) => (
+                  <Cell key={i} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const d = payload[0]?.payload as SectorDatum | undefined
+                  if (!d) return null
+                  const pct = total > 0 ? (d.value / total * 100).toFixed(1) : '0'
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs">
+                      <div className="font-bold text-slate-900 mb-1">{d.name}</div>
+                      <div className={d.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
+                        {d.delta >= 0 ? '+' : ''}{d.delta.toFixed(2)} Δ
+                      </div>
+                      <div className="text-slate-400">{pct}% of exposure</div>
+                    </div>
+                  )
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Legend */}
+        <div className="flex-1 space-y-2.5 min-w-0">
+          {data.map((entry) => {
+            const pct = total > 0 ? (entry.value / total * 100).toFixed(0) : '0'
+            return (
+              <div key={entry.name} className="flex items-center gap-2 text-xs">
+                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: entry.color }} />
+                <span className="text-slate-700 truncate flex-1 font-medium min-w-0">{entry.name}</span>
+                <span className={`tabular-nums font-semibold shrink-0 ${entry.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {entry.delta >= 0 ? '+' : ''}{entry.delta.toFixed(1)}Δ
+                </span>
+                <span className="text-slate-400 tabular-nums shrink-0 w-9 text-right">{pct}%</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Holdings-table helpers ────────────────────────────────────────────────────
 function sumGreekExposure(legs: OptionLeg[], field: 'gamma' | 'theta'): number {
   return legs.reduce((acc, leg) => {
     const v = leg[field]
@@ -53,14 +327,12 @@ function efficiencyClass(raw: string | null): string {
   return 'bg-slate-100 text-slate-500 border border-slate-200'
 }
 
-// ── Shimmer placeholder ───────────────────────────────────────────────────────
+// ── ShimmerCell ───────────────────────────────────────────────────────────────
 function ShimmerCell({ w = 'w-12' }: { w?: string }) {
-  return (
-    <span className={`inline-block h-3.5 ${w} bg-slate-200 rounded animate-pulse`} />
-  )
+  return <span className={`inline-block h-3.5 ${w} bg-slate-200 rounded animate-pulse`} />
 }
 
-// ── Exit button ────────────────────────────────────────────────────────────────
+// ── Exit button ───────────────────────────────────────────────────────────────
 function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
   return (
     <button
@@ -76,48 +348,7 @@ function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
   )
 }
 
-// ── Cash card ──────────────────────────────────────────────────────────────────
-function CashCard({ cash }: { cash: CashSummary | null }) {
-  const { t } = useLanguage()
-  if (!cash) return <div className="animate-pulse h-28 bg-white rounded-2xl border border-slate-200 shadow-sm" />
-
-  const balance = parseFloat(cash.balance)
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          {t('cash_balance')}
-        </span>
-        <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold border
-          ${balance >= 0
-            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-            : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-          {balance >= 0 ? t('net_long_cash') : t('net_short_cash')}
-        </span>
-      </div>
-
-      <div className="text-3xl font-bold tabular-nums text-slate-900">
-        {fmtUSD(cash.balance)}
-      </div>
-
-      <div className="space-y-1 pt-1 border-t border-slate-100">
-        {cash.entries.slice(0, 3).map((e) => {
-          const amt = parseFloat(e.amount)
-          return (
-            <div key={e.id} className="flex items-center justify-between text-xs">
-              <span className="text-slate-500 truncate max-w-xs">{e.description}</span>
-              <span className={`tabular-nums font-semibold ${amt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                {amt >= 0 ? '+' : ''}{fmtUSD(e.amount)}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ── Stock legs table ───────────────────────────────────────────────────────────
+// ── Stock legs table ──────────────────────────────────────────────────────────
 function StockLegsTable({
   legs, symbol, onClose,
 }: {
@@ -164,9 +395,7 @@ function StockLegsTable({
                 </td>
                 <td className="td text-slate-500">${fmtNum(leg.avg_open_price)}</td>
                 <td className="td text-slate-700">
-                  {leg.market_value != null
-                    ? fmtUSD(leg.market_value)
-                    : <span className="text-slate-300">—</span>}
+                  {leg.market_value != null ? fmtUSD(leg.market_value) : <span className="text-slate-300">—</span>}
                 </td>
                 <td className="td">
                   <span className={`font-semibold ${deltaPos ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -188,7 +417,7 @@ function StockLegsTable({
   )
 }
 
-// ── Holdings table ─────────────────────────────────────────────────────────────
+// ── Holdings table ────────────────────────────────────────────────────────────
 function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
   const { t }    = useLanguage()
   const navigate = useNavigate()
@@ -203,7 +432,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
     })
 
   function closeOption(symbol: string, leg: OptionLeg) {
-    const qty: number    = Math.abs(leg.net_contracts)
+    const qty: number     = Math.abs(leg.net_contracts)
     const action: TradeAction = leg.net_contracts < 0 ? 'BUY_CLOSE' : 'SELL_CLOSE'
     const state: ClosePositionState = {
       symbol, instrumentType: 'OPTION', optionType: leg.option_type,
@@ -213,7 +442,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
   }
 
   function closeStock(symbol: string, leg: StockLeg) {
-    const qty: number    = Math.abs(leg.net_shares)
+    const qty: number     = Math.abs(leg.net_shares)
     const action: TradeAction = leg.net_shares < 0 ? 'BUY_CLOSE' : 'SELL_CLOSE'
     const state: ClosePositionState = {
       symbol, instrumentType: 'STOCK', action, quantity: String(qty),
@@ -250,7 +479,6 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
     SINGLE: 'Single Positions',
   }
 
-  // Strategy badge styles (light theme)
   function strategyBadgeClass(type: string): string {
     switch (type) {
       case 'IRON_CONDOR': return 'bg-violet-50 text-violet-700 border-violet-200'
@@ -289,7 +517,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
               </div>
             )}
             <div className={`bg-white border border-slate-200 border-l-4 ${accentClass} rounded-2xl overflow-hidden shadow-sm`}>
-              {/* ── Group header ────────────────────────────────────────── */}
+              {/* ── Group header ─────────────────────────────────────────── */}
               <button
                 onClick={() => toggle(group.symbol)}
                 className="w-full flex items-center justify-between px-4 py-3 border-b border-slate-100
@@ -319,8 +547,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                     <ShimmerCell w="w-14" />
                   )}
                   <span
-                    role="button"
-                    tabIndex={0}
+                    role="button" tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation()
                       navigate('/risk', {
@@ -363,7 +590,6 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                       </span>
                     </div>
                   )}
-
                   <div className="text-right">
                     <div className="text-slate-400 uppercase tracking-wider text-[10px]">
                       {t('delta_exposure')}
@@ -376,7 +602,6 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                       </div>
                     )}
                   </div>
-
                   <div className="text-right">
                     <div className="text-slate-400 uppercase tracking-wider text-[10px]">
                       {t('margin_req')}
@@ -388,7 +613,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                 </div>
               </button>
 
-              {/* ── Expanded body ──────────────────────────────────── */}
+              {/* ── Expanded body ─────────────────────────────────────── */}
               {!isCollapsed && (
                 <>
                   {hasStocks && (
@@ -399,7 +624,6 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                       onClose={closeStock}
                     />
                   )}
-
                   {hasOptions && (
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse">
@@ -447,9 +671,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                                 </td>
                                 <td className="td text-slate-500">${fmtNum(leg.avg_open_price)}</td>
                                 <td className="td text-slate-700">
-                                  {leg.delta != null
-                                    ? <span>{fmtGreek(leg.delta)}</span>
-                                    : <ShimmerCell />}
+                                  {leg.delta != null ? <span>{fmtGreek(leg.delta)}</span> : <ShimmerCell />}
                                 </td>
                                 <td className="td">
                                   {leg.delta_exposure != null ? (
@@ -459,9 +681,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                                   ) : <ShimmerCell />}
                                 </td>
                                 <td className="td text-amber-600">
-                                  {leg.theta != null
-                                    ? <span>{fmtGreek(leg.theta)}</span>
-                                    : <ShimmerCell />}
+                                  {leg.theta != null ? <span>{fmtGreek(leg.theta)}</span> : <ShimmerCell />}
                                 </td>
                                 <td className="td text-slate-500">{fmtUSD(leg.maintenance_margin)}</td>
                                 <td className="td pr-3">
@@ -509,14 +729,13 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
   )
 }
 
-// ── Status badge ───────────────────────────────────────────────────────────────
+// ── Status badge ──────────────────────────────────────────────────────────────
 const STATUS_CLASSES: Record<string, string> = {
   EXPIRED:  'bg-slate-100 text-slate-500 border border-slate-200',
   ASSIGNED: 'bg-amber-50 text-amber-700 border border-amber-200',
   CLOSED:   'bg-slate-100 text-slate-400 border border-slate-200',
   ACTIVE:   'bg-emerald-50 text-emerald-700 border border-emerald-200',
 }
-
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold tracking-wide
@@ -526,7 +745,7 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-// ── Settlement history ──────────────────────────────────────────────────────────
+// ── Settlement history ────────────────────────────────────────────────────────
 function SettledTradesSection({ portfolioId }: { portfolioId: number | null | undefined }) {
   const { t } = useLanguage()
   const [open,       setOpen]       = useState(false)
@@ -547,8 +766,6 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
     if (open) load(sinceHours)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, portfolioId, sinceHours])
-
-  function toggleTimeFilter(hours: 24 | null) { setSinceHours(hours) }
 
   const hasAssigned = trades.some((r) => r.status === 'ASSIGNED')
 
@@ -583,7 +800,7 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
             {([24, null] as Array<24 | null>).map((h) => (
               <button
                 key={String(h)}
-                onClick={(e) => { e.stopPropagation(); toggleTimeFilter(h) }}
+                onClick={(e) => { e.stopPropagation(); setSinceHours(h) }}
                 className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-colors
                   ${sinceHours === h
                     ? 'bg-primary-soft text-primary border border-primary/20'
@@ -594,15 +811,12 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
               </button>
             ))}
           </div>
-
           {loading ? (
             <div className="h-16 flex items-center justify-center">
               <div className="animate-pulse h-4 w-40 bg-slate-200 rounded" />
             </div>
           ) : trades.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">
-              {t('no_settled')}
-            </div>
+            <div className="py-8 text-center text-xs text-slate-400">{t('no_settled')}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse">
@@ -647,32 +861,24 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
                         <td className="td text-xs">
                           {row.auto_stock_action ? (
                             <span className="font-mono text-amber-600 text-[11px]">
-                              {row.auto_stock_action.replace('_', ' ')}
-                              {' '}{row.auto_stock_quantity}sh
-                              {' '}@{' '}
+                              {row.auto_stock_action.replace('_', ' ')} {row.auto_stock_quantity}sh @ {' '}
                               <span className={isBuyOpen ? 'text-rose-600' : 'text-emerald-600'}>
                                 ${fmtNum(row.auto_stock_price ?? '0')}
                               </span>
                             </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
+                          ) : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="td text-xs">
-                          {row.premium_per_share != null ? (
-                            <span className="font-mono text-amber-700">${fmtNum(row.premium_per_share)}</span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
+                          {row.premium_per_share != null
+                            ? <span className="font-mono text-amber-700">${fmtNum(row.premium_per_share)}</span>
+                            : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="td text-xs">
-                          {row.effective_cost_per_share != null ? (
-                            <span className={`font-mono font-semibold ${isBuyOpen ? 'text-sky-600' : 'text-emerald-600'}`}>
-                              ${fmtNum(row.effective_cost_per_share)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-300">—</span>
-                          )}
+                          {row.effective_cost_per_share != null
+                            ? <span className={`font-mono font-semibold ${isBuyOpen ? 'text-sky-600' : 'text-emerald-600'}`}>
+                                ${fmtNum(row.effective_cost_per_share)}
+                              </span>
+                            : <span className="text-slate-300">—</span>}
                         </td>
                         <td className="td text-slate-400 text-xs">{row.settled_date ?? '—'}</td>
                       </tr>
@@ -688,41 +894,51 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
   )
 }
 
-// ── Page ───────────────────────────────────────────────────────────────────────
+// ── Page ──────────────────────────────────────────────────────────────────────
+type Tab = 'overview' | 'details'
+
 export default function HoldingsPage() {
   const { selectedPortfolioId, refreshKey, triggerRefresh } = usePortfolio()
-  const { t } = useLanguage()
-  const { lastHoldingsUpdate } = useWebSocket()
+  const { lang, t } = useLanguage()
+  const { lastHoldingsUpdate, lastSpotChangePct, lastPnlSnapshot } = useWebSocket()
 
+  const [activeTab,       setActiveTab]       = useState<Tab>('overview')
   const [holdings,        setHoldings]        = useState<HoldingGroup[]>([])
   const [cash,            setCash]            = useState<CashSummary | null>(null)
+  const [riskDash,        setRiskDash]        = useState<RiskDashboard | null>(null)
   const [loading,         setLoading]         = useState(true)
-  const [error,           setError]           = useState<string | null>(null)
+  const [period,          setPeriod]          = useState<Period>('1d')
   const [lifecycleResult, setLifecycleResult] = useState<LifecycleResult | null>(null)
 
+  // ── Main data fetch ────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true)
-    setError(null)
-    Promise.all([fetchHoldings(selectedPortfolioId), fetchCash(selectedPortfolioId)])
-      .then(([h, c]) => { setHoldings(h); setCash(c) })
-      .catch((e) => setError(e.message))
+    Promise.all([
+      fetchHoldings(selectedPortfolioId),
+      fetchCash(selectedPortfolioId),
+      fetchRiskDashboard(selectedPortfolioId).catch(() => null),
+    ])
+      .then(([h, c, r]) => {
+        setHoldings(Array.isArray(h) ? h : [])
+        setCash(c ?? null)
+        setRiskDash(r ?? null)
+      })
+      .catch(() => { setHoldings([]); setCash(null); setRiskDash(null) })
       .finally(() => setLoading(false))
   }, [selectedPortfolioId, refreshKey])
 
+  // ── Real-time WS holdings push ─────────────────────────────────────────────
   useEffect(() => {
     if (!lastHoldingsUpdate) return
     if (lastHoldingsUpdate.portfolioId !== selectedPortfolioId) return
     setHoldings(lastHoldingsUpdate.data)
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
+  // ── Lifecycle sweep (once per session) ────────────────────────────────────
   useEffect(() => {
-    // Wait until we have a real portfolio ID, then call exactly once per session.
-    // Portfolio switches must NOT re-trigger the sweep — lifecycle is per-user,
-    // not per-portfolio.  The backend adds a second 5-min debounce as insurance.
     if (selectedPortfolioId === null) return
     if (_lifecycleCalledThisSession) return
     _lifecycleCalledThisSession = true
-
     triggerLifecycle()
       .then((result) => {
         setLifecycleResult(result)
@@ -732,51 +948,269 @@ export default function HoldingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPortfolioId])
 
+  // ── Hero metrics ──────────────────────────────────────────────────────────
+  const heroMetrics = useMemo(() => {
+    // Prefer accurate NLV from WS pnl_snapshot when available
+    const snap = (lastPnlSnapshot as { portfolioId?: number; current?: { nlv?: string; pnl?: string }; dayPnlPct?: string } | null)
+    const snapForPortfolio = snap?.portfolioId === selectedPortfolioId ? snap : null
+    const snapNlv    = safeFloat(snapForPortfolio?.current?.nlv)
+    const snapPnl    = safeFloat(snapForPortfolio?.current?.pnl)
+    const snapPnlPct = safeFloat(snapForPortfolio?.dayPnlPct)
+
+    // Compute stock MtM from current holdings
+    let stockMtM = 0
+    for (const g of holdings) {
+      for (const sl of g.stock_legs ?? []) {
+        const mv = safeFloat(sl?.market_value)
+        if (mv != null) stockMtM += mv
+      }
+    }
+    const cashBal = safeFloat(cash?.balance) ?? 0
+
+    // Total Asset Value: WS NLV (accurate) or fallback cash + stock MtM
+    const totalAsset     = snapNlv ?? (cashBal + stockMtM)
+    const portfolioValue = totalAsset - cashBal
+
+    // Day P&L: from WS snapshot or estimate from effective_perf × notional
+    let dayPnl = snapPnl
+    let dayPct = snapPnlPct
+    if (dayPnl == null) {
+      let est = 0
+      for (const g of holdings) {
+        const isShort   = g.is_short === true
+        const livePct   = lastSpotChangePct?.[g.symbol] != null
+          ? parseFloat(lastSpotChangePct![g.symbol]) * (isShort ? -1 : 1)
+          : safeFloat(g.effective_perf_1d)
+        const exposure  = safeFloat(g.delta_adjusted_exposure)
+        if (livePct != null && exposure != null && isFinite(livePct)) {
+          est += exposure * livePct / 100
+        }
+      }
+      if (est !== 0) {
+        dayPnl = est
+        if (totalAsset > 0) dayPct = est / totalAsset * 100
+      }
+    }
+
+    return { totalAsset, portfolioValue, cashBal, dayPnl, dayPct }
+  }, [holdings, cash, lastPnlSnapshot, lastSpotChangePct, selectedPortfolioId])
+
+  // ── Treemap data ──────────────────────────────────────────────────────────
+  const treemapData = useMemo(() => {
+    return holdings
+      .filter((g) => {
+        if (!g?.symbol) return false
+        const exp = safeFloat(g.delta_adjusted_exposure)
+        return exp != null && exp > 0
+      })
+      .map((g) => ({
+        name:     g.symbol,
+        size:     safeFloat(g.delta_adjusted_exposure) ?? 0,
+        perf:     getEffectivePerf(g, period),
+        rawPerf:  getRawPerf(g, period),
+        exposure: safeFloat(g.delta_adjusted_exposure) ?? 0,
+        isShort:  g.is_short === true,
+      }))
+      .filter((d) => d.size > 0 && d.name)
+      .sort((a, b) => b.size - a.size)
+  }, [holdings, period])
+
+  const isEn = lang !== 'zh'
   const hadSettlement = lifecycleResult && lifecycleResult.expired + lifecycleResult.assigned > 0
 
-  return (
-    <div className="max-w-7xl mx-auto space-y-5 font-sans">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">{t('holdings_title')}</h1>
-        <p className="text-sm text-slate-500 mt-0.5">{t('holdings_sub')}</p>
-      </div>
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  const TABS: { key: Tab; en: string; zh: string }[] = [
+    { key: 'overview', en: 'Overview', zh: '总览' },
+    { key: 'details',  en: 'Details',  zh: '持仓明细' },
+  ]
 
+  return (
+    <div className="max-w-7xl mx-auto font-sans space-y-4">
+
+      {/* ── Lifecycle banner ──────────────────────────────────────────────── */}
       {hadSettlement && (
-        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200
-                        rounded-2xl px-4 py-3 text-xs">
+        <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-xs">
           <span className="text-amber-700 font-semibold">{t('lifecycle_notice')}</span>
           <span className="text-slate-500">
-            {lifecycleResult!.expired > 0 && (
-              <span className="mr-3">{lifecycleResult!.expired} expired</span>
-            )}
-            {lifecycleResult!.assigned > 0 && (
-              <span className="text-amber-700 font-semibold">{lifecycleResult!.assigned} assigned</span>
-            )}
+            {lifecycleResult!.expired  > 0 && <span className="mr-3">{lifecycleResult!.expired} expired</span>}
+            {lifecycleResult!.assigned > 0 && <span className="text-amber-700 font-semibold">{lifecycleResult!.assigned} assigned</span>}
           </span>
         </div>
       )}
 
-      {error && (
-        <div className="bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 text-rose-700 text-sm">
-          {error}
-        </div>
+      {/* ── Tab header ────────────────────────────────────────────────────── */}
+      <div className="flex items-center border-b border-slate-200">
+        {TABS.map(({ key, en, zh }) => (
+          <button
+            key={key}
+            onClick={() => setActiveTab(key)}
+            className={`px-5 py-2.5 text-sm font-semibold transition-all duration-150 border-b-2 -mb-px ${
+              activeTab === key
+                ? 'border-primary text-primary'
+                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
+            }`}
+          >
+            {isEn ? en : zh}
+          </button>
+        ))}
+      </div>
+
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* OVERVIEW TAB                                                      */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'overview' && (
+        loading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-32 bg-white border border-slate-200 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-5">
+
+            {/* MarketTicker */}
+            <MarketTicker />
+
+            {/* Hero Banner — 4 stats */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard
+                label={isEn ? 'Total Asset Value' : '总资产'}
+                value={heroMetrics.totalAsset !== 0 ? fmtUSD(String(Math.round(heroMetrics.totalAsset))) : '—'}
+                sub={isEn ? 'Cash + positions' : '现金 + 持仓市值'}
+              />
+              <StatCard
+                label={isEn ? 'Day Change' : '当日变动'}
+                value={
+                  heroMetrics.dayPnl != null && isFinite(heroMetrics.dayPnl) && heroMetrics.dayPnl !== 0
+                    ? (heroMetrics.dayPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dayPnl)))
+                    : '—'
+                }
+                sub={
+                  heroMetrics.dayPct != null && isFinite(heroMetrics.dayPct)
+                    ? `${heroMetrics.dayPct >= 0 ? '+' : ''}${heroMetrics.dayPct.toFixed(2)}%`
+                    : (isEn ? 'est.' : '估算')
+                }
+                valueClass={
+                  heroMetrics.dayPnl == null || heroMetrics.dayPnl === 0 ? 'text-slate-900'
+                  : heroMetrics.dayPnl >= 0  ? 'text-emerald-600'
+                  : 'text-rose-600'
+                }
+              />
+              <StatCard
+                label={isEn ? 'Portfolio Value' : '持仓市值'}
+                value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
+                sub={isEn ? 'Open positions' : '开仓市值'}
+                valueClass={heroMetrics.portfolioValue >= 0 ? 'text-slate-900' : 'text-rose-600'}
+              />
+              <StatCard
+                label={isEn ? 'Buying Power' : '可用资金'}
+                value={fmtUSD(String(Math.round(heroMetrics.cashBal)))}
+                sub={isEn ? 'Available cash' : '账户现金'}
+                valueClass={heroMetrics.cashBal >= 0 ? 'text-slate-900' : 'text-rose-600'}
+              />
+            </div>
+
+            {/* 30-Day History Chart */}
+            <PortfolioHistoryChart portfolioId={selectedPortfolioId} />
+
+            {/* Exposure Treemap */}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              {/* Header + period pills */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/60 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-sm text-slate-800">
+                    {isEn ? 'Exposure Map' : '敞口热力图'}
+                  </span>
+                  <span className="text-[10px] text-slate-400 uppercase tracking-wider hidden sm:block">
+                    {isEn
+                      ? 'Area = Notional · Color = P&L direction · (S) = Short'
+                      : '面积=名义敞口 · 颜色=盈亏 · (S)=空头'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPeriod(p)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                        period === p
+                          ? 'bg-primary text-white shadow-sm'
+                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                      }`}
+                    >
+                      {PERIOD_LABELS[p]?.[lang === 'zh' ? 'zh' : 'en'] ?? p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {treemapData.length === 0 ? (
+                <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-sm gap-1">
+                  <span>{isEn ? 'No positions with exposure data' : '暂无敞口数据'}</span>
+                  <span className="text-xs text-slate-300">
+                    {isEn ? '(1-year price history needed for performance coloring)' : '(需要1年历史数据)'}
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3">
+                  <ResponsiveContainer width="100%" height={320}>
+                    <Treemap
+                      data={treemapData}
+                      dataKey="size"
+                      aspectRatio={4 / 3}
+                      stroke="#fff"
+                      content={CustomCell}
+                    >
+                      <Tooltip content={TreemapTooltip} />
+                    </Treemap>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* Color legend */}
+              <div className="flex items-center justify-center gap-3 px-5 pb-3 pt-1 flex-wrap">
+                {[
+                  { color: '#059669', label: '>+4%' },
+                  { color: '#34d399', label: '+2~4%' },
+                  { color: '#a7f3d0', label: '0~2%' },
+                  { color: '#e2e8f0', label: 'N/A' },
+                  { color: '#fecaca', label: '-2~0%' },
+                  { color: '#f87171', label: '-4~-2%' },
+                  { color: '#e11d48', label: '<-4%' },
+                ].map(({ color, label }) => (
+                  <div key={label} className="flex items-center gap-1">
+                    <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: color }} />
+                    <span className="text-[10px] text-slate-500">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Sector Pie */}
+            <SectorPieChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
+
+            {/* AI Insights */}
+            <AiInsightPanel />
+          </div>
+        )
       )}
 
-      {loading ? (
-        <div className="space-y-4">
-          {[1, 2].map((i) => (
-            <div key={i} className="h-48 bg-white border border-slate-200 rounded-2xl shadow-sm animate-pulse" />
-          ))}
-        </div>
-      ) : (
-        <>
-          <MarketTicker />
-          <CashCard cash={cash} />
-          <PortfolioHistoryChart portfolioId={selectedPortfolioId} />
-          <AiInsightPanel />
-          <HoldingsTable groups={holdings} />
-          <SettledTradesSection portfolioId={selectedPortfolioId} />
-        </>
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* DETAILS TAB                                                       */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'details' && (
+        loading ? (
+          <div className="space-y-4">
+            {[1, 2].map((i) => (
+              <div key={i} className="h-48 bg-white border border-slate-200 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <HoldingsTable groups={holdings} />
+            <SettledTradesSection portfolioId={selectedPortfolioId} />
+          </div>
+        )
       )}
     </div>
   )
