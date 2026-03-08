@@ -3,6 +3,11 @@ FMP 2026 Stable Protocol - Unified Production Implementation
 1. 100% 对齐规范：使用 /quote?symbol= 和 /historical-price-eod/full?symbol=
 2. 完整保留原始符号映射 (^GSPC -> SPY, ^VIX -> VIX)
 3. 补全 get_1y_closes 接口，修复部署 ImportError
+
+Performance hardening (止血):
+- _SyncTokenBucket:       global 2 req/s cap on all outbound FMP calls
+- _refresh_scheduled:     deduplicates concurrent background refreshes for the same key
+- get_price_history():    10-min TTL cache (was uncached — hit on every chart render)
 """
 from __future__ import annotations
 import asyncio
@@ -33,9 +38,48 @@ _SYMBOL_MAP: dict[str, str] = {
 def _fmp_sym(sym: str) -> str:
     return _SYMBOL_MAP.get(sym.upper(), sym.upper())
 
+# ── Token-bucket rate limiter (2 req/s, burst 4) ──────────────────────────────
+
+class _SyncTokenBucket:
+    """
+    Thread-safe token-bucket rate limiter for synchronous (thread-pool) callers.
+
+    Capacity defaults to 2× the rate to allow a modest burst (e.g. prewarm)
+    without incurring per-call sleep. Sleeps outside the lock to avoid starving
+    other threads.
+    """
+    def __init__(self, rate: float, capacity: float) -> None:
+        self._rate     = rate
+        self._capacity = capacity
+        self._tokens   = capacity
+        self._last     = time.monotonic()
+        self._lock     = threading.Lock()
+
+    def acquire(self) -> None:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                self._tokens = min(
+                    self._capacity,
+                    self._tokens + (now - self._last) * self._rate,
+                )
+                self._last = now
+                if self._tokens >= 1.0:
+                    self._tokens -= 1.0
+                    return
+                wait = (1.0 - self._tokens) / self._rate
+            # Sleep outside the lock — other threads can still accrue tokens
+            time.sleep(wait)
+
+# Rate-limited only when a real API key is configured (no-op in test environments)
+_api_rate_limiter = _SyncTokenBucket(rate=2.0, capacity=4.0)
+
 # ── 核心私有获取逻辑 (严格遵循表格规范) ──────────────────────────────
 
 def _fmp_get(path: str, params: dict) -> object | None:
+    # Throttle outbound calls; no-op when API key is absent (test/mock mode)
+    if _API_KEY:
+        _api_rate_limiter.acquire()
     url = f"{_BASE}{path}"
     params["apikey"] = _API_KEY
     last_exc: Exception | None = None
@@ -102,6 +146,34 @@ _last_known: dict[str, object] = {}
 _cache_lock = threading.Lock()
 _refresh_pool = ThreadPoolExecutor(max_workers=50)
 
+# ── Background-refresh deduplication ──────────────────────────────
+# Tracks which cache keys already have an in-flight background refresh.
+# Prevents N concurrent requests for the same symbol from spawning N
+# duplicate thread-pool tasks.
+_refresh_scheduled: set[str] = set()
+_refresh_sched_lock = threading.Lock()
+
+
+def _schedule_bg_refresh(cache_key: str, fn, *args) -> None:
+    """
+    Submit fn(*args) to the thread pool only if no refresh is already in-flight
+    for cache_key.  The key is removed from the set when the task finishes.
+    """
+    with _refresh_sched_lock:
+        if cache_key in _refresh_scheduled:
+            return          # already being fetched — skip duplicate
+        _refresh_scheduled.add(cache_key)
+
+    def _work() -> None:
+        try:
+            fn(*args)
+        finally:
+            with _refresh_sched_lock:
+                _refresh_scheduled.discard(cache_key)
+
+    _refresh_pool.submit(_work)
+
+
 def _set_cached(key: str, value: object):
     with _cache_lock:
         _cache[key] = (value, time.monotonic())
@@ -128,10 +200,12 @@ async def get_spot_price(ticker: str) -> Decimal | None:
     cached = _get_cached(spot_key, 60.0)
     if cached is not None:
         if not _is_cache_fresh(spot_key, 60.0):
-            # Stale last-known value: serve immediately, refresh in background
-            asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
-        # Fresh hit: return as-is — NO background call (eliminates 750+/15min leak)
+            # Stale last-known value: serve immediately, schedule ONE background
+            # refresh (deduped — 3 concurrent callers → still only 1 FMP call)
+            _schedule_bg_refresh(spot_key, _do_fetch_quote, ticker)
+        # Fresh hit: return as-is — NO background call
         return cached
+    # Absolute cache miss: blocking fetch in executor
     return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _do_fetch_quote, ticker)
 
 async def get_spot_prices_batch(tickers: list[str]) -> dict[str, Decimal]:
@@ -181,8 +255,18 @@ def get_changepct_cached(ticker: str) -> Decimal | None:
 
 async def get_hist_vol(ticker: str) -> Decimal:
     ticker = ticker.upper()
-    cached = _get_cached(f"hvol:{ticker}", 3600.0)  # 1h cache — avoids repeat FMP calls
+    hvol_key = f"hvol:{ticker}"
+    cached = _get_cached(hvol_key, 3600.0)  # 1h cache — avoids repeat FMP calls
     if cached:
+        if not _is_cache_fresh(hvol_key, 3600.0):
+            # Schedule deduped background refresh so concurrent callers share one task
+            def _calc_bg():
+                hist = _do_fetch_hist_data(ticker)
+                if len(hist) >= 10:
+                    closes = [float(d["close"]) for d in reversed(hist[:90]) if "close" in d]
+                    vol = compute_historical_vol(closes[-30:])
+                    _set_cached(hvol_key, vol)
+            _schedule_bg_refresh(hvol_key, _calc_bg)
         return cached
     def _calc():
         hist = _do_fetch_hist_data(ticker)
@@ -190,7 +274,7 @@ async def get_hist_vol(ticker: str) -> Decimal:
             return DEFAULT_SIGMA
         closes = [float(d["close"]) for d in reversed(hist[:90]) if "close" in d]
         vol = compute_historical_vol(closes[-30:])
-        _set_cached(f"hvol:{ticker}", vol)
+        _set_cached(hvol_key, vol)
         return vol
     return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _calc)
 
@@ -209,9 +293,23 @@ async def get_1y_closes(ticker: str) -> list[float]:
     return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _fetch)
 
 async def get_price_history(ticker: str, start_date: str) -> dict[str, float]:
+    """
+    Returns {date_str: close_price} from start_date to today.
+
+    Cached for 10 minutes — the 30-day history chart renders on every page load
+    but the data only changes once a day.  Without this cache, each of N users
+    loading the Holdings page triggers a fresh FMP history call per stock symbol.
+    """
+    cache_key = f"history:{ticker.upper()}:{start_date}"
+    cached = _get_cached(cache_key, 600.0)  # 10-min TTL
+    if isinstance(cached, dict):
+        return cached
     def _fetch():
         hist = _do_fetch_hist_data(ticker, {"from": start_date})
-        return {d["date"]: float(d["close"]) for d in hist if "date" in d and "close" in d}
+        result = {d["date"]: float(d["close"]) for d in hist if "date" in d and "close" in d}
+        if result:
+            _set_cached(cache_key, result)
+        return result
     return await asyncio.get_running_loop().run_in_executor(_refresh_pool, _fetch)
 
 # Core market indices — always pre-warmed, never screener-excluded

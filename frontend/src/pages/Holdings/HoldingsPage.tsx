@@ -1,6 +1,12 @@
 /**
  * Holdings Page — light professional theme
  */
+
+// Module-level singleton: lifecycle sweep fires at most once per browser session.
+// The backend also enforces a 5-min per-user debounce, but this client-side guard
+// prevents the extra network round-trip on every portfolio switch.
+let _lifecycleCalledThisSession = false
+
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { usePortfolio } from '@/context/PortfolioContext'
@@ -710,6 +716,13 @@ export default function HoldingsPage() {
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
   useEffect(() => {
+    // Wait until we have a real portfolio ID, then call exactly once per session.
+    // Portfolio switches must NOT re-trigger the sweep — lifecycle is per-user,
+    // not per-portfolio.  The backend adds a second 5-min debounce as insurance.
+    if (selectedPortfolioId === null) return
+    if (_lifecycleCalledThisSession) return
+    _lifecycleCalledThisSession = true
+
     triggerLifecycle()
       .then((result) => {
         setLifecycleResult(result)

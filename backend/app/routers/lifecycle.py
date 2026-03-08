@@ -7,6 +7,7 @@ because only ACTIVE trades are ever mutated.
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query
@@ -24,6 +25,12 @@ from app.services.lifecycle import process_expired_trades
 
 router = APIRouter(tags=["lifecycle"])
 
+# ── Per-user cooldown: prevent hammering process_expired_trades on every
+#    portfolio switch.  The sweep is idempotent but still scans the DB.
+#    5-minute window per user is safe — options expire at EOD, not intraday.
+_lifecycle_last_run: dict[int, float] = {}   # user_id → monotonic timestamp
+_LIFECYCLE_COOLDOWN_SECS: float = 300.0      # 5 minutes
+
 
 @router.post("/lifecycle/process", response_model=LifecycleResult)
 async def trigger_lifecycle(
@@ -34,7 +41,15 @@ async def trigger_lifecycle(
     Trigger the expired-option settlement sweep for the current user's portfolios.
     Idempotent — safe to call repeatedly; only ACTIVE trades are touched.
     Returns a summary of what was processed.
+
+    Backend debounce: if this user already ran the sweep within the last 5 minutes
+    we return an empty result immediately without touching the database.
     """
+    now = time.monotonic()
+    if now - _lifecycle_last_run.get(user.id, 0.0) < _LIFECYCLE_COOLDOWN_SECS:
+        return LifecycleResult(expired=0, assigned=0, skipped=0, details=[])
+    _lifecycle_last_run[user.id] = now
+
     result = await process_expired_trades(db, user_id=user.id)
     return LifecycleResult(
         expired=result.expired,
