@@ -10,6 +10,7 @@
 import { useMemo } from 'react'
 import { useLanguage } from '@/context/LanguageContext'
 import { useWebSocket } from '@/context/WebSocketContext'
+import type { HoldingGroup } from '@/types'
 
 const VIX_TERM_COLORS: Record<string, string> = {
   low:      'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -54,22 +55,39 @@ function TickerChip({ item }: { item: TickerItem }) {
   )
 }
 
-export default function MarketTicker() {
+export default function MarketTicker({ fallbackHoldings = [] }: { fallbackHoldings?: HoldingGroup[] }) {
   const { lang } = useLanguage()
   const { lastMacroTicker, lastSpotUpdate, lastSpotChangePct } = useWebSocket()
 
-  // Build scrolling ticker items from WS spot data (exclude macro symbols)
+  // Build scrolling ticker items:
+  // 1st priority: WS live spot_update (real-time prices + % change)
+  // 2nd priority: holdings snapshot from REST (spot_price without change %)
+  // → guarantees the ticker is always populated even on WS cold-start
   const tickerItems = useMemo<TickerItem[]>(() => {
-    if (!lastSpotUpdate) return []
-    return Object.entries(lastSpotUpdate)
-      .filter(([sym]) => !MACRO_SYMBOLS.has(sym))
-      .map(([sym, price]) => ({
-        symbol: sym,
-        price,
-        changePct: lastSpotChangePct?.[sym] ?? null,
-      }))
-      .sort((a, b) => a.symbol.localeCompare(b.symbol))
-  }, [lastSpotUpdate, lastSpotChangePct])
+    const hasWs = lastSpotUpdate && Object.keys(lastSpotUpdate).length > 0
+    if (hasWs) {
+      return Object.entries(lastSpotUpdate!)
+        .filter(([sym]) => !MACRO_SYMBOLS.has(sym))
+        .map(([sym, price]) => ({
+          symbol: sym,
+          price,
+          changePct: lastSpotChangePct?.[sym] ?? null,
+        }))
+        .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    }
+    // Fallback: use holdings REST snapshot prices (no change %, refreshes every REST poll)
+    if (fallbackHoldings.length > 0) {
+      return fallbackHoldings
+        .filter((g) => g.spot_price != null)
+        .map((g) => ({
+          symbol: g.symbol,
+          price:  g.spot_price!,
+          changePct: null,
+        }))
+        .sort((a, b) => a.symbol.localeCompare(b.symbol))
+    }
+    return []
+  }, [lastSpotUpdate, lastSpotChangePct, fallbackHoldings])
 
   if (!lastMacroTicker) {
     return (

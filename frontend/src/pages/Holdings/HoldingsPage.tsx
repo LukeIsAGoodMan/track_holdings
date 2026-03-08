@@ -28,7 +28,7 @@ import {
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
   TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
-  RiskDashboard,
+  RiskDashboard, PnlSnapshot,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
@@ -325,6 +325,108 @@ function efficiencyClass(raw: string | null): string {
   if (pct >= 0.04) return 'bg-amber-50 text-amber-700 border border-amber-200'
   if (pct >= 0.01) return 'bg-sky-50 text-sky-700 border border-sky-200'
   return 'bg-slate-100 text-slate-500 border border-slate-200'
+}
+
+// ── Strategy Pie Chart ────────────────────────────────────────────────────────
+const STRATEGY_COLORS: Record<string, string> = {
+  IRON_CONDOR: '#7c3aed',
+  VERTICAL:    '#0284c7',
+  STRADDLE:    '#d97706',
+  STRANGLE:    '#ea580c',
+  CALENDAR:    '#059669',
+  CUSTOM:      '#c026d3',
+  SINGLE:      '#64748b',
+}
+const STRATEGY_LABELS: Record<string, string> = {
+  IRON_CONDOR: 'Iron Condor',
+  VERTICAL:    'Vertical',
+  STRADDLE:    'Straddle',
+  STRANGLE:    'Strangle',
+  CALENDAR:    'Calendar',
+  CUSTOM:      'Custom',
+  SINGLE:      'Single',
+}
+
+interface PieDatum { name: string; displayName: string; value: number; color: string }
+
+function StrategyPieChart({ holdings, isEn }: { holdings: HoldingGroup[]; isEn: boolean }) {
+  const data = useMemo<PieDatum[]>(() => {
+    const byStrategy: Record<string, number> = {}
+    for (const g of holdings) {
+      const type = g.strategy_type || 'SINGLE'
+      const exp  = safeFloat(g.delta_adjusted_exposure) ?? 0
+      if (exp > 0) byStrategy[type] = (byStrategy[type] ?? 0) + exp
+    }
+    return Object.entries(byStrategy)
+      .map(([type, value]) => ({
+        name:        type,
+        displayName: STRATEGY_LABELS[type] ?? type,
+        value,
+        color:       STRATEGY_COLORS[type] ?? '#94a3b8',
+      }))
+      .sort((a, b) => b.value - a.value)
+  }, [holdings])
+
+  if (data.length === 0) return null
+
+  const total = data.reduce((s, d) => s + d.value, 0)
+  const label = isEn ? 'Strategy Mix' : '策略分布'
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{label}</div>
+      <div className="flex items-center gap-6 flex-wrap">
+        {/* Donut */}
+        <div className="shrink-0">
+          <ResponsiveContainer width={190} height={190}>
+            <PieChart>
+              <Pie
+                data={data}
+                dataKey="value"
+                nameKey="displayName"
+                cx="50%" cy="50%"
+                innerRadius={52}
+                outerRadius={82}
+                paddingAngle={2}
+                stroke="none"
+              >
+                {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+              </Pie>
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (!active || !payload?.length) return null
+                  const d = payload[0]?.payload as PieDatum | undefined
+                  if (!d) return null
+                  const pct = total > 0 ? (d.value / total * 100).toFixed(1) : '0'
+                  return (
+                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs">
+                      <div className="font-bold text-slate-900 mb-1">{d.displayName}</div>
+                      <div className="text-slate-500">{fmtUSD(String(Math.round(d.value)))} notional</div>
+                      <div className="text-slate-400">{pct}% of exposure</div>
+                    </div>
+                  )
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        {/* Legend */}
+        <div className="flex-1 space-y-2.5 min-w-0">
+          {data.map((entry) => {
+            const pct = total > 0 ? (entry.value / total * 100).toFixed(0) : '0'
+            return (
+              <div key={entry.name} className="flex items-center gap-2 text-xs">
+                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: entry.color }} />
+                <span className="text-slate-700 truncate flex-1 font-medium min-w-0">{entry.displayName}</span>
+                <span className="text-slate-500 tabular-nums shrink-0">{fmtUSD(String(Math.round(entry.value)))}</span>
+                <span className="text-slate-400 tabular-nums shrink-0 w-9 text-right">{pct}%</span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── ShimmerCell ───────────────────────────────────────────────────────────────
@@ -949,15 +1051,21 @@ export default function HoldingsPage() {
   }, [selectedPortfolioId])
 
   // ── Hero metrics ──────────────────────────────────────────────────────────
+  // NLV = Cash + Equity (longs - shorts) + Options MtM
+  // Source priority:
+  //   1. WS pnl_snapshot.current.nlv  — backend-computed, most accurate
+  //   2. Fallback: cash.balance + Σ signed stock_legs.market_value
+  //      (options excluded; premium already reflected in cash.balance)
   const heroMetrics = useMemo(() => {
-    // Prefer accurate NLV from WS pnl_snapshot when available
-    const snap = (lastPnlSnapshot as { portfolioId?: number; current?: { nlv?: string; pnl?: string }; dayPnlPct?: string } | null)
-    const snapForPortfolio = snap?.portfolioId === selectedPortfolioId ? snap : null
-    const snapNlv    = safeFloat(snapForPortfolio?.current?.nlv)
-    const snapPnl    = safeFloat(snapForPortfolio?.current?.pnl)
-    const snapPnlPct = safeFloat(snapForPortfolio?.dayPnlPct)
+    // Cast to the correct type (imported above)
+    const snap = lastPnlSnapshot as PnlSnapshot | null
+    const snapMatch = snap?.portfolioId === selectedPortfolioId ? snap : null
+    const snapNlv    = safeFloat(snapMatch?.current?.nlv)
+    const snapPnl    = safeFloat(snapMatch?.current?.pnl)
+    const snapPnlPct = safeFloat(snapMatch?.dayPnlPct)
 
-    // Compute stock MtM from current holdings
+    // Signed stock MtM: positive = long equity, negative = short equity
+    // market_value = net_shares × spot → already signed by backend
     let stockMtM = 0
     for (const g of holdings) {
       for (const sl of g.stock_legs ?? []) {
@@ -967,28 +1075,31 @@ export default function HoldingsPage() {
     }
     const cashBal = safeFloat(cash?.balance) ?? 0
 
-    // Total Asset Value: WS NLV (accurate) or fallback cash + stock MtM
+    // NLV = cash + stockMtM + option_MtM (option MtM not in REST response;
+    // cash.balance already reflects premiums at trade entry time)
     const totalAsset     = snapNlv ?? (cashBal + stockMtM)
     const portfolioValue = totalAsset - cashBal
 
-    // Day P&L: from WS snapshot or estimate from effective_perf × notional
+    // Day P&L: WS snapshot (most accurate) → else estimate from WS change% × notional
     let dayPnl = snapPnl
     let dayPct = snapPnlPct
     if (dayPnl == null) {
       let est = 0
       for (const g of holdings) {
-        const isShort   = g.is_short === true
-        const livePct   = lastSpotChangePct?.[g.symbol] != null
+        const isShort  = g.is_short === true
+        // Prefer live WS change% with direction sign; fallback to cached effective_perf_1d
+        const wsChangePct = lastSpotChangePct?.[g.symbol] != null
           ? parseFloat(lastSpotChangePct![g.symbol]) * (isShort ? -1 : 1)
-          : safeFloat(g.effective_perf_1d)
-        const exposure  = safeFloat(g.delta_adjusted_exposure)
-        if (livePct != null && exposure != null && isFinite(livePct)) {
+          : null
+        const livePct  = wsChangePct ?? safeFloat(g.effective_perf_1d)
+        const exposure = safeFloat(g.delta_adjusted_exposure)
+        if (livePct != null && isFinite(livePct) && exposure != null && exposure > 0) {
           est += exposure * livePct / 100
         }
       }
       if (est !== 0) {
         dayPnl = est
-        if (totalAsset > 0) dayPct = est / totalAsset * 100
+        if (totalAsset > 0) dayPct = (est / totalAsset) * 100
       }
     }
 
@@ -1068,8 +1179,8 @@ export default function HoldingsPage() {
         ) : (
           <div className="space-y-5">
 
-            {/* MarketTicker */}
-            <MarketTicker />
+            {/* MarketTicker — falls back to holdings REST prices when WS is cold */}
+            <MarketTicker fallbackHoldings={holdings} />
 
             {/* Hero Banner — 4 stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1186,8 +1297,11 @@ export default function HoldingsPage() {
               </div>
             </div>
 
-            {/* Sector Pie */}
-            <SectorPieChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
+            {/* Dual Pies — Sector Exposure + Strategy Mix side by side */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <SectorPieChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
+              <StrategyPieChart holdings={holdings} isEn={isEn} />
+            </div>
 
             {/* AI Insights */}
             <AiInsightPanel />

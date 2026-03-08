@@ -253,25 +253,42 @@ def get_changepct_cached(ticker: str) -> Decimal | None:
     return _last_known.get(f"changepct:{ticker.upper()}")
 
 
-def get_perf_cached(ticker: str) -> dict[str, float | None]:
+def _do_fetch_1y_closes(ticker: str) -> list[float]:
+    """Synchronous 1-year history fetch — runs in the background thread pool."""
+    ticker = ticker.upper()
+    hist = _do_fetch_hist_data(ticker)
+    closes = [float(d["close"]) for d in reversed(hist[:252]) if "close" in d]
+    if closes:
+        _set_cached(f"1y:{ticker}", closes)
+    return closes
+
+
+def get_perf_cached(ticker: str) -> dict[str, float]:
     """
-    Return multi-period performance from cached 1-year close history — zero network I/O.
+    Return multi-period performance from cached 1-year close history.
 
     Periods: 1d (1 close back), 5d (5), 1m (~22 trading days), 3m (~66 trading days).
-    Returns None for each period when the cache doesn't have enough data.
-    Used by holdings router to enrich HoldingGroup without triggering API calls.
+
+    If the 1-year history is cold (not yet fetched), schedules a background
+    refresh and returns 0.0 for all periods so the frontend Treemap always has
+    a valid renderable value.  The next REST poll will return actual values once
+    the background task completes (typically within 1–2 seconds).
+
+    Never returns None — 0.0 is the canonical "no data yet" placeholder.
     """
     key = f"1y:{ticker.upper()}"
     closes = _last_known.get(key)
     if not isinstance(closes, list) or len(closes) < 2:
-        return {"1d": None, "5d": None, "1m": None, "3m": None}
+        # Schedule one background fetch (deduplicated — concurrent callers share it)
+        _schedule_bg_refresh(key, _do_fetch_1y_closes, ticker.upper())
+        return {"1d": 0.0, "5d": 0.0, "1m": 0.0, "3m": 0.0}
 
-    def _pct(n: int) -> float | None:
+    def _pct(n: int) -> float:
         if len(closes) <= n:
-            return None
+            return 0.0
         base = closes[-1 - n]
         if not base:
-            return None
+            return 0.0
         return round((closes[-1] / base - 1) * 100, 2)
 
     return {"1d": _pct(1), "5d": _pct(5), "1m": _pct(22), "3m": _pct(66)}

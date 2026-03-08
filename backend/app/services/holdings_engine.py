@@ -30,7 +30,7 @@ def compute_holding_groups(
     positions: list[PositionRow],
     spot_map: dict[str, Decimal | None],
     vol_map: dict[str, Decimal],
-    perf_map: dict[str, dict[str, float | None]] | None = None,
+    perf_map: dict[str, dict[str, float]] | None = None,
 ) -> list[HoldingGroup]:
     """
     Build HoldingGroup list from positions + market data.
