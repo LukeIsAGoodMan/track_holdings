@@ -20,12 +20,12 @@ export default function Layout() {
       <TopNav />
 
       {/* ── Content row ─────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1">
         {/* Light chrome sidebar */}
         <Sidebar />
 
         {/* Dark main content area */}
-        <main className="flex-1 min-w-0 overflow-y-auto bg-app">
+        <main className="flex-1 min-w-0 bg-app">
           <div className="p-6">
             <Outlet />
           </div>
