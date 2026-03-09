@@ -21,6 +21,7 @@ import {
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useLanguage }   from '@/context/LanguageContext'
 import { useWebSocket }  from '@/context/WebSocketContext'
+import { useSidebar }    from '@/context/SidebarContext'
 import {
   fetchHoldings, fetchCash, fetchSettledTrades,
   triggerLifecycle, fetchRiskDashboard,
@@ -520,8 +521,9 @@ function StockLegsTable({
 
 // ── Holdings table ────────────────────────────────────────────────────────────
 function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
-  const { t }    = useLanguage()
-  const navigate = useNavigate()
+  const { t }             = useLanguage()
+  const navigate          = useNavigate()
+  const { openTradeEntry } = useSidebar()
   const { lastSpotChangePct } = useWebSocket()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
@@ -539,7 +541,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
       symbol, instrumentType: 'OPTION', optionType: leg.option_type,
       strike: leg.strike, expiry: leg.expiry, action, quantity: String(qty),
     }
-    navigate('/trade', { state: { closePosition: state } })
+    openTradeEntry(state)
   }
 
   function closeStock(symbol: string, leg: StockLeg) {
@@ -548,7 +550,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
     const state: ClosePositionState = {
       symbol, instrumentType: 'STOCK', action, quantity: String(qty),
     }
-    navigate('/trade', { state: { closePosition: state } })
+    openTradeEntry(state)
   }
 
   if (groups.length === 0) {
