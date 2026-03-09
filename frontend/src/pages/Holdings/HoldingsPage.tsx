@@ -12,7 +12,7 @@
 // Module-level singleton: lifecycle sweep fires at most once per browser session.
 let _lifecycleCalledThisSession = false
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate }  from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
@@ -1017,6 +1017,9 @@ export default function HoldingsPage() {
   const [period,          setPeriod]          = useState<Period>('1d')
   const [lifecycleResult, setLifecycleResult] = useState<LifecycleResult | null>(null)
 
+  // Shadow ref: preserves last valid holdings across WS reconnects & lang switches
+  const lastValidHoldings = useRef<HoldingGroup[]>([])
+
   // ── Main data fetch ────────────────────────────────────────────────────────
   useEffect(() => {
     setLoading(true)
@@ -1026,7 +1029,9 @@ export default function HoldingsPage() {
       fetchRiskDashboard(selectedPortfolioId).catch(() => null),
     ])
       .then(([h, c, r]) => {
-        setHoldings(Array.isArray(h) ? h : [])
+        const hArr = Array.isArray(h) ? h : []
+        setHoldings(hArr)
+        lastValidHoldings.current = hArr
         setCash(c ?? null)
         setRiskDash(r ?? null)
       })
@@ -1035,10 +1040,18 @@ export default function HoldingsPage() {
   }, [selectedPortfolioId, refreshKey])
 
   // ── Real-time WS holdings push ─────────────────────────────────────────────
+  // Anti-flicker: skip updates where every group has perf=0 (backend price
+  // cache not yet warm) unless we have no holdings at all to show.
   useEffect(() => {
     if (!lastHoldingsUpdate) return
     if (lastHoldingsUpdate.portfolioId !== selectedPortfolioId) return
-    setHoldings(lastHoldingsUpdate.data)
+    const newData = lastHoldingsUpdate.data
+    const isCold = newData.length > 0 &&
+      newData.every(g => (safeFloat(g.effective_perf_1d) ?? 0) === 0)
+    if (!isCold || lastValidHoldings.current.length === 0) {
+      setHoldings(newData)
+      lastValidHoldings.current = newData
+    }
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
   // ── Stale-While-Revalidate on language change ─────────────────────────────
@@ -1054,7 +1067,32 @@ export default function HoldingsPage() {
       fetchCash(selectedPortfolioId),
     ]).then(([h, c]) => {
       if (cancelled) return
-      if (Array.isArray(h)) setHoldings(h)
+      if (Array.isArray(h)) {
+        // Smart merge: if backend returns 0 perf for a symbol (price cache miss
+        // on lang switch), graft the last known perf from the shadow ref so the
+        // treemap doesn't flash all-green.
+        const merged = h.map(newGroup => {
+          const old = lastValidHoldings.current.find(o => o.symbol === newGroup.symbol)
+          if (
+            old &&
+            (safeFloat(newGroup.effective_perf_1d) ?? 0) === 0 &&
+            (safeFloat(old.effective_perf_1d) ?? 0) !== 0
+          ) {
+            return {
+              ...newGroup,
+              effective_perf_1d: old.effective_perf_1d,
+              effective_perf_5d: old.effective_perf_5d,
+              perf_1d: old.perf_1d,
+              perf_5d: old.perf_5d,
+              perf_1m: old.perf_1m,
+              perf_3m: old.perf_3m,
+            }
+          }
+          return newGroup
+        })
+        setHoldings(merged)
+        lastValidHoldings.current = merged
+      }
       if (c) setCash(c)
     }).catch(() => {})
     return () => { cancelled = true }
@@ -1121,7 +1159,7 @@ export default function HoldingsPage() {
       .filter((g) => {
         if (!g?.symbol) return false
         const exp = safeFloat(g.delta_adjusted_exposure)
-        return exp != null && exp > 0
+        return exp != null && Math.abs(exp) > 0  // include short (negative) positions
       })
       .map((g) => {
         const isShort = g.is_short === true
@@ -1134,10 +1172,10 @@ export default function HoldingsPage() {
         const rawPerf = getRawPerf(g, period) ?? (wsChangePct ?? 0)
         return {
           name:     g.symbol,
-          size:     safeFloat(g.delta_adjusted_exposure) ?? 0,
+          size:     Math.abs(safeFloat(g.delta_adjusted_exposure) ?? 0),  // Recharts needs positive area
           perf,
           rawPerf,
-          exposure: safeFloat(g.delta_adjusted_exposure) ?? 0,
+          exposure: safeFloat(g.delta_adjusted_exposure) ?? 0,  // keep signed for display
           isShort,
         }
       })

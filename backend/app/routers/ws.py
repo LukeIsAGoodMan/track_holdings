@@ -119,12 +119,19 @@ async def websocket_endpoint(
                 symbols = await _get_portfolio_symbols(user_id, pid)
                 _manager.subscribe(ws, pid, symbols)
 
-                # Send initial spot snapshot from cache
+                # Send initial spot snapshot from cache (with changepct so
+                # the frontend Hero Banner and Treemap are warm on first connect)
                 cached = _cache.get_many(sorted(symbols))
                 if cached:
+                    changepct_map: dict[str, str] = {}
+                    for sym in cached:
+                        cp = yfinance_client.get_changepct_cached(sym)
+                        if cp is not None:
+                            changepct_map[sym] = str(cp)
                     await _manager.send_json(ws, {
                         "type": "spot_update",
                         "data": {s: str(p) for s, p in cached.items()},
+                        "changepct": changepct_map,
                     })
 
                 await _manager.send_json(ws, {
