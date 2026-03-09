@@ -12,7 +12,7 @@
 // Module-level singleton: lifecycle sweep fires at most once per browser session.
 let _lifecycleCalledThisSession = false
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useNavigate }  from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
@@ -1009,6 +1009,8 @@ export default function HoldingsPage() {
   const { lang, t } = useLanguage()
   const { lastHoldingsUpdate, lastSpotChangePct } = useWebSocket()
 
+  const lastValidHoldings = useRef<HoldingGroup[]>([])
+
   const [activeTab,       setActiveTab]       = useState<Tab>('overview')
   const [holdings,        setHoldings]        = useState<HoldingGroup[]>([])
   const [cash,            setCash]            = useState<CashSummary | null>(null)
@@ -1054,7 +1056,20 @@ export default function HoldingsPage() {
       fetchCash(selectedPortfolioId),
     ]).then(([h, c]) => {
       if (cancelled) return
-      if (Array.isArray(h)) setHoldings(h)
+      if (Array.isArray(h)) {
+        // Shadow data interceptor: if backend returns all-zero perf (cache miss),
+        // keep the stale holdings so the Treemap doesn't flash "all green 0%".
+        // WS lastSpotChangePct still drives colors in real-time.
+        const hasRealPerf = h.length === 0 || h.some(
+          (g) => (safeFloat(g.effective_perf_1d) ?? 0) !== 0
+               || (safeFloat(g.effective_perf_5d) ?? 0) !== 0
+        )
+        if (hasRealPerf) {
+          lastValidHoldings.current = h
+          setHoldings(h)
+        }
+        // else: stale data wins; WS covers live coloring
+      }
       if (c) setCash(c)
     }).catch(() => {})
     return () => { cancelled = true }
@@ -1112,7 +1127,14 @@ export default function HoldingsPage() {
 
     const realizedPnl = safeFloat(cash?.realized_pnl) ?? 0
 
-    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl }
+    const dailyUnrealizedPnlPct = portfolioValue > 0
+      ? (dailyUnrealizedPnl / portfolioValue) * 100
+      : null
+    const realizedPnlPct = portfolioValue > 0
+      ? (realizedPnl / portfolioValue) * 100
+      : null
+
+    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl, dailyUnrealizedPnlPct, realizedPnlPct }
   }, [holdings, cash, lastSpotChangePct])
 
   // ── Treemap data ──────────────────────────────────────────────────────────
@@ -1200,6 +1222,20 @@ export default function HoldingsPage() {
 
             {/* Hero Banner — 4 stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {/* Card 1: Portfolio Value */}
+              <StatCard
+                label={isEn ? 'Portfolio Value' : '持仓总市值'}
+                value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
+                sub={isEn ? 'Stocks MtM · Options cost basis' : '股票市值 · 期权开仓成本'}
+              />
+              {/* Card 2: Net Exposure */}
+              <StatCard
+                label={isEn ? 'Net Exposure' : '净敞口总额'}
+                value={heroMetrics.netExposure !== 0 ? fmtUSD(String(Math.round(Math.abs(heroMetrics.netExposure)))) : '—'}
+                sub={isEn ? 'Σ delta-adjusted notional' : 'Σ Delta加权名义敞口'}
+                valueClass={heroMetrics.netExposure >= 0 ? 'text-slate-900' : 'text-rose-600'}
+              />
+              {/* Card 3: Daily Unrealized P&L with % of Portfolio Value */}
               <StatCard
                 label={isEn ? 'Daily Unrealized P&L' : '今日浮盈变动'}
                 value={
@@ -1207,24 +1243,18 @@ export default function HoldingsPage() {
                     ? (heroMetrics.dailyUnrealizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dailyUnrealizedPnl)))
                     : '—'
                 }
-                sub={isEn ? 'Open positions · today vs prev close' : '持仓较昨收变动'}
+                sub={
+                  heroMetrics.dailyUnrealizedPnlPct != null && heroMetrics.dailyUnrealizedPnl !== 0
+                    ? `${heroMetrics.dailyUnrealizedPnlPct >= 0 ? '+' : ''}${heroMetrics.dailyUnrealizedPnlPct.toFixed(2)}% ${isEn ? 'of portfolio' : '占持仓比'}`
+                    : isEn ? 'Open positions · today vs prev close' : '持仓较昨收变动'
+                }
                 valueClass={
                   heroMetrics.dailyUnrealizedPnl === 0 ? 'text-slate-900'
                   : heroMetrics.dailyUnrealizedPnl > 0 ? 'text-emerald-600'
                   : 'text-rose-600'
                 }
               />
-              <StatCard
-                label={isEn ? 'Net Exposure' : '净敞口总额'}
-                value={heroMetrics.netExposure !== 0 ? fmtUSD(String(Math.round(Math.abs(heroMetrics.netExposure)))) : '—'}
-                sub={isEn ? 'Σ delta-adjusted notional' : 'Σ Delta加权名义敞口'}
-                valueClass={heroMetrics.netExposure >= 0 ? 'text-slate-900' : 'text-rose-600'}
-              />
-              <StatCard
-                label={isEn ? 'Portfolio Value' : '持仓总市值'}
-                value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
-                sub={isEn ? 'Stocks MtM · Options cost basis' : '股票市值 · 期权开仓成本'}
-              />
+              {/* Card 4: Total Realized P&L with % of Portfolio Value */}
               <StatCard
                 label={isEn ? 'Total Realized P&L' : '累计已实现盈亏'}
                 value={
@@ -1232,7 +1262,11 @@ export default function HoldingsPage() {
                     ? (heroMetrics.realizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.realizedPnl)))
                     : '—'
                 }
-                sub={isEn ? 'From closed trades only' : '仅含已平仓收益'}
+                sub={
+                  heroMetrics.realizedPnlPct != null && heroMetrics.realizedPnl !== 0
+                    ? `${heroMetrics.realizedPnlPct >= 0 ? '+' : ''}${heroMetrics.realizedPnlPct.toFixed(2)}% ${isEn ? 'of portfolio' : '占持仓比'}`
+                    : isEn ? 'From closed trades only' : '仅含已平仓收益'
+                }
                 valueClass={
                   heroMetrics.realizedPnl === 0 ? 'text-slate-900'
                   : heroMetrics.realizedPnl > 0  ? 'text-emerald-600'
