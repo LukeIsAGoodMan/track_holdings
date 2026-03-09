@@ -1148,9 +1148,11 @@ export default function HoldingsPage() {
       }
     }
 
-    const realizedPnl = safeFloat(cash?.realized_pnl) ?? 0
+    const realizedPnl         = safeFloat(cash?.realized_pnl) ?? 0
+    const dailyUnrealizedPnlPct = portfolioValue > 0 ? (dailyUnrealizedPnl / portfolioValue) * 100 : 0
+    const realizedPnlPct        = portfolioValue > 0 ? (realizedPnl        / portfolioValue) * 100 : 0
 
-    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl }
+    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl, dailyUnrealizedPnlPct, realizedPnlPct }
   }, [holdings, cash, lastSpotChangePct])
 
   // ── Treemap data ──────────────────────────────────────────────────────────
@@ -1239,18 +1241,9 @@ export default function HoldingsPage() {
             {/* Hero Banner — 4 stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
-                label={isEn ? 'Daily Unrealized P&L' : '今日浮盈变动'}
-                value={
-                  heroMetrics.dailyUnrealizedPnl !== 0
-                    ? (heroMetrics.dailyUnrealizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dailyUnrealizedPnl)))
-                    : '—'
-                }
-                sub={isEn ? 'Open positions · today vs prev close' : '持仓较昨收变动'}
-                valueClass={
-                  heroMetrics.dailyUnrealizedPnl === 0 ? 'text-slate-900'
-                  : heroMetrics.dailyUnrealizedPnl > 0 ? 'text-emerald-600'
-                  : 'text-rose-600'
-                }
+                label={isEn ? 'Portfolio Value' : '持仓总市值'}
+                value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
+                sub={isEn ? 'Stocks MtM + Options cost basis' : '股票市值 · 期权开仓成本'}
               />
               <StatCard
                 label={isEn ? 'Net Exposure' : '净敞口总额'}
@@ -1259,9 +1252,22 @@ export default function HoldingsPage() {
                 valueClass={heroMetrics.netExposure >= 0 ? 'text-slate-900' : 'text-rose-600'}
               />
               <StatCard
-                label={isEn ? 'Portfolio Value' : '持仓总市值'}
-                value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
-                sub={isEn ? 'Stocks MtM · Options cost basis' : '股票市值 · 期权开仓成本'}
+                label={isEn ? 'Daily Unrealized Change' : '今日浮盈变动'}
+                value={
+                  heroMetrics.dailyUnrealizedPnl !== 0
+                    ? (heroMetrics.dailyUnrealizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dailyUnrealizedPnl)))
+                    : '—'
+                }
+                sub={
+                  heroMetrics.dailyUnrealizedPnlPct !== 0
+                    ? (heroMetrics.dailyUnrealizedPnlPct >= 0 ? '+' : '') + heroMetrics.dailyUnrealizedPnlPct.toFixed(2) + '%'
+                    : undefined
+                }
+                valueClass={
+                  heroMetrics.dailyUnrealizedPnl === 0 ? 'text-slate-900'
+                  : heroMetrics.dailyUnrealizedPnl > 0 ? 'text-emerald-600'
+                  : 'text-rose-600'
+                }
               />
               <StatCard
                 label={isEn ? 'Total Realized P&L' : '累计已实现盈亏'}
@@ -1270,7 +1276,11 @@ export default function HoldingsPage() {
                     ? (heroMetrics.realizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.realizedPnl)))
                     : '—'
                 }
-                sub={isEn ? 'From closed trades only' : '仅含已平仓收益'}
+                sub={
+                  heroMetrics.realizedPnlPct !== 0
+                    ? (heroMetrics.realizedPnlPct >= 0 ? '+' : '') + heroMetrics.realizedPnlPct.toFixed(2) + '%'
+                    : (isEn ? 'From closed trades only' : '仅含已平仓收益')
+                }
                 valueClass={
                   heroMetrics.realizedPnl === 0 ? 'text-slate-900'
                   : heroMetrics.realizedPnl > 0  ? 'text-emerald-600'
