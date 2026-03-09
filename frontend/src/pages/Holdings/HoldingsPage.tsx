@@ -13,7 +13,6 @@
 let _lifecycleCalledThisSession = false
 
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { useNavigate }  from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -522,8 +521,7 @@ function StockLegsTable({
 // ── Holdings table ────────────────────────────────────────────────────────────
 function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
   const { t }             = useLanguage()
-  const navigate          = useNavigate()
-  const { openTradeEntry } = useSidebar()
+  const { openTradeEntry, openPriceAlerts } = useSidebar()
   const { lastSpotChangePct } = useWebSocket()
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
@@ -653,8 +651,9 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                     role="button" tabIndex={0}
                     onClick={(e) => {
                       e.stopPropagation()
-                      navigate('/risk', {
-                        state: { prefillAlert: { symbol: group.symbol, spotPrice: group.spot_price } },
+                      openPriceAlerts({
+                        symbol: group.symbol,
+                        price:  parseFloat(group.spot_price ?? '0'),
                       })
                     }}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.click() }}

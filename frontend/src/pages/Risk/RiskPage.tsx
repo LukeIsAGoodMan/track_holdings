@@ -14,7 +14,6 @@
  * · i18n via useLanguage()
  */
 import { useEffect, useState, useMemo, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -27,7 +26,6 @@ import { fetchRiskDashboard, fetchHoldings, fetchAccountHistory, fetchAttributio
 import type { RiskDashboard, HoldingGroup, AccountHistoryResponse, AttributionResponse, PortfolioInsight } from '@/types'
 import { fmtNum, fmtUSD, fmtGreek, signClass } from '@/utils/format'
 import CoachPanel from './CoachPanel'
-import AlertsPanel from './AlertsPanel'
 
 // ── Shared light-theme tooltip style ──────────────────────────────────────────
 const TOOLTIP_STYLE = {
@@ -919,9 +917,6 @@ export default function RiskPage() {
   const { selectedPortfolioId, refreshKey } = usePortfolio()
   const { t } = useLanguage()
   const { lastRiskUpdate, lastHoldingsUpdate } = useWebSocket()
-  const location = useLocation()
-  const prefillAlert = (location.state as { prefillAlert?: { symbol: string; spotPrice: string | null } } | null)?.prefillAlert
-
   const [dashboard, setDashboard] = useState<RiskDashboard | null>(null)
   const [holdings,  setHoldings]  = useState<HoldingGroup[]>([])
   const [loading,   setLoading]   = useState(true)
@@ -1036,12 +1031,6 @@ export default function RiskPage() {
             alerts={dashboard.risk_alerts ?? []}
             label={t('risk_alerts')}
             noAlertLabel={t('no_alerts')}
-          />
-
-          {/* ── Price Alerts ─────────────────────────────────── */}
-          <AlertsPanel
-            prefillSymbol={prefillAlert?.symbol}
-            prefillSpot={prefillAlert?.spotPrice}
           />
 
           {/* ── Charts ────────────────────────────────────────── */}

@@ -1,22 +1,22 @@
 /**
- * Sidebar — Three-State Action Drawer
+ * Sidebar — Three-State Action Drawer (+ two pinned-panel sub-states)
  *
- * State 1 — Collapsed  (64px):   icon-only column; badge + "+" + toggle
- * State 2 — Expanded   (224px):  nav list with "New Trade" card + portfolio tree
- * State 3 — Trade      (520px):  full TradeEntryForm, page scrolls naturally
+ * State 1 — Collapsed    (64px):   icon-only column; toggle + "+" + bell + portfolio badge
+ * State 2 — Expanded    (224px):  nav with "New Trade" card + "Price Alerts" + portfolio tree
+ * State 3a — Trade       (520px):  TradeEntryForm, locked until Back pressed
+ * State 3b — Price Alerts(520px):  PriceAlertsSidebar, locked until Back pressed
  *
- * Expands via explicit toggle button only (no hover-expand).
- * Trade mode triggered by openTradeEntry() → forces 520 px.
- * Flex sibling <main> naturally narrows — sidebar never overlays content.
- * No sticky / fixed height — sidebar is in document flow, page scrolls.
+ * Sticky below TopNav (top-14), fills remaining viewport height.
+ * Each state's inner content scrolls independently via flex-1 overflow-y-auto.
  */
-import { useMemo }      from 'react'
-import { usePortfolio } from '@/context/PortfolioContext'
-import { useLanguage }  from '@/context/LanguageContext'
-import { useSidebar }   from '@/context/SidebarContext'
-import TradeEntryForm   from '@/components/TradeEntryForm'
-import { fmtCompact }   from '@/utils/format'
-import type { Portfolio } from '@/types'
+import { useMemo }               from 'react'
+import { usePortfolio }          from '@/context/PortfolioContext'
+import { useLanguage }           from '@/context/LanguageContext'
+import { useSidebar }            from '@/context/SidebarContext'
+import TradeEntryForm            from '@/components/TradeEntryForm'
+import PriceAlertsSidebar        from '@/components/PriceAlertsSidebar'
+import { fmtCompact }            from '@/utils/format'
+import type { Portfolio }        from '@/types'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 const IconChevronLeft = () => (
@@ -34,6 +34,17 @@ const IconChevronRight = () => (
 const IconPlus = () => (
   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" aria-hidden="true">
     <path d="M12 5v14M5 12h14" />
+  </svg>
+)
+
+const IconBell = ({ active }: { active?: boolean }) => (
+  <svg
+    className={`w-4 h-4 transition-colors ${active ? 'text-amber-500' : 'text-slate-500'}`}
+    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+    strokeLinecap="round" aria-hidden="true"
+  >
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
   </svg>
 )
 
@@ -84,7 +95,7 @@ function PortfolioNode({ node, depth = 0 }: { node: Portfolio; depth?: number })
   )
 }
 
-// ── Selected portfolio badge (collapsed state) ────────────────────────────────
+// ── Collapsed: selected portfolio badge ───────────────────────────────────────
 function PortfolioBadge() {
   const { portfolios, selectedPortfolioId } = usePortfolio()
 
@@ -109,29 +120,74 @@ function PortfolioBadge() {
   )
 }
 
+// ── Reusable pinned-panel header ──────────────────────────────────────────────
+function PanelHeader({
+  label, sublabel, sublabelClass = '', onBack, backTitle,
+}: {
+  label:         string
+  sublabel?:     string
+  sublabelClass?: string
+  onBack:        () => void
+  backTitle:     string
+}) {
+  return (
+    <div className="flex items-center gap-2.5 px-4 py-3 shrink-0
+                    border-b border-slate-200 bg-slate-50/80">
+      <button
+        onClick={onBack}
+        title={backTitle}
+        className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0
+                   text-slate-500 hover:text-slate-800 hover:bg-slate-200/70
+                   transition-colors"
+      >
+        <IconChevronLeft />
+      </button>
+
+      <div className="w-px h-4 bg-slate-200 shrink-0" />
+
+      <div className="flex flex-col leading-none">
+        <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.08em]">
+          {label}
+        </span>
+        {sublabel && (
+          <span className={`text-[13px] font-bold text-slate-800 mt-0.5 ${sublabelClass}`}>
+            {sublabel}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 export default function Sidebar() {
   const { portfolios, loading } = usePortfolio()
   const { lang }                = useLanguage()
   const {
-    mode, isExpanded, pendingClose,
-    openTradeEntry, exitTradeEntry, toggleExpand,
+    mode, isExpanded,
+    pendingClose, alertPrefill,
+    openTradeEntry, exitTradeEntry,
+    openPriceAlerts, exitPriceAlerts,
+    toggleExpand,
   } = useSidebar()
 
-  const isTradeMode = mode === 'trade_entry'
+  const isTradeMode  = mode === 'trade_entry'
+  const isAlertsMode = mode === 'price_alerts'
+  const isPinnedMode = isTradeMode || isAlertsMode
 
-  // Three-state widths
-  const sidebarWidth = isTradeMode ? 520 : isExpanded ? 224 : 64
+  const sidebarWidth = isPinnedMode ? 520 : isExpanded ? 224 : 64
 
   const L = {
-    newTrade:   lang === 'zh' ? '新建交易'  : 'New Trade',
-    portfolios: lang === 'zh' ? '投资组合'  : 'Portfolios',
-    noPf:       lang === 'zh' ? '暂无组合'  : 'No portfolios',
-    back:       lang === 'zh' ? '返回'      : 'Back',
-    close:      lang === 'zh' ? '平仓交易'  : 'Close Position',
-    newTr2:     lang === 'zh' ? '新建交易'  : 'New Trade',
-    collapse:   lang === 'zh' ? '折叠'      : 'Collapse',
-    expand:     lang === 'zh' ? '展开'      : 'Expand',
+    newTrade:    lang === 'zh' ? '新建交易'  : 'New Trade',
+    priceAlerts: lang === 'zh' ? '价格警报'  : 'Price Alerts',
+    portfolios:  lang === 'zh' ? '投资组合'  : 'Portfolios',
+    noPf:        lang === 'zh' ? '暂无组合'  : 'No portfolios',
+    back:        lang === 'zh' ? '返回'      : 'Back',
+    close:       lang === 'zh' ? '平仓交易'  : 'Close Position',
+    newTr2:      lang === 'zh' ? '新建交易'  : 'New Trade',
+    alertsHdr:   lang === 'zh' ? '价格警报'  : 'Price Alerts',
+    collapse:    lang === 'zh' ? '折叠'      : 'Collapse',
+    expand:      lang === 'zh' ? '展开'      : 'Expand',
   }
 
   return (
@@ -142,60 +198,42 @@ export default function Sidebar() {
                  transition-[width] duration-200 ease-in-out"
       style={{ width: sidebarWidth }}
     >
+
       {isTradeMode ? (
-
-        /* ════════════════════════════════════════════════════════════════════
-         * STATE 3 — PINNED TRADE ENTRY  (520px)
-         * Full-width trade form. Back button returns to nav mode.
-         * Page scrolls naturally — no internal overflow-y-auto.
-         * ════════════════════════════════════════════════════════════════════ */
+        /* ══════════════════════════════════════════════════════════════════
+         * STATE 3a — TRADE ENTRY  (520px)
+         * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
-
-          {/* Header */}
-          <div className="flex items-center gap-2.5 px-4 py-3 shrink-0
-                          border-b border-slate-200 bg-slate-50/80 pt-4">
-            <button
-              onClick={exitTradeEntry}
-              title={L.back}
-              className="flex items-center justify-center w-7 h-7 rounded-lg shrink-0
-                         text-slate-500 hover:text-slate-800 hover:bg-slate-200/70
-                         transition-colors"
-            >
-              <IconChevronLeft />
-            </button>
-
-            {/* Vertical divider */}
-            <div className="w-px h-4 bg-slate-200 shrink-0" />
-
-            <div className="flex flex-col leading-none">
-              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.08em]">
-                {pendingClose ? L.close : L.newTr2}
-              </span>
-              {pendingClose && (
-                <span className="text-[13px] font-bold text-slate-800 mt-0.5">
-                  {pendingClose.symbol}
-                  {pendingClose.optionType && (
-                    <span className={`ml-1.5 text-[11px] font-semibold ${pendingClose.optionType === 'PUT' ? 'text-rose-500' : 'text-sky-500'}`}>
-                      {pendingClose.optionType}
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Form — no internal scroll, page scrolls */}
+          <PanelHeader
+            label={pendingClose ? L.close : L.newTr2}
+            sublabel={pendingClose?.symbol}
+            sublabelClass={pendingClose?.optionType === 'PUT' ? 'text-rose-500' : 'text-sky-500'}
+            onBack={exitTradeEntry}
+            backTitle={L.back}
+          />
           <div className="overflow-visible">
             <TradeEntryForm closeState={pendingClose} onSuccess={exitTradeEntry} />
           </div>
         </div>
 
-      ) : isExpanded ? (
+      ) : isAlertsMode ? (
+        /* ══════════════════════════════════════════════════════════════════
+         * STATE 3b — PRICE ALERTS  (520px)
+         * ══════════════════════════════════════════════════════════════════ */
+        <div className="flex flex-col flex-1 min-h-0">
+          <PanelHeader
+            label={L.alertsHdr}
+            sublabel={alertPrefill?.symbol}
+            onBack={exitPriceAlerts}
+            backTitle={L.back}
+          />
+          <PriceAlertsSidebar prefill={alertPrefill} />
+        </div>
 
-        /* ════════════════════════════════════════════════════════════════════
+      ) : isExpanded ? (
+        /* ══════════════════════════════════════════════════════════════════
          * STATE 2 — EXPANDED NAV  (224px)
-         * New Trade card + Portfolio tree + collapse button
-         * ════════════════════════════════════════════════════════════════════ */
+         * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pt-8">
 
           {/* Header row: label + collapse toggle */}
@@ -214,30 +252,48 @@ export default function Sidebar() {
             </button>
           </div>
 
-          {/* ── Action card: New Trade ──────────────────────────────────── */}
-          <div className="px-2.5 pb-3 shrink-0">
+          {/* Action cards */}
+          <div className="px-2.5 pb-2 shrink-0 space-y-1.5">
+
+            {/* New Trade card */}
             <button
               onClick={() => openTradeEntry()}
-              className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl
+              className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl
                          bg-white border border-slate-200 shadow-sm
                          text-[13px] font-semibold text-slate-700
                          hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700
                          hover:shadow-md active:shadow-none
                          transition-all duration-150 group"
             >
-              {/* Icon container */}
               <span className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center
                                shrink-0 group-hover:bg-emerald-200 transition-colors">
                 <IconPlus />
               </span>
               {L.newTrade}
             </button>
+
+            {/* Price Alerts card */}
+            <button
+              onClick={() => openPriceAlerts()}
+              className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl
+                         bg-white border border-slate-200 shadow-sm
+                         text-[13px] font-semibold text-slate-700
+                         hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700
+                         hover:shadow-md active:shadow-none
+                         transition-all duration-150 group"
+            >
+              <span className="w-6 h-6 rounded-lg bg-amber-100 flex items-center justify-center
+                               shrink-0 group-hover:bg-amber-200 transition-colors">
+                <IconBell />
+              </span>
+              {L.priceAlerts}
+            </button>
           </div>
 
           {/* Thin rule */}
           <div className="mx-3 h-px bg-slate-100 mb-3 shrink-0" />
 
-          {/* ── Portfolio list ────────────────────────────────────────── */}
+          {/* Portfolio list */}
           <div className="px-2 pb-4 space-y-0.5">
             {loading ? (
               <div className="space-y-1.5 px-1 pt-1">
@@ -246,9 +302,7 @@ export default function Sidebar() {
                 ))}
               </div>
             ) : portfolios.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                {L.noPf}
-              </div>
+              <div className="py-8 text-center text-xs text-slate-400">{L.noPf}</div>
             ) : (
               <ul className="space-y-0.5">
                 {portfolios.map(p => <PortfolioNode key={p.id} node={p} />)}
@@ -258,11 +312,9 @@ export default function Sidebar() {
         </div>
 
       ) : (
-
-        /* ════════════════════════════════════════════════════════════════════
+        /* ══════════════════════════════════════════════════════════════════
          * STATE 1 — COLLAPSED  (64px)
-         * Icon-only vertical stack: toggle › · + New Trade · portfolio badge
-         * ════════════════════════════════════════════════════════════════════ */
+         * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col items-center flex-1 min-h-0 overflow-y-auto pt-8 pb-2 gap-1">
 
           {/* Expand toggle */}
@@ -276,10 +328,9 @@ export default function Sidebar() {
             <IconChevronRight />
           </button>
 
-          {/* Thin divider */}
           <div className="w-6 h-px bg-slate-200 my-0.5" />
 
-          {/* New Trade — icon pill */}
+          {/* New Trade pill */}
           <button
             onClick={() => openTradeEntry()}
             title={L.newTrade}
@@ -291,7 +342,18 @@ export default function Sidebar() {
             <IconPlus />
           </button>
 
-          {/* Thin divider */}
+          {/* Price Alerts pill */}
+          <button
+            onClick={() => openPriceAlerts()}
+            title={L.priceAlerts}
+            className="w-10 h-10 rounded-xl flex items-center justify-center
+                       bg-amber-100 text-amber-600
+                       hover:bg-amber-200 hover:text-amber-700
+                       transition-colors shadow-sm"
+          >
+            <IconBell />
+          </button>
+
           <div className="w-6 h-px bg-slate-200 my-0.5" />
 
           {/* Portfolio badge */}
