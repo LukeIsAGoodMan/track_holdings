@@ -20,7 +20,7 @@ export default function Layout() {
       <TopNav />
 
       {/* ── Content row ─────────────────────────────────────────────────── */}
-      <div className="flex flex-1">
+      <div className="flex flex-1 items-start">
         {/* Light chrome sidebar */}
         <Sidebar />
 

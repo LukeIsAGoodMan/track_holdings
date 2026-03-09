@@ -137,7 +137,8 @@ export default function Sidebar() {
   return (
     <aside
       className="shrink-0 flex flex-col bg-white border-r border-slate-200
-                 overflow-hidden font-sans self-start min-h-screen
+                 overflow-hidden font-sans
+                 sticky top-14 h-[calc(100vh-3.5rem)]
                  transition-[width] duration-200 ease-in-out"
       style={{ width: sidebarWidth }}
     >
@@ -148,11 +149,11 @@ export default function Sidebar() {
          * Full-width trade form. Back button returns to nav mode.
          * Page scrolls naturally — no internal overflow-y-auto.
          * ════════════════════════════════════════════════════════════════════ */
-        <div className="flex flex-col pt-4">
+        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
 
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 py-3 shrink-0
-                          border-b border-slate-200 bg-slate-50/80">
+                          border-b border-slate-200 bg-slate-50/80 pt-4">
             <button
               onClick={exitTradeEntry}
               title={L.back}
@@ -195,7 +196,7 @@ export default function Sidebar() {
          * STATE 2 — EXPANDED NAV  (224px)
          * New Trade card + Portfolio tree + collapse button
          * ════════════════════════════════════════════════════════════════════ */
-        <div className="flex flex-col pt-8">
+        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pt-8">
 
           {/* Header row: label + collapse toggle */}
           <div className="flex items-center justify-between px-3 pb-2.5 shrink-0">
@@ -262,7 +263,7 @@ export default function Sidebar() {
          * STATE 1 — COLLAPSED  (64px)
          * Icon-only vertical stack: toggle › · + New Trade · portfolio badge
          * ════════════════════════════════════════════════════════════════════ */
-        <div className="flex flex-col items-center pt-8 pb-2 gap-1">
+        <div className="flex flex-col items-center flex-1 min-h-0 overflow-y-auto pt-8 pb-2 gap-1">
 
           {/* Expand toggle */}
           <button
