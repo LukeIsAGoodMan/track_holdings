@@ -92,7 +92,7 @@ function CustomCell(props: Record<string, unknown>) {
   const fill  = perfColor(perf)
   const label = isShort ? `${name} (S)` : name
 
-  if (width <= 0 || height <= 0) return null
+  if (width <= 0 || height <= 0) return <g />
 
   const fontSize    = Math.min(13, Math.max(8, width / 6))
   const subFontSize = Math.min(11, Math.max(8, width / 8))
@@ -143,7 +143,7 @@ function CustomCell(props: Record<string, unknown>) {
 }
 
 // ── Treemap tooltip ───────────────────────────────────────────────────────────
-function TreemapTooltip({ active, payload }: { active?: boolean; payload?: unknown[] }) {
+function TreemapTooltip({ active, payload }: { active?: boolean; payload?: readonly unknown[] }) {
   if (!active || !payload?.length) return null
   const item     = (payload[0] ?? {}) as Record<string, unknown>
   const name     = (typeof item.name    === 'string') ? item.name    : String(item.name ?? '?')
@@ -1041,12 +1041,23 @@ export default function HoldingsPage() {
     setHoldings(lastHoldingsUpdate.data)
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
-  // ── Silent re-fetch on language change ────────────────────────────────────
-  // Bumping refreshKey fires the main useEffect which fetches holdings, cash,
-  // and risk in one coordinated batch — no stale intermediate setHoldings calls.
+  // ── Stale-While-Revalidate on language change ─────────────────────────────
+  // Do NOT call triggerRefresh() here — that would set loading=true and blank
+  // the entire overview tab (data vacuum).  Instead, fetch quietly in the
+  // background; the stale data keeps rendering until fresh data arrives.
+  // Cleanup flag prevents setState after unmount or rapid lang toggling.
   useEffect(() => {
     if (selectedPortfolioId === null) return
-    triggerRefresh()
+    let cancelled = false
+    Promise.all([
+      fetchHoldings(selectedPortfolioId),
+      fetchCash(selectedPortfolioId),
+    ]).then(([h, c]) => {
+      if (cancelled) return
+      if (Array.isArray(h)) setHoldings(h)
+      if (c) setCash(c)
+    }).catch(() => {})
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang])
 
@@ -1073,24 +1084,35 @@ export default function HoldingsPage() {
   // Net Exposure = Σ delta_adjusted_exposure (signed sum of all delta bets)
   const heroMetrics = useMemo(() => {
     let dailyUnrealizedPnl = 0
-    let netExposure = 0
+    let netExposure        = 0
+    let portfolioValue     = 0
 
     for (const g of holdings) {
       const exposure = safeFloat(g.delta_adjusted_exposure) ?? 0
       netExposure += exposure
 
-      // Live WS pct preferred; fallback to cached 1d perf from backend
+      // Daily Unrealized P&L: live WS pct preferred; fallback to cached 1d perf
       const pctStr = lastSpotChangePct?.[g.symbol]
       const pct    = pctStr != null ? parseFloat(pctStr) : (safeFloat(g.effective_perf_1d) ?? 0)
       if (isFinite(pct) && isFinite(exposure)) {
         dailyUnrealizedPnl += exposure * pct / 100
       }
+
+      // Portfolio Value: stock legs → real-time MtM; option legs → premium × qty × 100
+      for (const sl of g.stock_legs ?? []) {
+        const mv = safeFloat(sl.market_value)
+        if (mv != null) portfolioValue += Math.abs(mv)
+      }
+      for (const ol of g.option_legs ?? []) {
+        const premium = safeFloat(ol.avg_open_price)
+        const qty     = Math.abs(ol.net_contracts)
+        if (premium != null && qty > 0) portfolioValue += premium * qty * 100
+      }
     }
 
-    const cashBal     = safeFloat(cash?.balance)     ?? 0
     const realizedPnl = safeFloat(cash?.realized_pnl) ?? 0
 
-    return { dailyUnrealizedPnl, netExposure, cashBal, realizedPnl }
+    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl }
   }, [holdings, cash, lastSpotChangePct])
 
   // ── Treemap data ──────────────────────────────────────────────────────────
@@ -1199,9 +1221,9 @@ export default function HoldingsPage() {
                 valueClass={heroMetrics.netExposure >= 0 ? 'text-slate-900' : 'text-rose-600'}
               />
               <StatCard
-                label={isEn ? 'Cash Balance' : '可用现金'}
-                value={heroMetrics.cashBal !== 0 ? fmtUSD(String(Math.round(heroMetrics.cashBal))) : '—'}
-                sub={isEn ? 'Settled cash on hand' : '已结算现金余额'}
+                label={isEn ? 'Portfolio Value' : '持仓总市值'}
+                value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
+                sub={isEn ? 'Stocks MtM · Options cost basis' : '股票市值 · 期权开仓成本'}
               />
               <StatCard
                 label={isEn ? 'Total Realized P&L' : '累计已实现盈亏'}
