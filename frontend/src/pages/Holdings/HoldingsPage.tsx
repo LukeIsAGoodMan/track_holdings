@@ -428,67 +428,240 @@ function StrategyPieChart({ holdings, isEn }: { holdings: HoldingGroup[]; isEn: 
   )
 }
 
-// ── Risk Weather Card ─────────────────────────────────────────────────────────
-function RiskWeatherCard({ riskDash, isEn }: { riskDash: RiskDashboard | null; isEn: boolean }) {
-  if (!riskDash) return null
+// ── Risk Weather Card — Weather icons ─────────────────────────────────────────
 
-  const theta  = parseFloat(riskDash.total_theta_daily)
-  const var1d  = riskDash.var_1d_95 != null ? parseFloat(riskDash.var_1d_95) : null
-  const alerts = riskDash.risk_alerts
+function IconSun() {
+  return (
+    <svg viewBox="0 0 56 56" fill="none" className="w-full h-full">
+      <circle cx="28" cy="28" r="11" fill="#FCD34D" />
+      {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
+        const rad = (deg * Math.PI) / 180
+        return (
+          <line key={deg}
+            x1={28 + Math.cos(rad) * 16} y1={28 + Math.sin(rad) * 16}
+            x2={28 + Math.cos(rad) * 23} y2={28 + Math.sin(rad) * 23}
+            stroke="#F59E0B" strokeWidth="2.8" strokeLinecap="round"
+          />
+        )
+      })}
+    </svg>
+  )
+}
+
+function IconCloud() {
+  return (
+    <svg viewBox="0 0 56 56" fill="none" className="w-full h-full">
+      <path
+        d="M11 35c0-5.5 3.8-10 9-10a9.5 9.5 0 0 1 8.5-5.5A9.5 9.5 0 0 1 38 29h.5A7.5 7.5 0 0 1 38.5 44H11A8.5 8.5 0 0 1 11 35z"
+        fill="#94A3B8"
+      />
+    </svg>
+  )
+}
+
+function IconRain() {
+  return (
+    <svg viewBox="0 0 56 56" fill="none" className="w-full h-full">
+      <path
+        d="M9 31c0-5.5 3.8-10 9-10a9.5 9.5 0 0 1 8.5-5.5A9.5 9.5 0 0 1 36 25h.5A7.5 7.5 0 0 1 36.5 40H9A8.5 8.5 0 0 1 9 31z"
+        fill="#64748B"
+      />
+      <line x1="17" y1="44" x2="14" y2="52" stroke="#93C5FD" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="26" y1="44" x2="23" y2="52" stroke="#93C5FD" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="35" y1="44" x2="32" y2="52" stroke="#93C5FD" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function IconStorm() {
+  return (
+    <svg viewBox="0 0 56 56" fill="none" className="w-full h-full">
+      <path
+        d="M8 29c0-5.5 3.8-10 9-10a9.5 9.5 0 0 1 8.5-5.5A9.5 9.5 0 0 1 35 23h.5A7.5 7.5 0 0 1 35.5 38H8A8.5 8.5 0 0 1 8 29z"
+        fill="#475569"
+      />
+      <polyline
+        points="30,38 24,48 28,46 22,56"
+        stroke="#FCD34D" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  )
+}
+
+type RegimeCfg = {
+  icon: React.ReactNode
+  label: string; labelZh: string
+  glow: string; iconBg: string; textClass: string
+}
+
+const REGIME_CFG: Record<string, RegimeCfg> = {
+  low_vol_bullish: {
+    icon: <IconSun />,
+    label: 'Bullish',       labelZh: '看涨行情',
+    glow:    'drop-shadow(0 0 10px rgba(251,191,36,0.70))',
+    iconBg:  'bg-amber-50',   textClass: 'text-amber-500',
+  },
+  low_vol_range: {
+    icon: <IconCloud />,
+    label: 'Range-Bound',   labelZh: '震荡行情',
+    glow:    'drop-shadow(0 0 7px rgba(148,163,184,0.50))',
+    iconBg:  'bg-slate-50',   textClass: 'text-slate-500',
+  },
+  rising_vol: {
+    icon: <IconCloud />,
+    label: 'Volatile',      labelZh: '波动加剧',
+    glow:    'drop-shadow(0 0 8px rgba(100,116,139,0.45))',
+    iconBg:  'bg-slate-100',  textClass: 'text-slate-600',
+  },
+  high_vol_selloff: {
+    icon: <IconRain />,
+    label: 'Sell-Off',      labelZh: '抛售压力',
+    glow:    'drop-shadow(0 0 10px rgba(147,197,253,0.65))',
+    iconBg:  'bg-blue-50',    textClass: 'text-blue-600',
+  },
+  crisis: {
+    icon: <IconStorm />,
+    label: 'Crisis',        labelZh: '市场危机',
+    glow:    'drop-shadow(0 0 13px rgba(244,63,94,0.65))',
+    iconBg:  'bg-rose-50',    textClass: 'text-rose-600',
+  },
+}
+
+function vixFillColor(v: number): string {
+  if (v < 15) return '#34d399'   // emerald
+  if (v < 20) return '#a3e635'   // lime
+  if (v < 25) return '#f59e0b'   // amber
+  if (v < 30) return '#f97316'   // orange
+  return '#f43f5e'               // rose
+}
+
+const VIX_MAX = 40
+
+function RiskWeatherCard({ riskDash, isEn }: { riskDash: RiskDashboard | null; isEn: boolean }) {
+  const { lastMacroTicker } = useWebSocket()
+
+  const theta     = riskDash ? parseFloat(riskDash.total_theta_daily) : 0
+  const var1d     = riskDash?.var_1d_95 != null ? parseFloat(riskDash.var_1d_95) : null
+  const alerts    = riskDash?.risk_alerts ?? []
+
+  const regime    = lastMacroTicker?.market_regime ?? 'low_vol_range'
+  const vixLevel  = lastMacroTicker?.vix_level ?? null
+  const vixTerm   = lastMacroTicker?.vix_term ?? null
+
+  const isBackwardation = vixTerm === 'elevated' || vixTerm === 'crisis'
+  const cfg      = REGIME_CFG[regime] ?? REGIME_CFG['low_vol_range']!
+  const vixPct   = vixLevel != null ? Math.min((vixLevel / VIX_MAX) * 100, 100) : null
+  const vixColor = vixLevel != null ? vixFillColor(vixLevel) : '#e2e8f0'
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 flex flex-col justify-between min-h-[260px]">
+
+      {/* Label */}
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
         {isEn ? 'Risk Weather' : '风险状态'}
       </div>
 
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">{isEn ? 'Daily Theta' : '每日时间价值'}</span>
-          <span className={`text-sm font-bold tabular-nums ${theta >= 0 ? 'text-amber-600' : 'text-rose-600'}`}>
-            {theta >= 0 ? '+' : ''}{theta.toFixed(2)}
+      {/* ── Regime icon + label ───────────────────────────────────────── */}
+      <div className={`flex items-center gap-3 rounded-xl px-3 py-2.5 ${cfg.iconBg}`}>
+        <div className="w-12 h-12 shrink-0" style={{ filter: cfg.glow }}>
+          {cfg.icon}
+        </div>
+        <div className="flex flex-col leading-tight">
+          <span className={`text-sm font-black tracking-wide ${cfg.textClass}`}>
+            {isEn ? cfg.label : cfg.labelZh}
+          </span>
+          <span className="text-[10px] text-slate-400 mt-0.5 capitalize">
+            {regime.replace(/_/g, ' ')}
           </span>
         </div>
+      </div>
 
-        {var1d != null && (
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-500">{isEn ? '1d 95% VaR' : '单日95% VaR'}</span>
-            <span className="text-sm font-bold tabular-nums text-rose-600">
-              -{fmtUSD(String(Math.round(var1d)))}
-            </span>
-          </div>
-        )}
-
+      {/* ── VIX Gauge ─────────────────────────────────────────────────── */}
+      <div className="mt-3 space-y-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">{isEn ? 'Positions' : '持仓数量'}</span>
-          <span className="text-sm font-bold tabular-nums text-slate-800">{riskDash.positions_count}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">VIX</span>
+          <span className="text-[11px] font-bold tabular-nums" style={{ color: vixColor }}>
+            {vixLevel != null ? vixLevel.toFixed(1) : '—'}
+          </span>
         </div>
-
-        {alerts.length > 0 && (
-          <div className="border-t border-slate-100 pt-3 space-y-1.5">
-            {alerts.slice(0, 2).map((alert, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 leading-snug">
-                <span className="shrink-0 mt-px">⚠</span>
-                <span>{alert}</span>
-              </div>
-            ))}
-            {alerts.length > 2 && (
-              <div className="text-[10px] text-slate-400 text-right">
-                +{alerts.length - 2} {isEn ? 'more' : '条更多'}
-              </div>
-            )}
+        {/* Track */}
+        <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+          {/* Static zone background */}
+          <div className="absolute inset-0 flex pointer-events-none">
+            <div style={{ width: `${(15 / VIX_MAX) * 100}%`, background: 'linear-gradient(90deg,#34d39966,#34d39911)' }} />
+            <div style={{ width: `${(10 / VIX_MAX) * 100}%`, background: 'linear-gradient(90deg,#f59e0b33,#f59e0b66)' }} />
+            <div style={{ flex: 1, background: 'linear-gradient(90deg,#f9731666,#f43f5e55)' }} />
           </div>
-        )}
+          {/* Live fill */}
+          {vixPct != null && (
+            <div
+              className="absolute left-0 top-0 h-full rounded-full transition-all duration-700"
+              style={{ width: `${vixPct}%`, background: vixColor, boxShadow: `0 0 6px ${vixColor}` }}
+            />
+          )}
+        </div>
+        <div className="flex justify-between text-[9px] font-medium tracking-wide">
+          <span className="text-emerald-500">0–15 {isEn ? 'Calm' : '平静'}</span>
+          <span className="text-amber-500">15–25 {isEn ? 'Caution' : '注意'}</span>
+          <span className="text-rose-500">25+ {isEn ? 'Storm' : '风暴'}</span>
+        </div>
+      </div>
 
-        {alerts.length === 0 && (
-          <div className="border-t border-slate-100 pt-3">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-600">
-              <span>✓</span>
-              <span>{isEn ? 'No active risk alerts' : '暂无风险警告'}</span>
-            </div>
-          </div>
+      {/* ── Term Structure ────────────────────────────────────────────── */}
+      <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2">
+        <div className="flex flex-col leading-tight">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            {isEn ? 'VIX Term Structure' : 'VIX期限结构'}
+          </span>
+          <span className={`text-xs font-bold mt-0.5 ${isBackwardation ? 'text-rose-600' : 'text-emerald-600'}`}>
+            {isBackwardation ? (isEn ? 'Backwardation' : '期限倒挂') : (isEn ? 'Contango' : '远期升水')}
+          </span>
+          <span className="text-[9px] text-slate-400 mt-0.5 leading-snug">
+            {isBackwardation
+              ? (isEn ? 'Near-term fear · Γ risk up' : '近端恐慌 · Gamma风险上升')
+              : (isEn ? 'Normal roll · Θ carry healthy' : '正常展期 · Theta收益健康')}
+          </span>
+        </div>
+        {isBackwardation ? (
+          <svg viewBox="0 0 36 36" className="w-8 h-8 shrink-0" fill="none">
+            <path d="M6 10 L30 28" stroke="#f43f5e" strokeWidth="3" strokeLinecap="round" />
+            <polyline points="22,28 30,28 30,20" stroke="#f43f5e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 36 36" className="w-8 h-8 shrink-0" fill="none">
+            <path d="M6 28 L30 10" stroke="#34d399" strokeWidth="3" strokeLinecap="round" />
+            <polyline points="22,10 30,10 30,18" stroke="#34d399" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         )}
       </div>
+
+      {/* ── Quick stats ───────────────────────────────────────────────── */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2">
+          <div className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">Θ/day</div>
+          <div className={`text-xs font-bold tabular-nums mt-0.5 ${theta >= 0 ? 'text-amber-600' : 'text-rose-600'}`}>
+            {theta >= 0 ? '+' : ''}{theta.toFixed(2)}
+          </div>
+        </div>
+        <div className="rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2">
+          <div className="text-[9px] uppercase tracking-wider text-slate-400 font-semibold">
+            {isEn ? '1d VaR 95%' : '单日VaR'}
+          </div>
+          <div className="text-xs font-bold tabular-nums mt-0.5 text-rose-600">
+            {var1d != null ? `-${fmtUSD(String(Math.round(var1d)))}` : '—'}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Alert pill ───────────────────────────────────────────────── */}
+      {alerts.length > 0 && (
+        <div className="mt-2 flex items-start gap-1.5 text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 leading-snug">
+          <span className="shrink-0">⚠</span>
+          <span className="truncate flex-1">{alerts[0]}</span>
+          {alerts.length > 1 && <span className="shrink-0 text-amber-500">+{alerts.length - 1}</span>}
+        </div>
+      )}
     </div>
   )
 }
