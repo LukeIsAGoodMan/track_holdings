@@ -943,15 +943,21 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
                       <tr key={row.trade_event_id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                         <td className="td-left font-bold text-slate-900 text-sm">{row.symbol}</td>
                         <td className="td">
-                          <span className={`px-1.5 py-0.5 rounded-md text-xs font-bold border
-                            ${row.option_type === 'PUT'
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : 'bg-primary-soft text-primary border-primary/20'
-                            }`}>
-                            {row.option_type}
-                          </span>
+                          {row.option_type ? (
+                            <span className={`px-1.5 py-0.5 rounded-md text-xs font-bold border
+                              ${row.option_type === 'PUT'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-primary-soft text-primary border-primary/20'
+                              }`}>
+                              {row.option_type}
+                            </span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 rounded-md text-xs font-bold border bg-teal-50 text-teal-700 border-teal-200">
+                              STOCK
+                            </span>
+                          )}
                         </td>
-                        <td className="td text-slate-700">${fmtNum(row.strike ?? '0')}</td>
+                        <td className="td text-slate-700">{row.strike ? `$${fmtNum(row.strike)}` : '—'}</td>
                         <td className="td text-slate-500 text-xs">{row.expiry ?? '—'}</td>
                         <td className="td">
                           <span className={`font-semibold text-xs ${isShort ? 'text-rose-600' : 'text-emerald-600'}`}>
@@ -1035,6 +1041,21 @@ export default function HoldingsPage() {
     setHoldings(lastHoldingsUpdate.data)
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
+  // ── Silent re-fetch on language change (keeps existing data, no spinner) ───
+  // Ensures translated labels from the backend (if any) are up to date after
+  // a language switch without wiping current state to blank.
+  useEffect(() => {
+    if (selectedPortfolioId === null) return
+    fetchHoldings(selectedPortfolioId)
+      .then((h) => { if (Array.isArray(h)) setHoldings(h) })
+      .catch(() => {})
+    fetchCash(selectedPortfolioId)
+      .then((c) => { if (c) setCash(c) })
+      .catch(() => {})
+    triggerRefresh()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang])
+
   // ── Lifecycle sweep (once per session) ────────────────────────────────────
   useEffect(() => {
     if (selectedPortfolioId === null) return
@@ -1115,17 +1136,27 @@ export default function HoldingsPage() {
         const exp = safeFloat(g.delta_adjusted_exposure)
         return exp != null && exp > 0
       })
-      .map((g) => ({
-        name:     g.symbol,
-        size:     safeFloat(g.delta_adjusted_exposure) ?? 0,
-        perf:     getEffectivePerf(g, period) ?? 0,
-        rawPerf:  getRawPerf(g, period) ?? 0,
-        exposure: safeFloat(g.delta_adjusted_exposure) ?? 0,
-        isShort:  g.is_short === true,
-      }))
+      .map((g) => {
+        const isShort = g.is_short === true
+        const staticPerf = getEffectivePerf(g, period)
+        // If backend perf not yet loaded (null/0), fall back to live WS spot change
+        const wsChangePct = lastSpotChangePct?.[g.symbol] != null
+          ? parseFloat(lastSpotChangePct![g.symbol]) * (isShort ? -1 : 1)
+          : null
+        const perf    = (staticPerf != null && staticPerf !== 0) ? staticPerf : (wsChangePct ?? 0)
+        const rawPerf = getRawPerf(g, period) ?? (wsChangePct ?? 0)
+        return {
+          name:     g.symbol,
+          size:     safeFloat(g.delta_adjusted_exposure) ?? 0,
+          perf,
+          rawPerf,
+          exposure: safeFloat(g.delta_adjusted_exposure) ?? 0,
+          isShort,
+        }
+      })
       .filter((d) => d.size > 0 && d.name)
       .sort((a, b) => b.size - a.size)
-  }, [holdings, period])
+  }, [holdings, period, lastSpotChangePct])
 
   const isEn = lang !== 'zh'
   const hadSettlement = lifecycleResult && lifecycleResult.expired + lifecycleResult.assigned > 0

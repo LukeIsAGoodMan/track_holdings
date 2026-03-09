@@ -226,7 +226,7 @@ export interface SettledTrade {
   trade_event_id:    number
   portfolio_id:      number
   symbol:            string
-  option_type:       string        // "CALL" | "PUT"
+  option_type:       string | null  // "CALL" | "PUT" | null for stock trades
   strike:            string | null // DecStr
   expiry:            string | null
   action:            string        // "SELL_OPEN" | "BUY_OPEN"

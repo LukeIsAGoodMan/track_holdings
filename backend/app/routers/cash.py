@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
-from app.models import CashLedger
+from app.models import CashLedger, TradeEvent, TradeStatus
 from app.models.user import User
 from app.schemas.base import DecStr
 
@@ -52,10 +52,20 @@ async def get_cash(
     raw = await db.execute(stmt_sum)
     balance = Decimal(str(raw.scalar() or 0))
 
-    # Realized PnL — sum of trade-linked ledger entries (premiums, stock proceeds)
-    stmt_rpnl = select(func.sum(CashLedger.amount)).where(
-        CashLedger.user_id == user.id,
-        CashLedger.trade_event_id.isnot(None),
+    # Realized PnL — only cash flows from fully-settled trades (CLOSED / EXPIRED / ASSIGNED).
+    # Open positions (ACTIVE status) are excluded to avoid counting unrealized stock purchases
+    # as losses or gains before they are sold.
+    stmt_rpnl = (
+        select(func.sum(CashLedger.amount))
+        .join(TradeEvent, CashLedger.trade_event_id == TradeEvent.id)
+        .where(
+            CashLedger.user_id == user.id,
+            TradeEvent.status.in_([
+                TradeStatus.CLOSED,
+                TradeStatus.EXPIRED,
+                TradeStatus.ASSIGNED,
+            ]),
+        )
     )
     if portfolio_id is not None:
         stmt_rpnl = stmt_rpnl.where(CashLedger.portfolio_id == portfolio_id)

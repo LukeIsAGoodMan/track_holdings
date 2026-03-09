@@ -23,7 +23,7 @@ class SettledTrade(BaseModel):
     trade_event_id:    int
     portfolio_id:      int
     symbol:            str
-    option_type:       str           # "CALL" | "PUT"
+    option_type:       str | None     # "CALL" | "PUT" | None for stock trades
     strike:            DecStr | None
     expiry:            str | None    # ISO date
     action:            str           # original opening action: SELL_OPEN | BUY_OPEN
