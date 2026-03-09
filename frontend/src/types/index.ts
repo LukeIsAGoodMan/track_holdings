@@ -377,6 +377,27 @@ export interface PortfolioHistoryResponse {
   days:       number
 }
 
+// ── Transaction History (Phase 14c) ──────────────────────────────────────────
+export interface Transaction {
+  id:              number
+  symbol:          string
+  instrument_type: 'STOCK' | 'OPTION'
+  option_type:     string | null
+  strike:          string | null   // DecStr
+  expiry:          string | null   // ISO date
+  action:          TradeAction
+  quantity:        number
+  price:           string          // DecStr
+  trade_date:      string          // ISO datetime
+  status:          string          // ACTIVE | EXPIRED | ASSIGNED | CLOSED
+  notes:           string | null
+  trade_metadata:  {
+    confidence_score?: number | null
+    trade_reason?:     string | null
+    strategy_tags?:    string[] | null
+  } | null
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export interface TokenResponse {
   access_token: string

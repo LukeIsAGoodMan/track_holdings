@@ -22,6 +22,7 @@ import type {
   AlertStatus,
   PortfolioHistoryResponse,
   MarketQuote,
+  Transaction,
 } from '@/types'
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
@@ -192,6 +193,12 @@ export const fetchPortfolioHistory = (
       },
     })
     .then((r) => r.data)
+
+// ── Transaction History ───────────────────────────────────────────────────────
+
+/** GET /api/portfolios/{id}/trades */
+export const fetchTransactionHistory = (portfolioId: number): Promise<Transaction[]> =>
+  api.get<Transaction[]>(`/portfolios/${portfolioId}/trades`).then((r) => r.data)
 
 // ── Market Quotes (SPY / QQQ / DIA / VIX) ────────────────────────────────────
 

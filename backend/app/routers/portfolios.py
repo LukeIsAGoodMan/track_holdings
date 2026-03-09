@@ -1,21 +1,26 @@
 """
-GET  /api/portfolios        — portfolio tree with aggregated stats
-POST /api/portfolios        — create portfolio or sub-portfolio
+GET  /api/portfolios              — portfolio tree with aggregated stats
+POST /api/portfolios              — create portfolio or sub-portfolio
+GET  /api/portfolios/{id}/trades  — transaction history for a portfolio
 """
 from __future__ import annotations
 
 import asyncio
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Portfolio, CashLedger
+from app.models.trade_event import TradeEvent
 from app.models.user import User
 from app.schemas.portfolio import PortfolioCreate, PortfolioNode
 from app.services import position_engine, yfinance_client
@@ -25,6 +30,22 @@ from app.services.black_scholes import (
     maintenance_margin,
     net_delta_exposure,
 )
+
+
+class TransactionResponse(BaseModel):
+    id:             int
+    symbol:         str
+    instrument_type: str
+    option_type:    str | None
+    strike:         str | None
+    expiry:         str | None
+    action:         str
+    quantity:       int
+    price:          str
+    trade_date:     str
+    status:         str
+    notes:          str | None
+    trade_metadata: Any | None
 
 router = APIRouter(tags=["portfolios"])
 
@@ -148,3 +169,42 @@ async def create_portfolio(
         total_delta_exposure=Decimal("0"),
         total_margin=Decimal("0"),
     )
+
+
+@router.get("/portfolios/{portfolio_id}/trades", response_model=list[TransactionResponse])
+async def get_portfolio_trades(
+    portfolio_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return full transaction log for a portfolio, newest first."""
+    portfolio = await db.get(Portfolio, portfolio_id)
+    if portfolio is None or portfolio.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    result = await db.execute(
+        select(TradeEvent)
+        .options(selectinload(TradeEvent.instrument))
+        .where(TradeEvent.portfolio_id == portfolio_id)
+        .order_by(TradeEvent.trade_date.desc())
+    )
+    trades = result.scalars().all()
+
+    return [
+        TransactionResponse(
+            id=t.id,
+            symbol=t.instrument.symbol,
+            instrument_type=t.instrument.instrument_type.value,
+            option_type=t.instrument.option_type.value if t.instrument.option_type else None,
+            strike=str(t.instrument.strike) if t.instrument.strike is not None else None,
+            expiry=t.instrument.expiry.isoformat() if t.instrument.expiry else None,
+            action=t.action.value,
+            quantity=t.quantity,
+            price=str(t.price),
+            trade_date=t.trade_date.isoformat() if t.trade_date else "",
+            status=t.status.value,
+            notes=t.notes,
+            trade_metadata=t.trade_metadata,
+        )
+        for t in trades
+    ]

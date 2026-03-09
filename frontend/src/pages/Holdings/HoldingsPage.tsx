@@ -23,12 +23,12 @@ import { useWebSocket }  from '@/context/WebSocketContext'
 import { useSidebar }    from '@/context/SidebarContext'
 import {
   fetchHoldings, fetchCash, fetchSettledTrades,
-  triggerLifecycle, fetchRiskDashboard,
+  triggerLifecycle, fetchRiskDashboard, fetchTransactionHistory,
 } from '@/api/holdings'
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
   TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
-  RiskDashboard,
+  RiskDashboard, Transaction,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
@@ -423,6 +423,71 @@ function StrategyPieChart({ holdings, isEn }: { holdings: HoldingGroup[]; isEn: 
             )
           })}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Risk Weather Card ─────────────────────────────────────────────────────────
+function RiskWeatherCard({ riskDash, isEn }: { riskDash: RiskDashboard | null; isEn: boolean }) {
+  if (!riskDash) return null
+
+  const theta  = parseFloat(riskDash.total_theta_daily)
+  const var1d  = riskDash.var_1d_95 != null ? parseFloat(riskDash.var_1d_95) : null
+  const alerts = riskDash.risk_alerts
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">
+        {isEn ? 'Risk Weather' : '风险状态'}
+      </div>
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-500">{isEn ? 'Daily Theta' : '每日时间价值'}</span>
+          <span className={`text-sm font-bold tabular-nums ${theta >= 0 ? 'text-amber-600' : 'text-rose-600'}`}>
+            {theta >= 0 ? '+' : ''}{theta.toFixed(2)}
+          </span>
+        </div>
+
+        {var1d != null && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-500">{isEn ? '1d 95% VaR' : '单日95% VaR'}</span>
+            <span className="text-sm font-bold tabular-nums text-rose-600">
+              -{fmtUSD(String(Math.round(var1d)))}
+            </span>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-500">{isEn ? 'Positions' : '持仓数量'}</span>
+          <span className="text-sm font-bold tabular-nums text-slate-800">{riskDash.positions_count}</span>
+        </div>
+
+        {alerts.length > 0 && (
+          <div className="border-t border-slate-100 pt-3 space-y-1.5">
+            {alerts.slice(0, 2).map((alert, i) => (
+              <div key={i} className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 leading-snug">
+                <span className="shrink-0 mt-px">⚠</span>
+                <span>{alert}</span>
+              </div>
+            ))}
+            {alerts.length > 2 && (
+              <div className="text-[10px] text-slate-400 text-right">
+                +{alerts.length - 2} {isEn ? 'more' : '条更多'}
+              </div>
+            )}
+          </div>
+        )}
+
+        {alerts.length === 0 && (
+          <div className="border-t border-slate-100 pt-3">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+              <span>✓</span>
+              <span>{isEn ? 'No active risk alerts' : '暂无风险警告'}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1002,8 +1067,172 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
   )
 }
 
+// ── Transaction History ───────────────────────────────────────────────────────
+type SortField = 'date' | 'symbol' | 'action' | 'price'
+type SortDir   = 'asc' | 'desc'
+
+const ACTION_BADGE: Record<string, string> = {
+  SELL_OPEN:  'bg-rose-50 text-rose-700 border border-rose-200',
+  BUY_OPEN:   'bg-sky-50 text-sky-700 border border-sky-200',
+  BUY_CLOSE:  'bg-emerald-50 text-emerald-700 border border-emerald-200',
+  SELL_CLOSE: 'bg-amber-50 text-amber-700 border border-amber-200',
+}
+
+function TransactionHistorySection({ portfolioId }: { portfolioId: number | null | undefined }) {
+  const { lang } = useLanguage()
+  const isEn = lang !== 'zh'
+
+  const [open,  setOpen]  = useState(false)
+  const [rows,  setRows]  = useState<Transaction[]>([])
+  const [busy,  setBusy]  = useState(false)
+  const [field, setField] = useState<SortField>('date')
+  const [dir,   setDir]   = useState<SortDir>('desc')
+
+  useEffect(() => {
+    if (!open || portfolioId == null) return
+    setBusy(true)
+    fetchTransactionHistory(portfolioId)
+      .then(setRows)
+      .catch(() => {})
+      .finally(() => setBusy(false))
+  }, [open, portfolioId])
+
+  const sorted = useMemo(() => {
+    const arr = [...rows]
+    arr.sort((a, b) => {
+      let cmp = 0
+      if (field === 'date')   cmp = a.trade_date.localeCompare(b.trade_date)
+      if (field === 'symbol') cmp = a.symbol.localeCompare(b.symbol)
+      if (field === 'action') cmp = a.action.localeCompare(b.action)
+      if (field === 'price')  cmp = parseFloat(a.price) - parseFloat(b.price)
+      return dir === 'desc' ? -cmp : cmp
+    })
+    return arr
+  }, [rows, field, dir])
+
+  function toggleSort(f: SortField) {
+    if (field === f) setDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else { setField(f); setDir('desc') }
+  }
+
+  function SortIcon({ f }: { f: SortField }) {
+    return (
+      <span className="ml-0.5 text-[9px] text-slate-400">
+        {field === f ? (dir === 'asc' ? '↑' : '↓') : '↕'}
+      </span>
+    )
+  }
+
+  function SortTh({ f, label }: { f: SortField; label: string }) {
+    return (
+      <th className="th">
+        <button
+          onClick={() => toggleSort(f)}
+          className="flex items-center text-[10px] uppercase tracking-widest text-slate-400 font-semibold hover:text-slate-600"
+        >
+          {label}<SortIcon f={f} />
+        </button>
+      </th>
+    )
+  }
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            {isEn ? 'Transaction History' : '交易记录'}
+          </span>
+          {rows.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 font-semibold">
+              {rows.length}
+            </span>
+          )}
+        </div>
+        <span className={`text-slate-400 text-xs transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>▶</span>
+      </button>
+
+      {open && (
+        <div className="border-t border-slate-100">
+          {busy ? (
+            <div className="space-y-2 px-5 py-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="py-8 text-center text-xs text-slate-400">
+              {isEn ? 'No transactions found' : '暂无交易记录'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/60">
+                    <th className="th-left">
+                      <button
+                        onClick={() => toggleSort('date')}
+                        className="flex items-center text-[10px] uppercase tracking-widest text-slate-400 font-semibold pl-4 py-2 hover:text-slate-600"
+                      >
+                        {isEn ? 'Date' : '日期'}<SortIcon f="date" />
+                      </button>
+                    </th>
+                    <SortTh f="symbol" label={isEn ? 'Symbol' : '标的'} />
+                    <SortTh f="action" label={isEn ? 'Action' : '操作'} />
+                    <th className="th text-[10px] text-slate-400 font-semibold uppercase tracking-widest">{isEn ? 'Qty' : '数量'}</th>
+                    <SortTh f="price" label={isEn ? 'Price' : '价格'} />
+                    <th className="th text-[10px] text-slate-400 font-semibold uppercase tracking-widest">{isEn ? 'Contract' : '合约'}</th>
+                    <th className="th text-[10px] text-slate-400 font-semibold uppercase tracking-widest">{isEn ? 'Status' : '状态'}</th>
+                    <th className="th text-[10px] text-slate-400 font-semibold uppercase tracking-widest">{isEn ? 'Notes' : '备注'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((tx) => {
+                    const isOption = tx.option_type != null
+                    const contractLabel = isOption
+                      ? `${tx.option_type} $${fmtNum(tx.strike ?? '0')} ${tx.expiry ?? ''}`
+                      : 'STOCK'
+                    const noteText = tx.notes || tx.trade_metadata?.trade_reason?.slice(0, 50) || '—'
+                    return (
+                      <tr key={tx.id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                        <td className="td-left pl-4 text-slate-500 whitespace-nowrap font-mono text-[11px]">
+                          {tx.trade_date ? tx.trade_date.slice(0, 16).replace('T', ' ') : '—'}
+                        </td>
+                        <td className="td font-bold text-slate-900">{tx.symbol}</td>
+                        <td className="td">
+                          <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${ACTION_BADGE[tx.action] ?? 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
+                            {tx.action}
+                          </span>
+                        </td>
+                        <td className="td tabular-nums text-slate-700">{tx.quantity}</td>
+                        <td className="td tabular-nums text-slate-700">${fmtNum(tx.price)}</td>
+                        <td className="td text-slate-500 text-[11px] max-w-[140px]">
+                          <span className="truncate block" title={contractLabel}>{contractLabel}</span>
+                        </td>
+                        <td className="td">
+                          <StatusBadge status={tx.status} />
+                        </td>
+                        <td className="td text-slate-400 text-[11px] max-w-[160px]">
+                          <span className="truncate block" title={noteText}>{noteText}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
-type Tab = 'overview' | 'details'
+type Tab = 'overview' | 'details' | 'records'
 
 export default function HoldingsPage() {
   const { selectedPortfolioId, refreshKey, triggerRefresh } = usePortfolio()
@@ -1193,6 +1422,7 @@ export default function HoldingsPage() {
   const TABS: { key: Tab; en: string; zh: string }[] = [
     { key: 'overview', en: 'Overview', zh: '总览' },
     { key: 'details',  en: 'Details',  zh: '持仓明细' },
+    { key: 'records',  en: 'Records',  zh: '交易记录' },
   ]
 
   return (
@@ -1366,10 +1596,11 @@ export default function HoldingsPage() {
               </div>
             </div>
 
-            {/* Dual Pies — Sector Exposure + Strategy Mix side by side */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Three-col footer: Sector Pie · Strategy Pie · Risk Weather */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <SectorPieChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
               <StrategyPieChart holdings={holdings} isEn={isEn} />
+              <RiskWeatherCard riskDash={riskDash} isEn={isEn} />
             </div>
 
             {/* AI Insights — holdings passed for fingerprint-based localStorage caching */}
@@ -1389,11 +1620,18 @@ export default function HoldingsPage() {
             ))}
           </div>
         ) : (
-          <div className="space-y-5">
-            <HoldingsTable groups={holdings} />
-            <SettledTradesSection portfolioId={selectedPortfolioId} />
-          </div>
+          <HoldingsTable groups={holdings} />
         )
+      )}
+
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* RECORDS TAB                                                       */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {activeTab === 'records' && (
+        <div className="space-y-5">
+          <SettledTradesSection portfolioId={selectedPortfolioId} />
+          <TransactionHistorySection portfolioId={selectedPortfolioId} />
+        </div>
       )}
     </div>
   )
