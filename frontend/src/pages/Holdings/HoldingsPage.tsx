@@ -28,7 +28,7 @@ import {
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
   TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
-  RiskDashboard, PnlSnapshot,
+  RiskDashboard,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
@@ -1007,7 +1007,7 @@ type Tab = 'overview' | 'details'
 export default function HoldingsPage() {
   const { selectedPortfolioId, refreshKey, triggerRefresh } = usePortfolio()
   const { lang, t } = useLanguage()
-  const { lastHoldingsUpdate, lastSpotChangePct, lastPnlSnapshot } = useWebSocket()
+  const { lastHoldingsUpdate, lastSpotChangePct } = useWebSocket()
 
   const [activeTab,       setActiveTab]       = useState<Tab>('overview')
   const [holdings,        setHoldings]        = useState<HoldingGroup[]>([])
@@ -1041,17 +1041,11 @@ export default function HoldingsPage() {
     setHoldings(lastHoldingsUpdate.data)
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
-  // ── Silent re-fetch on language change (keeps existing data, no spinner) ───
-  // Ensures translated labels from the backend (if any) are up to date after
-  // a language switch without wiping current state to blank.
+  // ── Silent re-fetch on language change ────────────────────────────────────
+  // Bumping refreshKey fires the main useEffect which fetches holdings, cash,
+  // and risk in one coordinated batch — no stale intermediate setHoldings calls.
   useEffect(() => {
     if (selectedPortfolioId === null) return
-    fetchHoldings(selectedPortfolioId)
-      .then((h) => { if (Array.isArray(h)) setHoldings(h) })
-      .catch(() => {})
-    fetchCash(selectedPortfolioId)
-      .then((c) => { if (c) setCash(c) })
-      .catch(() => {})
     triggerRefresh()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lang])
@@ -1071,62 +1065,33 @@ export default function HoldingsPage() {
   }, [selectedPortfolioId])
 
   // ── Hero metrics ──────────────────────────────────────────────────────────
-  // NLV = Cash + Equity (longs - shorts) + Options MtM
-  // Source priority:
-  //   1. WS pnl_snapshot.current.nlv  — backend-computed, most accurate
-  //   2. Fallback: cash.balance + Σ signed stock_legs.market_value
-  //      (options excluded; premium already reflected in cash.balance)
+  // Daily Unrealized P&L = Σ delta_adjusted_exposure × spot_change_pct / 100
+  //   delta_adjusted_exposure is already signed (positive = bullish delta,
+  //   negative = bearish delta), so no is_short correction is needed.
+  //   A brand-new position bought at today's price contributes near-zero P&L
+  //   because it only participates in intraday movement from prev_close onwards.
+  // Net Exposure = Σ delta_adjusted_exposure (signed sum of all delta bets)
   const heroMetrics = useMemo(() => {
-    // Cast to the correct type (imported above)
-    const snap = lastPnlSnapshot as PnlSnapshot | null
-    const snapMatch = snap?.portfolioId === selectedPortfolioId ? snap : null
-    const snapNlv    = safeFloat(snapMatch?.current?.nlv)
-    const snapPnl    = safeFloat(snapMatch?.current?.pnl)
-    const snapPnlPct = safeFloat(snapMatch?.dayPnlPct)
+    let dailyUnrealizedPnl = 0
+    let netExposure = 0
 
-    // Signed stock MtM: positive = long equity, negative = short equity
-    // market_value = net_shares × spot → already signed by backend
-    let stockMtM = 0
     for (const g of holdings) {
-      for (const sl of g.stock_legs ?? []) {
-        const mv = safeFloat(sl?.market_value)
-        if (mv != null) stockMtM += mv
-      }
-    }
-    const cashBal = safeFloat(cash?.balance) ?? 0
+      const exposure = safeFloat(g.delta_adjusted_exposure) ?? 0
+      netExposure += exposure
 
-    // NLV = cash + stockMtM + option_MtM (option MtM not in REST response;
-    // cash.balance already reflects premiums at trade entry time)
-    const totalAsset     = snapNlv ?? (cashBal + stockMtM)
-    const portfolioValue = totalAsset - cashBal
-
-    // Day P&L: WS snapshot (most accurate) → else estimate from WS change% × notional
-    let dayPnl = snapPnl
-    let dayPct = snapPnlPct
-    if (dayPnl == null) {
-      let est = 0
-      for (const g of holdings) {
-        const isShort  = g.is_short === true
-        // Prefer live WS change% with direction sign; fallback to cached effective_perf_1d
-        const wsChangePct = lastSpotChangePct?.[g.symbol] != null
-          ? parseFloat(lastSpotChangePct![g.symbol]) * (isShort ? -1 : 1)
-          : null
-        const livePct  = wsChangePct ?? safeFloat(g.effective_perf_1d)
-        const exposure = safeFloat(g.delta_adjusted_exposure)
-        if (livePct != null && isFinite(livePct) && exposure != null && exposure > 0) {
-          est += exposure * livePct / 100
-        }
-      }
-      if (est !== 0) {
-        dayPnl = est
-        if (totalAsset > 0) dayPct = (est / totalAsset) * 100
+      // Live WS pct preferred; fallback to cached 1d perf from backend
+      const pctStr = lastSpotChangePct?.[g.symbol]
+      const pct    = pctStr != null ? parseFloat(pctStr) : (safeFloat(g.effective_perf_1d) ?? 0)
+      if (isFinite(pct) && isFinite(exposure)) {
+        dailyUnrealizedPnl += exposure * pct / 100
       }
     }
 
+    const cashBal     = safeFloat(cash?.balance)     ?? 0
     const realizedPnl = safeFloat(cash?.realized_pnl) ?? 0
 
-    return { totalAsset, portfolioValue, cashBal, dayPnl, dayPct, realizedPnl }
-  }, [holdings, cash, lastPnlSnapshot, lastSpotChangePct, selectedPortfolioId])
+    return { dailyUnrealizedPnl, netExposure, cashBal, realizedPnl }
+  }, [holdings, cash, lastSpotChangePct])
 
   // ── Treemap data ──────────────────────────────────────────────────────────
   const treemapData = useMemo(() => {
@@ -1214,42 +1179,38 @@ export default function HoldingsPage() {
             {/* Hero Banner — 4 stats */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
-                label={isEn ? 'Total Asset Value' : '总资产'}
-                value={heroMetrics.totalAsset !== 0 ? fmtUSD(String(Math.round(heroMetrics.totalAsset))) : '—'}
-                sub={isEn ? 'Cash + positions' : '现金 + 持仓市值'}
-              />
-              <StatCard
-                label={isEn ? 'Day Change' : '当日变动'}
+                label={isEn ? 'Daily Unrealized P&L' : '今日浮盈变动'}
                 value={
-                  heroMetrics.dayPnl != null && isFinite(heroMetrics.dayPnl) && heroMetrics.dayPnl !== 0
-                    ? (heroMetrics.dayPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dayPnl)))
+                  heroMetrics.dailyUnrealizedPnl !== 0
+                    ? (heroMetrics.dailyUnrealizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dailyUnrealizedPnl)))
                     : '—'
                 }
-                sub={
-                  heroMetrics.dayPct != null && isFinite(heroMetrics.dayPct)
-                    ? `${heroMetrics.dayPct >= 0 ? '+' : ''}${heroMetrics.dayPct.toFixed(2)}%`
-                    : (isEn ? 'est.' : '估算')
-                }
+                sub={isEn ? 'Open positions · today vs prev close' : '持仓较昨收变动'}
                 valueClass={
-                  heroMetrics.dayPnl == null || heroMetrics.dayPnl === 0 ? 'text-slate-900'
-                  : heroMetrics.dayPnl >= 0  ? 'text-emerald-600'
+                  heroMetrics.dailyUnrealizedPnl === 0 ? 'text-slate-900'
+                  : heroMetrics.dailyUnrealizedPnl > 0 ? 'text-emerald-600'
                   : 'text-rose-600'
                 }
               />
               <StatCard
-                label={isEn ? 'Portfolio Value' : '持仓市值'}
-                value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
-                sub={isEn ? 'Open positions' : '开仓市值'}
-                valueClass={heroMetrics.portfolioValue >= 0 ? 'text-slate-900' : 'text-rose-600'}
+                label={isEn ? 'Net Exposure' : '净敞口总额'}
+                value={heroMetrics.netExposure !== 0 ? fmtUSD(String(Math.round(Math.abs(heroMetrics.netExposure)))) : '—'}
+                sub={isEn ? 'Σ delta-adjusted notional' : 'Σ Delta加权名义敞口'}
+                valueClass={heroMetrics.netExposure >= 0 ? 'text-slate-900' : 'text-rose-600'}
               />
               <StatCard
-                label={isEn ? 'Total Realized P&L' : '已实现盈亏'}
+                label={isEn ? 'Cash Balance' : '可用现金'}
+                value={heroMetrics.cashBal !== 0 ? fmtUSD(String(Math.round(heroMetrics.cashBal))) : '—'}
+                sub={isEn ? 'Settled cash on hand' : '已结算现金余额'}
+              />
+              <StatCard
+                label={isEn ? 'Total Realized P&L' : '累计已实现盈亏'}
                 value={
                   heroMetrics.realizedPnl !== 0
                     ? (heroMetrics.realizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.realizedPnl)))
                     : '—'
                 }
-                sub={isEn ? 'From closed trades' : '已平仓收益'}
+                sub={isEn ? 'From closed trades only' : '仅含已平仓收益'}
                 valueClass={
                   heroMetrics.realizedPnl === 0 ? 'text-slate-900'
                   : heroMetrics.realizedPnl > 0  ? 'text-emerald-600'
