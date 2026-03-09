@@ -10,6 +10,7 @@
  * Flex sibling <main> naturally narrows — sidebar never overlays content.
  * No sticky / fixed height — sidebar is in document flow, page scrolls.
  */
+import { useMemo }      from 'react'
 import { usePortfolio } from '@/context/PortfolioContext'
 import { useLanguage }  from '@/context/LanguageContext'
 import { useSidebar }   from '@/context/SidebarContext'
@@ -87,9 +88,12 @@ function PortfolioNode({ node, depth = 0 }: { node: Portfolio; depth?: number })
 function PortfolioBadge() {
   const { portfolios, selectedPortfolioId } = usePortfolio()
 
-  const flat: Portfolio[] = []
-  const flatten = (ps: Portfolio[]) => ps.forEach(p => { flat.push(p); flatten(p.children) })
-  flatten(portfolios)
+  const flat = useMemo(() => {
+    const acc: Portfolio[] = []
+    const walk = (ps: Portfolio[]) => ps.forEach(p => { acc.push(p); walk(p.children) })
+    walk(portfolios)
+    return acc
+  }, [portfolios])
 
   const sel     = flat.find(p => p.id === selectedPortfolioId)
   const letters = sel?.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 2).toUpperCase() ?? '—'
@@ -133,7 +137,7 @@ export default function Sidebar() {
   return (
     <aside
       className="shrink-0 flex flex-col bg-white border-r border-slate-200
-                 overflow-hidden font-sans self-start
+                 overflow-hidden font-sans self-start min-h-screen
                  transition-[width] duration-200 ease-in-out"
       style={{ width: sidebarWidth }}
     >
@@ -144,7 +148,7 @@ export default function Sidebar() {
          * Full-width trade form. Back button returns to nav mode.
          * Page scrolls naturally — no internal overflow-y-auto.
          * ════════════════════════════════════════════════════════════════════ */
-        <div className="flex flex-col">
+        <div className="flex flex-col pt-4">
 
           {/* Header */}
           <div className="flex items-center gap-2.5 px-4 py-3 shrink-0
