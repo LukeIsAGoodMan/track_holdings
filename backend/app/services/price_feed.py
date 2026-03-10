@@ -21,11 +21,13 @@ import logging
 import os
 import random
 import time
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services import position_engine, yfinance_client
+from app.services.black_scholes import calculate_option_price
 from app.services.holdings_engine import compute_holding_groups
 from app.services.portfolio_resolver import resolve_portfolio_ids
 from app.services.price_cache import PriceCache
@@ -250,9 +252,61 @@ class PriceFeedService:
         port_spot = {s: spot_map.get(s) for s in symbols}
         port_vol = {s: _vol_cache.get(s, Decimal("0.30")) for s in symbols}
 
-        # Build perf_map — 1d from live FMP changepct cache (zero I/O, sync)
+        # Build perf_map — options via live BS mark-price delta; stocks via FMP changepct
         port_perf: dict[str, dict[str, float]] = {}
+        _today = date.today()
+        _r_f = Decimal(str(settings.risk_free_rate))
+
+        # Aggregate option P&L per underlying symbol
+        _opt: dict[str, dict] = {}  # sym → {pnl, basis, ds (net delta sign)}
+        for pos in positions:
+            inst = pos.instrument
+            if inst.instrument_type.value != "OPTION":
+                continue
+            if not (inst.option_type and inst.strike and inst.expiry):
+                continue
+            sym = inst.symbol
+            spot = port_spot.get(sym)
+            if spot is None:
+                continue
+            prev_spot = yfinance_client.get_prev_close_cached_only(sym)
+            if prev_spot is None:
+                continue
+            dte = (inst.expiry - _today).days
+            T = Decimal(str(max(dte, 0) / 365.0))
+            if T <= 0:
+                continue
+            vol   = port_vol.get(sym, Decimal("0.30"))
+            otype = inst.option_type.value  # "CALL" or "PUT"
+            mark_now  = calculate_option_price(spot,      inst.strike, T, otype, vol, _r_f)
+            mark_prev = calculate_option_price(prev_spot, inst.strike, T, otype, vol, _r_f)
+            if mark_prev <= 0:
+                continue
+            multiplier = inst.multiplier or 100
+            n          = float(pos.net_contracts)       # signed: negative = short
+            pnl_delta  = float(mark_now - mark_prev) * n * multiplier
+            basis      = float(mark_prev) * abs(n) * multiplier
+            # Net-delta contribution: calls add +n, puts add -n (mirrors BS convention)
+            dc = n if otype == "CALL" else -n
+            if sym not in _opt:
+                _opt[sym] = {"pnl": 0.0, "basis": 0.0, "ds": 0.0}
+            _opt[sym]["pnl"]   += pnl_delta
+            _opt[sym]["basis"] += basis
+            _opt[sym]["ds"]    += dc
+
+        for sym, d in _opt.items():
+            if d["basis"] > 0:
+                raw_pct      = round(d["pnl"] / d["basis"] * 100, 2)
+                # Pre-multiply by local dir_sign so after holdings_engine's dir_sign
+                # multiplication, effective_perf = actual position P&L %.
+                # (dir_sign_local² = 1 cancels the double-sign for shorts & long puts)
+                dir_sign_loc = 1 if d["ds"] >= 0 else -1
+                port_perf[sym] = {"1d": raw_pct * dir_sign_loc, "5d": 0.0, "1m": 0.0, "3m": 0.0}
+
+        # Stock/ETF symbols: FMP live changepct (skip symbols covered by BS option calc)
         for s in symbols:
+            if s in port_perf:
+                continue
             cp = yfinance_client.get_changepct_cached(s)
             if cp is not None:
                 port_perf[s] = {"1d": float(cp), "5d": 0.0, "1m": 0.0, "3m": 0.0}
