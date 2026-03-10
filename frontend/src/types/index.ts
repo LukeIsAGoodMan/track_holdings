@@ -72,6 +72,9 @@ export interface HoldingGroup {
   effective_perf_5d:  string | null
   effective_perf_1m:  string | null
   effective_perf_3m:  string | null
+
+  // Phase 15.3 — asset class: 'stock' | 'etf' | 'index' | 'crypto' | 'option'
+  asset_class: string
 }
 
 // ── Trades ───────────────────────────────────────────────────────────────────

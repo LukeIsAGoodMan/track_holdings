@@ -146,17 +146,31 @@ function CollapseSection({
   )
 }
 
+// ── Asset class badge colours ─────────────────────────────────────────────────
+const ASSET_CLASS_STYLE: Record<string, string> = {
+  stock:  'bg-blue-50   text-blue-600   border-blue-200',
+  etf:    'bg-emerald-50 text-emerald-600 border-emerald-200',
+  index:  'bg-amber-50  text-amber-600  border-amber-200',
+  crypto: 'bg-violet-50 text-violet-600 border-violet-200',
+  option: 'bg-rose-50   text-rose-600   border-rose-200',
+}
+const ASSET_CLASS_LABEL: Record<string, string> = {
+  stock: 'Stock', etf: 'ETF', index: 'Index', crypto: 'Crypto', option: 'Option',
+}
+
 // ── Symbol autocomplete ───────────────────────────────────────────────────────
 function SymbolAutocomplete({
   value,
   onChange,
   onValidChange,
+  onSelectSuggestion,
   disabled,
 }: {
-  value:          string
-  onChange:       (v: string) => void
-  onValidChange:  (valid: boolean | null) => void
-  disabled?:      boolean
+  value:               string
+  onChange:            (v: string) => void
+  onValidChange:       (valid: boolean | null) => void
+  onSelectSuggestion:  (s: SymbolSuggestion | null) => void
+  disabled?:           boolean
 }) {
   const [suggestions, setSuggestions] = useState<SymbolSuggestion[]>([])
   const [open,        setOpen]        = useState(false)
@@ -167,7 +181,8 @@ function SymbolAutocomplete({
   const handleInput = useCallback((raw: string) => {
     const upper = raw.toUpperCase()
     onChange(upper)
-    onValidChange(null)   // reset validity while typing
+    onValidChange(null)
+    onSelectSuggestion(null)
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
     if (upper.length < 2) { setSuggestions([]); setOpen(false); return }
@@ -181,31 +196,33 @@ function SymbolAutocomplete({
         setSuggestions([]); setOpen(false)
       }
     }, 220)
-  }, [onChange, onValidChange])
+  }, [onChange, onValidChange, onSelectSuggestion])
 
-  // Validate on blur (for manually typed symbols)
+  // Validate on blur — also fetches type/name for manually typed symbols
   const handleBlur = useCallback(async () => {
-    // Short delay so onMouseDown on a suggestion fires first
     await new Promise(r => setTimeout(r, 120))
     setOpen(false)
     if (!value || value.length < 1) { onValidChange(null); return }
     try {
       const res = await validateSymbol(value)
       onValidChange(res.valid)
+      if (res.valid) {
+        onSelectSuggestion({ symbol: res.symbol, type: res.type, name: res.name })
+      }
     } catch {
       onValidChange(null)
     }
-  }, [value, onValidChange])
+  }, [value, onValidChange, onSelectSuggestion])
 
-  // Select a suggestion
+  // Select from dropdown
   const select = (sym: SymbolSuggestion) => {
     onChange(sym.symbol)
     onValidChange(true)
+    onSelectSuggestion(sym)
     setSuggestions([])
     setOpen(false)
   }
 
-  // Close dropdown on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -241,7 +258,9 @@ function SymbolAutocomplete({
               className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-50 transition-colors"
             >
               <span className="font-mono font-bold text-[12px] text-slate-800">{s.symbol}</span>
-              <span className="text-[10px] text-slate-400 uppercase tracking-wide ml-2">{s.type}</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[s.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                {ASSET_CLASS_LABEL[s.type] ?? s.type}
+              </span>
             </button>
           ))}
         </div>
@@ -271,9 +290,8 @@ export default function TradeEntryForm({
   const [clipText,    setClipText]   = useState('')
   const [parsed,      setParsed]     = useState<ParsedTrade | null>(null)
   // null = unchecked, true = valid, false = invalid
-  const [symbolValid, setSymbolValid] = useState<boolean | null>(
-    closeState ? true : null
-  )
+  const [symbolValid,       setSymbolValid]       = useState<boolean | null>(closeState ? true : null)
+  const [selectedSuggestion, setSelectedSuggestion] = useState<SymbolSuggestion | null>(null)
 
   const isOption = form.instrumentType === 'OPTION'
   const isSell   = form.action === 'SELL_OPEN' || form.action === 'SELL_CLOSE'
@@ -408,9 +426,27 @@ export default function TradeEntryForm({
         <div>
           <SymbolAutocomplete
             value={form.symbol}
-            onChange={v => { set('symbol', v); setSymbolValid(null) }}
+            onChange={v => { set('symbol', v); setSymbolValid(null); setSelectedSuggestion(null) }}
             onValidChange={setSymbolValid}
+            onSelectSuggestion={s => {
+              setSelectedSuggestion(s)
+              // Auto-switch instrument type: non-option assets → STOCK tab
+              if (s && s.type !== 'option') set('instrumentType', 'STOCK')
+            }}
           />
+          {/* Name + asset class badge */}
+          {selectedSuggestion && symbolValid === true && (
+            <div className="mt-1 flex items-center gap-1.5">
+              {selectedSuggestion.name && (
+                <span className="text-[10px] text-slate-500 truncate max-w-[120px]">
+                  {selectedSuggestion.name}
+                </span>
+              )}
+              <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[selectedSuggestion.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                {ASSET_CLASS_LABEL[selectedSuggestion.type] ?? selectedSuggestion.type}
+              </span>
+            </div>
+          )}
           {symbolValid === false && form.symbol.length > 0 && (
             <p className="mt-1 text-[10px] text-rose-500 font-medium">
               ⚠ Unknown symbol — check ticker before recording

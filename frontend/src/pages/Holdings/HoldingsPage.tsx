@@ -689,12 +689,31 @@ function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
 }
 
 // ── Stock legs table ──────────────────────────────────────────────────────────
+// ── Asset class badge (Phase 15.3) ────────────────────────────────────────────
+const ASSET_BADGE: Record<string, { cls: string; label: string }> = {
+  stock:  { cls: 'bg-blue-50   text-blue-600   border-blue-200',   label: 'STOCK'  },
+  etf:    { cls: 'bg-emerald-50 text-emerald-600 border-emerald-200', label: 'ETF'  },
+  index:  { cls: 'bg-amber-50  text-amber-600  border-amber-200',  label: 'INDEX'  },
+  crypto: { cls: 'bg-violet-50 text-violet-600 border-violet-200', label: 'CRYPTO' },
+  option: { cls: 'bg-rose-50   text-rose-600   border-rose-200',   label: 'OPTION' },
+}
+
+function AssetBadge({ type }: { type: string }) {
+  const b = ASSET_BADGE[type] ?? ASSET_BADGE.stock
+  return (
+    <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${b.cls}`}>
+      {b.label}
+    </span>
+  )
+}
+
 function StockLegsTable({
-  legs, symbol, onClose,
+  legs, symbol, assetClass = 'stock', onClose,
 }: {
   legs: StockLeg[]
   spot?: string | null
   symbol: string
+  assetClass?: string
   onClose: (symbol: string, leg: StockLeg) => void
 }) {
   const { t } = useLanguage()
@@ -707,7 +726,7 @@ function StockLegsTable({
           <tr className="border-b border-slate-100">
             <th className="th-left">
               <span className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold pl-4 py-2 block">
-                Stock / ETF
+                Asset Class
               </span>
             </th>
             <th className="th text-[10px]">{t('col_shares')}</th>
@@ -724,9 +743,7 @@ function StockLegsTable({
             return (
               <tr key={leg.instrument_id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                 <td className="td-left">
-                  <span className="px-2 py-0.5 rounded-md text-xs font-bold bg-teal-50 text-teal-700 border border-teal-200">
-                    STOCK
-                  </span>
+                  <AssetBadge type={assetClass} />
                 </td>
                 <td className="td">
                   <span className={`font-semibold ${isLong ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -962,6 +979,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                       legs={group.stock_legs}
                       spot={group.spot_price}
                       symbol={group.symbol}
+                      assetClass={group.asset_class}
                       onClose={closeStock}
                     />
                   )}

@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from app.config import settings
 from app.models import Instrument, InstrumentType
+from app.routers.symbols import get_asset_class
 from app.schemas.holding import HoldingGroup, OptionLeg, StockLeg
 from app.services.black_scholes import (
     DEFAULT_SIGMA,
@@ -186,6 +187,12 @@ def compute_holding_groups(
                     return None
                 return str(round(float(raw) * dir_sign, 4))
 
+            # asset_class: use symbol map (authoritative); pure-option groups → 'option'
+            if stock_legs:
+                asset_class = get_asset_class(sym)
+            else:
+                asset_class = "option"
+
             holding_groups.append(
                 HoldingGroup(
                     symbol=sym,
@@ -209,6 +216,7 @@ def compute_holding_groups(
                     effective_perf_5d=_eff(perf.get("5d")),
                     effective_perf_1m=_eff(perf.get("1m")),
                     effective_perf_3m=_eff(perf.get("3m")),
+                    asset_class=asset_class,
                 )
             )
 

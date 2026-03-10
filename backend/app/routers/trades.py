@@ -28,6 +28,7 @@ from app.models import (
 )
 from app.schemas.trade import TradeCreate, TradeResponse, TradeUpdate, VALID_STRATEGY_TAGS
 from app.services.position_engine import calculate_positions
+from app.routers.symbols import resolve_instrument_type
 
 router = APIRouter(tags=["trades"])
 
@@ -52,9 +53,10 @@ async def _get_or_create_instrument(
             Instrument.option_type == OptionType(body.option_type),
         )
     else:
+        # Non-option: match by symbol + any non-OPTION type (covers STOCK, ETF, INDEX, CRYPTO)
         stmt = select(Instrument).where(
             Instrument.symbol == sym,
-            Instrument.instrument_type == InstrumentType.STOCK,
+            Instrument.instrument_type != InstrumentType.OPTION,
         )
 
     result = await db.execute(stmt)
@@ -62,11 +64,13 @@ async def _get_or_create_instrument(
 
     if instrument is None:
         # Options: multiplier=100 (1 contract = 100 shares)
-        # Stocks: multiplier=1 (1 unit = 1 share)
+        # Stocks/ETFs/etc.: multiplier=1 (1 unit = 1 share)
         multiplier = 100 if body.instrument_type == "OPTION" else 1
+        # Backend is authoritative: resolve type from master_symbols.json
+        authoritative_type = resolve_instrument_type(sym, body.instrument_type)
         instrument = Instrument(
             symbol=sym,
-            instrument_type=InstrumentType(body.instrument_type),
+            instrument_type=InstrumentType(authoritative_type),
             option_type=OptionType(body.option_type) if body.option_type else None,
             strike=body.strike,
             expiry=body.expiry,
@@ -74,6 +78,12 @@ async def _get_or_create_instrument(
         )
         db.add(instrument)
         await db.flush()   # populate instrument.id
+    elif body.instrument_type != "OPTION":
+        # Correct the type on existing instruments if classification has changed
+        authoritative_type = resolve_instrument_type(sym, body.instrument_type)
+        correct_type = InstrumentType(authoritative_type)
+        if instrument.instrument_type != correct_type:
+            instrument.instrument_type = correct_type
 
     return instrument
 

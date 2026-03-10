@@ -31,6 +31,9 @@ from app.database import Base
 class InstrumentType(str, enum.Enum):
     STOCK  = "STOCK"
     OPTION = "OPTION"
+    ETF    = "ETF"
+    INDEX  = "INDEX"
+    CRYPTO = "CRYPTO"
 
 
 class OptionType(str, enum.Enum):

@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from app.config import settings
 from app.models import InstrumentType
+from app.routers.symbols import get_asset_class
 from app.services.black_scholes import (
     DEFAULT_SIGMA,
     MULTIPLIER,
@@ -94,15 +95,28 @@ def compute_risk_summary(
     for pos in positions:
         inst = pos.instrument
 
-        # ── Stock / ETF ──────────────────────────────────────────────
-        if inst.instrument_type == InstrumentType.STOCK or inst.option_type is None:
+        # ── Stock / ETF / Index / Crypto ─────────────────────────────
+        if inst.option_type is None:
             stock_delta = Decimal(str(pos.net_contracts))
             total_delta += stock_delta
             sym_delta[inst.symbol] = sym_delta.get(inst.symbol, Decimal("0")) + stock_delta
             n_positions += 1
-            tags = inst.tags or []
-            for tag in tags:
-                sector_exp[tag] = sector_exp.get(tag, Decimal("0")) + stock_delta
+            # Sector bucketing: ETF/Index/Crypto go to their own class bucket first;
+            # stocks fall back to instrument tags (user-defined sector labels).
+            asset_class = get_asset_class(inst.symbol)
+            if asset_class in ("etf", "index"):
+                bucket = "ETF/Index"
+                sector_exp[bucket] = sector_exp.get(bucket, Decimal("0")) + stock_delta
+            elif asset_class == "crypto":
+                bucket = "Crypto"
+                sector_exp[bucket] = sector_exp.get(bucket, Decimal("0")) + stock_delta
+            else:
+                tags = inst.tags or []
+                if tags:
+                    for tag in tags:
+                        sector_exp[tag] = sector_exp.get(tag, Decimal("0")) + stock_delta
+                else:
+                    sector_exp["Stock"] = sector_exp.get("Stock", Decimal("0")) + stock_delta
             continue
 
         # ── Option position ──────────────────────────────────────────

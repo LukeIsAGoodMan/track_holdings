@@ -93,3 +93,7 @@ class HoldingGroup(BaseModel):
     effective_perf_5d:  str | None = None
     effective_perf_1m:  str | None = None
     effective_perf_3m:  str | None = None
+
+    # ── Phase 15.3 — asset class classification ──────────────────────────────
+    # 'stock' | 'etf' | 'index' | 'crypto' | 'option'
+    asset_class: str = "stock"

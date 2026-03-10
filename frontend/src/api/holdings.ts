@@ -230,6 +230,6 @@ export const fetchAccountHistory = (
 export const searchSymbols = (q: string): Promise<SymbolSuggestion[]> =>
   api.get<SymbolSuggestion[]>('/symbols/search', { params: { q } }).then((r) => r.data)
 
-/** GET /api/symbols/validate/{symbol} → {valid: bool, symbol: str} */
-export const validateSymbol = (symbol: string): Promise<{ valid: boolean; symbol: string }> =>
-  api.get<{ valid: boolean; symbol: string }>(`/symbols/validate/${encodeURIComponent(symbol)}`).then((r) => r.data)
+/** GET /api/symbols/validate/{symbol} → {valid, symbol, type, name} */
+export const validateSymbol = (symbol: string): Promise<{ valid: boolean; symbol: string; type: string; name: string }> =>
+  api.get<{ valid: boolean; symbol: string; type: string; name: string }>(`/symbols/validate/${encodeURIComponent(symbol)}`).then((r) => r.data)
