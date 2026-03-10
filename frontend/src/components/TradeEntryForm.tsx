@@ -1,12 +1,9 @@
 /**
- * TradeEntryForm — compact trade entry form for the sidebar.
+ * TradeEntryForm — Asset / Execution / Analysis sectioned layout.
  *
- * Shares all business logic with TradeEntryPage.
- * Optimized for ~240–288px sidebar width:
- *   - Tighter spacing and font sizes
- *   - Clipboard import collapsible (closed by default)
- *   - Trade reason / tags collapsible (closed by default)
- *   - onSuccess callback replaces page navigation
+ * Three bordered sections replace the flat field list.
+ * Conviction score, technical levels, and trade reason are always visible.
+ * Submit button animates through loading → success (with cash impact) → idle.
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { createTrade, searchSymbols, validateSymbol } from '@/api/holdings'
@@ -21,18 +18,23 @@ import type { ParsedTrade } from '@/utils/clipboardParser'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type FormState = {
-  symbol:         string
-  instrumentType: InstrumentType
-  optionType:     OptionType
-  strike:         string
-  expiry:         string
-  action:         TradeAction
-  quantity:       string
-  price:          string
-  notes:          string
-  tradeReason:    string
-  strategyTags:   string[]
+  symbol:          string
+  instrumentType:  InstrumentType
+  optionType:      OptionType
+  strike:          string
+  expiry:          string
+  action:          TradeAction
+  quantity:        string
+  price:           string
+  support:         string
+  resistance:      string
+  notes:           string
+  tradeReason:     string
+  strategyTags:    string[]
+  confidenceScore: number
 }
+
+type SubmitState = 'idle' | 'loading' | 'success'
 
 const STRATEGY_TAGS = [
   'Hedge', 'Speculative', 'Earnings', 'Income',
@@ -46,11 +48,15 @@ const ACTION_LABELS: Record<TradeAction, string> = {
   SELL_CLOSE: 'Sell Close',
 }
 
+const CONVICTION_LABELS = ['', 'Minimal', 'Low', 'Medium', 'High', 'Max']
+
 const INITIAL: FormState = {
   symbol: '', instrumentType: 'OPTION', optionType: 'PUT',
   strike: '', expiry: '', action: 'SELL_OPEN',
-  quantity: '1', price: '', notes: '',
-  tradeReason: '', strategyTags: [],
+  quantity: '1', price: '',
+  support: '', resistance: '',
+  notes: '', tradeReason: '', strategyTags: [],
+  confidenceScore: 3,
 }
 
 function fromClose(cs: ClosePositionState): FormState {
@@ -74,6 +80,24 @@ const INP = [
   'focus:outline-none focus:ring-1 focus:ring-primary/30',
 ].join(' ')
 
+// ── Section wrapper ───────────────────────────────────────────────────────────
+function Section({
+  title, accent = 'text-slate-400', children,
+}: {
+  title: string; accent?: string; children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200">
+      <div className={`px-3 py-1.5 border-b border-slate-100 bg-slate-50 rounded-t-xl text-[10px] font-bold uppercase tracking-widest ${accent}`}>
+        {title}
+      </div>
+      <div className="px-3 py-3 space-y-3">
+        {children}
+      </div>
+    </div>
+  )
+}
+
 // ── Compact toggle group ──────────────────────────────────────────────────────
 function CToggle<T extends string>({
   options, value, onChange, labelMap,
@@ -95,6 +119,36 @@ function CToggle<T extends string>({
           {labelMap?.[opt] ?? opt}
         </button>
       ))}
+    </div>
+  )
+}
+
+// ── Conviction Score (1–5) ────────────────────────────────────────────────────
+function ConvictionScore({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  return (
+    <div>
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+        Conviction
+        <span className="ml-1.5 normal-case font-normal text-slate-400">
+          — {CONVICTION_LABELS[value]}
+        </span>
+      </label>
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map(n => (
+          <button
+            key={n} type="button"
+            onClick={() => onChange(n)}
+            className={[
+              'flex-1 py-1.5 rounded-lg text-[11px] font-bold border transition-all',
+              n <= value
+                ? 'bg-amber-50 border-amber-300 text-amber-600 shadow-sm'
+                : 'bg-white border-slate-200 text-slate-300 hover:border-amber-200 hover:text-amber-400',
+            ].join(' ')}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }
@@ -126,7 +180,7 @@ function TagPicker({
   )
 }
 
-// ── Collapsible section ───────────────────────────────────────────────────────
+// ── Collapsible section (Clipboard Import) ────────────────────────────────────
 function CollapseSection({
   label, color = 'text-slate-400', open, onToggle, children,
 }: {
@@ -148,11 +202,11 @@ function CollapseSection({
 
 // ── Asset class badge colours ─────────────────────────────────────────────────
 const ASSET_CLASS_STYLE: Record<string, string> = {
-  stock:  'bg-blue-50   text-blue-600   border-blue-200',
+  stock:  'bg-blue-50    text-blue-600    border-blue-200',
   etf:    'bg-emerald-50 text-emerald-600 border-emerald-200',
-  index:  'bg-amber-50  text-amber-600  border-amber-200',
-  crypto: 'bg-violet-50 text-violet-600 border-violet-200',
-  option: 'bg-rose-50   text-rose-600   border-rose-200',
+  index:  'bg-amber-50   text-amber-600   border-amber-200',
+  crypto: 'bg-violet-50  text-violet-600  border-violet-200',
+  option: 'bg-rose-50    text-rose-600    border-rose-200',
 }
 const ASSET_CLASS_LABEL: Record<string, string> = {
   stock: 'Stock', etf: 'ETF', index: 'Index', crypto: 'Crypto', option: 'Option',
@@ -160,11 +214,7 @@ const ASSET_CLASS_LABEL: Record<string, string> = {
 
 // ── Symbol autocomplete ───────────────────────────────────────────────────────
 function SymbolAutocomplete({
-  value,
-  onChange,
-  onValidChange,
-  onSelectSuggestion,
-  disabled,
+  value, onChange, onValidChange, onSelectSuggestion, disabled,
 }: {
   value:               string
   onChange:            (v: string) => void
@@ -177,7 +227,6 @@ function SymbolAutocomplete({
   const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef                  = useRef<HTMLDivElement>(null)
 
-  // Debounced search on input
   const handleInput = useCallback((raw: string) => {
     const upper = raw.toUpperCase()
     onChange(upper)
@@ -198,7 +247,6 @@ function SymbolAutocomplete({
     }, 220)
   }, [onChange, onValidChange, onSelectSuggestion])
 
-  // Validate on blur — also fetches type/name for manually typed symbols
   const handleBlur = useCallback(async () => {
     await new Promise(r => setTimeout(r, 120))
     setOpen(false)
@@ -214,7 +262,6 @@ function SymbolAutocomplete({
     }
   }, [value, onValidChange, onSelectSuggestion])
 
-  // Select from dropdown
   const select = (sym: SymbolSuggestion) => {
     onChange(sym.symbol)
     onValidChange(true)
@@ -237,7 +284,7 @@ function SymbolAutocomplete({
     <div className="relative" ref={containerRef}>
       <input
         type="text"
-        placeholder="Symbol (e.g. NVDA)"
+        placeholder="Ticker symbol (e.g. NVDA)"
         value={value}
         onChange={e => handleInput(e.target.value)}
         onBlur={handleBlur}
@@ -249,16 +296,21 @@ function SymbolAutocomplete({
         spellCheck={false}
       />
       {open && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-lg">
           {suggestions.map((s) => (
             <button
               key={s.symbol}
               type="button"
               onMouseDown={e => { e.preventDefault(); select(s) }}
-              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-50 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-50 transition-colors first:rounded-t-xl last:rounded-b-xl"
             >
-              <span className="font-mono font-bold text-[12px] text-slate-800">{s.symbol}</span>
-              <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[s.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+              <div className="min-w-0 mr-2">
+                <div className="font-mono font-bold text-[12px] text-slate-800">{s.symbol}</div>
+                {s.name && (
+                  <div className="text-[10px] text-slate-400 truncate max-w-[160px]">{s.name}</div>
+                )}
+              </div>
+              <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[s.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
                 {ASSET_CLASS_LABEL[s.type] ?? s.type}
               </span>
             </button>
@@ -282,19 +334,19 @@ export default function TradeEntryForm({
 
   const [form,        setForm]       = useState<FormState>(() =>
     closeState ? fromClose(closeState) : INITIAL)
-  const [loading,     setLoading]    = useState(false)
+  const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const [error,       setError]      = useState<string | null>(null)
   const [impact,      setImpact]     = useState<string | null>(null)
   const [clipOpen,    setClipOpen]   = useState(false)
-  const [reasonOpen,  setReasonOpen] = useState(!!closeState)
   const [clipText,    setClipText]   = useState('')
   const [parsed,      setParsed]     = useState<ParsedTrade | null>(null)
-  // null = unchecked, true = valid, false = invalid
-  const [symbolValid,       setSymbolValid]       = useState<boolean | null>(closeState ? true : null)
+  const [symbolValid,        setSymbolValid]        = useState<boolean | null>(closeState ? true : null)
   const [selectedSuggestion, setSelectedSuggestion] = useState<SymbolSuggestion | null>(null)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const isOption = form.instrumentType === 'OPTION'
-  const isSell   = form.action === 'SELL_OPEN' || form.action === 'SELL_CLOSE'
+  const isOption   = form.instrumentType === 'OPTION'
+  const isStockLike = !isOption
+  const isSell     = form.action === 'SELL_OPEN' || form.action === 'SELL_CLOSE'
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(prev => ({ ...prev, [k]: v }))
 
@@ -318,15 +370,25 @@ export default function TradeEntryForm({
       ...(parsed.quantity       && { quantity:       parsed.quantity }),
       ...(parsed.price          && { price:          parsed.price }),
     }))
-    if (parsed.symbol) setSymbolValid(null)  // re-validate on blur after apply
+    if (parsed.symbol) setSymbolValid(null)
     setClipText(''); setParsed(null); setClipOpen(false)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!selectedPortfolioId) { setError('Select a portfolio first.'); return }
-    setLoading(true); setError(null); setImpact(null)
+    setSubmitState('loading'); setError(null); setImpact(null)
     try {
+      // Prepend technical levels to notes when provided
+      let notes = form.notes || null
+      if (form.support || form.resistance) {
+        const levels = [
+          form.support    && `S: $${form.support}`,
+          form.resistance && `R: $${form.resistance}`,
+        ].filter(Boolean).join(' / ')
+        notes = [levels, form.notes].filter(Boolean).join(' — ') || null
+      }
+
       const res = await createTrade({
         portfolio_id:     selectedPortfolioId,
         symbol:           form.symbol.trim().toUpperCase(),
@@ -337,28 +399,41 @@ export default function TradeEntryForm({
         action:           form.action,
         quantity:         parseInt(form.quantity, 10),
         price:            form.price,
-        notes:            form.notes || null,
-        confidence_score: 3,
+        notes,
+        confidence_score: form.confidenceScore,
         trade_reason:     form.tradeReason || null,
         strategy_tags:    form.strategyTags.length > 0 ? form.strategyTags : null,
       })
+
       setImpact(res.cash_impact)
+      setSubmitState('success')
       triggerRefresh()
-      setForm(prev => ({ ...prev, price: '', quantity: '1', notes: '', tradeReason: '', strategyTags: [] }))
+      setForm(prev => ({
+        ...prev,
+        price: '', quantity: '1', notes: '',
+        support: '', resistance: '',
+        tradeReason: '', strategyTags: [],
+      }))
       onSuccess?.()
+
+      if (successTimerRef.current) clearTimeout(successTimerRef.current)
+      successTimerRef.current = setTimeout(() => setSubmitState('idle'), 2500)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      setLoading(false)
+      setSubmitState('idle')
     }
   }
+
+  useEffect(() => () => {
+    if (successTimerRef.current) clearTimeout(successTimerRef.current)
+  }, [])
 
   const cashPreview = form.symbol && form.price && form.quantity
     ? parseFloat(form.price || '0') * parseInt(form.quantity || '0', 10) * (isOption ? 100 : 1)
     : null
 
   return (
-    <div className="flex flex-col gap-2.5 font-sans">
+    <div className="flex flex-col gap-y-3 font-sans">
 
       {/* Closing mode banner */}
       {closeState && (
@@ -375,19 +450,6 @@ export default function TradeEntryForm({
         </div>
       )}
 
-      {/* Success */}
-      {impact && (
-        <div className={[
-          'flex items-center justify-between px-3 py-2 rounded-xl border text-[11px] font-semibold',
-          parseFloat(impact) >= 0
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-            : 'bg-rose-50 border-rose-200 text-rose-700',
-        ].join(' ')}>
-          <span>Recorded · {fmtUSDSigned(impact)}</span>
-          <button type="button" onClick={() => setImpact(null)} className="ml-2 opacity-50 hover:opacity-100">✕</button>
-        </div>
-      )}
-
       {/* Error */}
       {error && (
         <div className="px-3 py-2 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-[11px]">
@@ -396,149 +458,235 @@ export default function TradeEntryForm({
       )}
 
       {/* ── Form ─────────────────────────────────────────────────────────── */}
-      <form onSubmit={handleSubmit} className="space-y-2.5">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-y-3">
 
-        {/* Action */}
-        <div>
-          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-            {t('action')}
-          </label>
-          <select
-            value={form.action}
-            onChange={e => set('action', e.target.value as TradeAction)}
-            className={INP}
-          >
-            {(Object.keys(ACTION_LABELS) as TradeAction[]).map(a => (
-              <option key={a} value={a}>{ACTION_LABELS[a]}</option>
-            ))}
-          </select>
-        </div>
+        {/* ══ ASSET ══════════════════════════════════════════════════════ */}
+        <Section title="Asset" accent="text-blue-500">
 
-        {/* Instrument type */}
-        <CToggle
-          options={['OPTION', 'STOCK'] as InstrumentType[]}
-          value={form.instrumentType}
-          onChange={v => set('instrumentType', v)}
-          labelMap={{ OPTION: 'Option', STOCK: 'Stock' }}
-        />
-
-        {/* Symbol */}
-        <div>
-          <SymbolAutocomplete
-            value={form.symbol}
-            onChange={v => { set('symbol', v); setSymbolValid(null); setSelectedSuggestion(null) }}
-            onValidChange={setSymbolValid}
-            onSelectSuggestion={s => {
-              setSelectedSuggestion(s)
-              // Auto-switch instrument type: non-option assets → STOCK tab
-              if (s && s.type !== 'option') set('instrumentType', 'STOCK')
-            }}
+          {/* Instrument type toggle */}
+          <CToggle
+            options={['OPTION', 'STOCK'] as InstrumentType[]}
+            value={form.instrumentType}
+            onChange={v => set('instrumentType', v)}
+            labelMap={{ OPTION: 'Option', STOCK: 'Stock / ETF' }}
           />
-          {/* Name + asset class badge */}
-          {selectedSuggestion && symbolValid === true && (
-            <div className="mt-1 flex items-center gap-1.5">
-              {selectedSuggestion.name && (
-                <span className="text-[10px] text-slate-500 truncate max-w-[120px]">
-                  {selectedSuggestion.name}
+
+          {/* Symbol */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              Symbol
+            </label>
+            <SymbolAutocomplete
+              value={form.symbol}
+              onChange={v => { set('symbol', v); setSymbolValid(null); setSelectedSuggestion(null) }}
+              onValidChange={setSymbolValid}
+              onSelectSuggestion={s => {
+                setSelectedSuggestion(s)
+                if (s && s.type !== 'option') set('instrumentType', 'STOCK')
+              }}
+            />
+            {selectedSuggestion && symbolValid === true && (
+              <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                {selectedSuggestion.name && (
+                  <span className="text-[11px] text-slate-500 min-w-0">
+                    {selectedSuggestion.name}
+                  </span>
+                )}
+                <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[selectedSuggestion.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                  {ASSET_CLASS_LABEL[selectedSuggestion.type] ?? selectedSuggestion.type}
                 </span>
-              )}
-              <span className={`text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[selectedSuggestion.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                {ASSET_CLASS_LABEL[selectedSuggestion.type] ?? selectedSuggestion.type}
-              </span>
-            </div>
-          )}
-          {symbolValid === false && form.symbol.length > 0 && (
-            <p className="mt-1 text-[10px] text-rose-500 font-medium">
-              ⚠ Unknown symbol — check ticker before recording
-            </p>
-          )}
-        </div>
-
-        {/* Option-specific fields */}
-        {isOption && (
-          <>
-            <CToggle
-              options={['PUT', 'CALL'] as OptionType[]}
-              value={form.optionType}
-              onChange={v => set('optionType', v)}
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Strike
-                </label>
-                <input
-                  type="number" step="0.01" min="0" placeholder="600"
-                  value={form.strike} onChange={e => set('strike', e.target.value)}
-                  required={isOption} className={INP}
-                />
               </div>
-              <div>
-                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                  Expiry
-                </label>
-                <input
-                  type="date" value={form.expiry}
-                  onChange={e => set('expiry', e.target.value)}
-                  required={isOption} className={INP}
-                />
-              </div>
-            </div>
-          </>
-        )}
+            )}
+            {symbolValid === false && form.symbol.length > 0 && (
+              <p className="mt-1 text-[10px] text-rose-500 font-medium">
+                ⚠ Unknown symbol — check ticker before recording
+              </p>
+            )}
+          </div>
 
-        {/* Qty + Price */}
-        <div className="grid grid-cols-2 gap-2">
+          {/* Option-only fields */}
+          {isOption && (
+            <>
+              <CToggle
+                options={['PUT', 'CALL'] as OptionType[]}
+                value={form.optionType}
+                onChange={v => set('optionType', v)}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Strike
+                  </label>
+                  <input
+                    type="number" step="0.01" min="0" placeholder="600"
+                    value={form.strike} onChange={e => set('strike', e.target.value)}
+                    required={isOption} className={INP}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Expiry
+                  </label>
+                  <input
+                    type="date" value={form.expiry}
+                    onChange={e => set('expiry', e.target.value)}
+                    required={isOption} className={INP}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </Section>
+
+        {/* ══ EXECUTION ══════════════════════════════════════════════════ */}
+        <Section title="Execution" accent="text-slate-500">
+
+          {/* Action */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              {isOption ? 'Contracts' : 'Shares'}
+              {t('action')}
             </label>
-            <input
-              type="number" min="1" step="1" value={form.quantity}
-              onChange={e => set('quantity', e.target.value)} required
+            <select
+              value={form.action}
+              onChange={e => set('action', e.target.value as TradeAction)}
               className={INP}
-            />
+            >
+              {(Object.keys(ACTION_LABELS) as TradeAction[]).map(a => (
+                <option key={a} value={a}>{ACTION_LABELS[a]}</option>
+              ))}
+            </select>
           </div>
+
+          {/* Qty + Price */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                {isOption ? 'Contracts' : 'Shares'}
+              </label>
+              <input
+                type="number" min="1" step="1" value={form.quantity}
+                onChange={e => set('quantity', e.target.value)} required
+                className={INP}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                {isOption ? 'Premium' : 'Price'}
+              </label>
+              <input
+                type="number" step="0.01" min="0"
+                placeholder={isOption ? '5.00' : '195.00'}
+                value={form.price} onChange={e => set('price', e.target.value)}
+                required className={INP}
+              />
+            </div>
+          </div>
+
+          {/* Technical Levels */}
           <div>
             <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              {isOption ? 'Premium' : 'Price'}
+              Technical Levels
+              <span className="ml-1 normal-case font-normal">(optional)</span>
             </label>
-            <input
-              type="number" step="0.01" min="0"
-              placeholder={isOption ? '5.00' : '195.00'}
-              value={form.price} onChange={e => set('price', e.target.value)}
-              required className={INP}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-emerald-500">S</span>
+                <input
+                  type="number" step="0.01" min="0" placeholder="Support"
+                  value={form.support} onChange={e => set('support', e.target.value)}
+                  className={`${INP} pl-6`}
+                />
+              </div>
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-rose-500">R</span>
+                <input
+                  type="number" step="0.01" min="0" placeholder="Resistance"
+                  value={form.resistance} onChange={e => set('resistance', e.target.value)}
+                  className={`${INP} pl-6`}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Cash preview */}
+          {cashPreview !== null && (
+            <div className={[
+              'px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tabular-nums border',
+              isSell
+                ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
+                : 'bg-rose-50 border-rose-100 text-rose-600',
+            ].join(' ')}>
+              {isSell ? '+' : '−'}${cashPreview.toLocaleString('en-US', { minimumFractionDigits: 2 })} cash impact
+            </div>
+          )}
+        </Section>
+
+        {/* ══ ANALYSIS ═══════════════════════════════════════════════════ */}
+        <Section title="Analysis" accent="text-amber-500">
+
+          {/* Conviction Score */}
+          <ConvictionScore
+            value={form.confidenceScore}
+            onChange={v => set('confidenceScore', v)}
+          />
+
+          {/* Trade Reason — always visible; more rows for stock/ETF (no option fields above) */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+              Trade Reason
+              <span className="ml-1 normal-case font-normal">(optional)</span>
+            </label>
+            <textarea
+              rows={isStockLike ? 4 : 2}
+              placeholder={t('coach_reason_ph')}
+              value={form.tradeReason}
+              onChange={e => set('tradeReason', e.target.value)}
+              className="w-full text-xs rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none"
             />
           </div>
-        </div>
 
-        {/* Notes */}
-        <input
-          type="text" placeholder={`${t('notes')} (optional)`} value={form.notes}
-          onChange={e => set('notes', e.target.value)} className={INP}
-        />
-
-        {/* Cash preview */}
-        {cashPreview !== null && (
-          <div className={[
-            'px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tabular-nums border',
-            isSell
-              ? 'bg-emerald-50 border-emerald-100 text-emerald-700'
-              : 'bg-rose-50 border-rose-100 text-rose-600',
-          ].join(' ')}>
-            {isSell ? '+' : '−'}${cashPreview.toLocaleString('en-US', { minimumFractionDigits: 2 })} cash impact
+          {/* Strategy Tags */}
+          <div>
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+              Strategy Tags
+            </label>
+            <TagPicker
+              selected={form.strategyTags}
+              onChange={tags => set('strategyTags', tags)}
+            />
           </div>
-        )}
+        </Section>
 
-        {/* Submit */}
+        {/* ── Submit ──────────────────────────────────────────────────── */}
         <button
-          type="submit" disabled={loading || symbolValid === false}
-          className="w-full py-2 rounded-xl bg-primary text-white text-xs font-bold
-                     hover:bg-primary/90 transition-colors shadow-sm
-                     disabled:opacity-50 disabled:cursor-not-allowed"
+          type="submit"
+          disabled={submitState !== 'idle' || symbolValid === false}
+          className={[
+            'w-full py-2.5 rounded-xl text-sm font-bold transition-all duration-300 shadow-sm select-none',
+            submitState === 'success'
+              ? 'bg-emerald-500 text-white scale-[0.98] cursor-default'
+              : submitState === 'loading'
+              ? 'bg-primary text-white opacity-70 cursor-wait'
+              : symbolValid === false
+              ? 'bg-primary text-white opacity-50 cursor-not-allowed'
+              : 'bg-primary text-white hover:bg-primary/90 active:scale-[0.98]',
+          ].join(' ')}
         >
-          {loading ? t('recording') : t('record_trade')}
+          {submitState === 'success' ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="text-base leading-none">✓</span>
+              <span>Recorded{impact ? ` · ${fmtUSDSigned(impact)}` : ''}</span>
+            </span>
+          ) : submitState === 'loading' ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="inline-block animate-spin text-base leading-none">⟳</span>
+              <span>Recording…</span>
+            </span>
+          ) : (
+            t('record_trade')
+          )}
         </button>
+
       </form>
 
       {/* ── Clipboard import (collapsible) ─────────────────────────────── */}
@@ -573,24 +721,6 @@ export default function TradeEntryForm({
         {clipText.trim() && parsed && parsed.matched.length === 0 && (
           <p className="text-[10px] text-rose-500">{t('clipboard_no_match')}</p>
         )}
-      </CollapseSection>
-
-      {/* ── Trade reason + tags (collapsible) ──────────────────────────── */}
-      <CollapseSection
-        label="Trade Reason"
-        color="text-amber-500"
-        open={reasonOpen}
-        onToggle={() => setReasonOpen(v => !v)}
-      >
-        <textarea
-          rows={2} placeholder={t('coach_reason_ph')} value={form.tradeReason}
-          onChange={e => set('tradeReason', e.target.value)}
-          className="w-full text-[10px] rounded-lg border border-slate-200 px-2 py-1.5 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
-        />
-        <TagPicker
-          selected={form.strategyTags}
-          onChange={tags => set('strategyTags', tags)}
-        />
       </CollapseSection>
     </div>
   )
