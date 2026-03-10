@@ -16,7 +16,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
+  PieChart, Pie, Cell, Sector,
 } from 'recharts'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useLanguage }   from '@/context/LanguageContext'
@@ -205,69 +205,139 @@ function StatCard({
 }
 
 // ── Sector Pie Chart ──────────────────────────────────────────────────────────
-const SECTOR_COLORS = [
-  '#0284c7', '#7c3aed', '#d97706', '#059669',
-  '#ea580c', '#9333ea', '#2563eb', '#b45309',
-  '#16a34a', '#dc2626', '#0891b2', '#c026d3',
-]
+const ASSET_CLASS_COLORS: Record<string, string> = {
+  stock:  '#3b82f6',
+  etf:    '#10b981',
+  index:  '#f59e0b',
+  crypto: '#8b5cf6',
+  option: '#f43f5e',
+}
 
-interface SectorDatum { name: string; value: number; delta: number; color: string }
+const ASSET_CLASS_LABELS: Record<string, { en: string; zh: string }> = {
+  stock:  { en: 'Stock',  zh: '股票' },
+  etf:    { en: 'ETF',    zh: 'ETF'  },
+  index:  { en: 'Index',  zh: '指数' },
+  crypto: { en: 'Crypto', zh: '加密' },
+  option: { en: 'Option', zh: '期权' },
+}
 
-function SectorPieChart({
-  sectorExp, isEn,
-}: {
-  sectorExp: Record<string, string> | null | undefined
-  isEn: boolean
-}) {
-  const entries = sectorExp ? Object.entries(sectorExp) : []
-  if (entries.length === 0) return null
+interface AssetBucket {
+  key:   string
+  label: string
+  color: string
+  value: number
+  top3:  { symbol: string; strategy_label: string; exposure: number }[]
+}
 
-  const sorted = [...entries].sort((a, b) => Math.abs(parseFloat(b[1])) - Math.abs(parseFloat(a[1])))
-  const data: SectorDatum[] = sorted.map(([tag, deltaStr], i) => ({
-    name:  tag,
-    value: Math.max(0.001, Math.abs(parseFloat(deltaStr) || 0)),
-    delta: parseFloat(deltaStr) || 0,
-    color: SECTOR_COLORS[i % SECTOR_COLORS.length],
-  }))
-  const total = data.reduce((s, d) => s + d.value, 0)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function renderActiveShape(props: any) {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill } = props
+  return (
+    <Sector
+      cx={cx} cy={cy}
+      innerRadius={innerRadius - 2}
+      outerRadius={outerRadius + 8}
+      startAngle={startAngle}
+      endAngle={endAngle}
+      fill={fill}
+    />
+  )
+}
+
+function SectorPieChart({ holdings, isEn }: { holdings: HoldingGroup[]; isEn: boolean }) {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+
+  const buckets = useMemo<AssetBucket[]>(() => {
+    const map: Record<string, { total: number; groups: HoldingGroup[] }> = {}
+    for (const g of holdings) {
+      const key = g.asset_class || 'stock'
+      const exp = Math.abs(parseFloat(g.delta_adjusted_exposure ?? '0') || 0)
+      if (exp === 0) continue
+      if (!map[key]) map[key] = { total: 0, groups: [] }
+      map[key].total += exp
+      map[key].groups.push(g)
+    }
+    return Object.entries(map)
+      .sort((a, b) => b[1].total - a[1].total)
+      .map(([key, { total, groups }]) => ({
+        key,
+        label: ASSET_CLASS_LABELS[key]?.[isEn ? 'en' : 'zh'] ?? key.toUpperCase(),
+        color: ASSET_CLASS_COLORS[key] ?? '#94a3b8',
+        value: total,
+        top3: [...groups]
+          .sort((a, b) =>
+            Math.abs(parseFloat(b.delta_adjusted_exposure ?? '0')) -
+            Math.abs(parseFloat(a.delta_adjusted_exposure ?? '0'))
+          )
+          .slice(0, 3)
+          .map(g => ({
+            symbol:         g.symbol,
+            strategy_label: g.strategy_label,
+            exposure:       Math.abs(parseFloat(g.delta_adjusted_exposure ?? '0') || 0),
+          })),
+      }))
+  }, [holdings, isEn])
+
+  if (buckets.length === 0) return null
+  const total = buckets.reduce((s, b) => s + b.value, 0)
+
+  const fmtVal = (v: number) =>
+    v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M`
+    : v >= 1_000   ? `$${(v / 1_000).toFixed(1)}K`
+    : `$${v.toFixed(0)}`
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 min-h-[300px] overflow-hidden">
       <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">
-        {isEn ? 'Sector Exposure' : '板块敞口'}
+        {isEn ? 'Asset Class Exposure' : '资产类别敞口'}
       </div>
-      <div className="flex items-center gap-6 flex-wrap">
+      <div className="flex items-start gap-4 flex-wrap">
         {/* Donut */}
         <div className="shrink-0">
-          <ResponsiveContainer width={190} height={190}>
+          <ResponsiveContainer width={180} height={180}>
             <PieChart>
               <Pie
-                data={data}
+                data={buckets}
                 dataKey="value"
-                nameKey="name"
+                nameKey="label"
                 cx="50%" cy="50%"
-                innerRadius={52}
-                outerRadius={82}
+                innerRadius={50}
+                outerRadius={76}
                 paddingAngle={2}
                 stroke="none"
+                activeIndex={activeIndex ?? undefined}
+                activeShape={renderActiveShape}
+                onMouseEnter={(_, i) => setActiveIndex(i)}
+                onMouseLeave={() => setActiveIndex(null)}
+                onClick={(_, i) => setActiveIndex(prev => prev === i ? null : i)}
               >
-                {data.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
+                {buckets.map((b, i) => (
+                  <Cell
+                    key={b.key}
+                    fill={b.color}
+                    opacity={activeIndex === null || activeIndex === i ? 1 : 0.35}
+                  />
                 ))}
               </Pie>
               <Tooltip
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null
-                  const d = payload[0]?.payload as SectorDatum | undefined
-                  if (!d) return null
-                  const pct = total > 0 ? (d.value / total * 100).toFixed(1) : '0'
+                  const b = payload[0]?.payload as AssetBucket | undefined
+                  if (!b) return null
+                  const pct = total > 0 ? (b.value / total * 100).toFixed(1) : '0'
                   return (
-                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs">
-                      <div className="font-bold text-slate-900 mb-1">{d.name}</div>
-                      <div className={d.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                        {d.delta >= 0 ? '+' : ''}{d.delta.toFixed(2)} Δ
+                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2.5 text-xs min-w-[160px]">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: b.color }} />
+                        <span className="font-bold text-slate-900">{b.label}</span>
+                        <span className="ml-auto text-slate-400 tabular-nums">{pct}%</span>
                       </div>
-                      <div className="text-slate-400">{pct}% of exposure</div>
+                      {b.top3.map(h => (
+                        <div key={h.symbol} className="flex items-center justify-between gap-3 py-0.5 text-[11px]">
+                          <span className="font-semibold text-slate-700">{h.symbol}</span>
+                          <span className="text-slate-400 tabular-nums">{fmtVal(h.exposure)}</span>
+                        </div>
+                      ))}
                     </div>
                   )
                 }}
@@ -276,19 +346,27 @@ function SectorPieChart({
           </ResponsiveContainer>
         </div>
 
-        {/* Legend */}
-        <div className="flex-1 space-y-2.5 min-w-0">
-          {data.map((entry) => {
-            const pct = total > 0 ? (entry.value / total * 100).toFixed(0) : '0'
+        {/* Custom Legend */}
+        <div className="flex-1 space-y-1 min-w-0 pt-1">
+          {buckets.map((b, i) => {
+            const pct = total > 0 ? (b.value / total * 100).toFixed(0) : '0'
+            const isActive = activeIndex === i
             return (
-              <div key={entry.name} className="flex items-center gap-2 text-xs">
-                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: entry.color }} />
-                <span className="text-slate-700 truncate flex-1 font-medium min-w-0">{entry.name}</span>
-                <span className={`tabular-nums font-semibold shrink-0 ${entry.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  {entry.delta >= 0 ? '+' : ''}{entry.delta.toFixed(1)}Δ
-                </span>
-                <span className="text-slate-400 tabular-nums shrink-0 w-9 text-right">{pct}%</span>
-              </div>
+              <button
+                key={b.key}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs transition-colors ${
+                  isActive ? 'bg-slate-100' : 'hover:bg-slate-50'
+                }`}
+                onClick={() => setActiveIndex(prev => prev === i ? null : i)}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-sm shrink-0 transition-opacity"
+                  style={{ background: b.color, opacity: activeIndex === null || isActive ? 1 : 0.4 }}
+                />
+                <span className="text-slate-700 font-medium truncate flex-1 text-left min-w-0">{b.label}</span>
+                <span className="text-slate-500 tabular-nums shrink-0">{fmtVal(b.value)}</span>
+                <span className="text-slate-400 tabular-nums shrink-0 w-8 text-right">{pct}%</span>
+              </button>
             )
           })}
         </div>
@@ -1770,7 +1848,7 @@ export default function HoldingsPage() {
 
             {/* Three-col footer: Sector Pie · Strategy Pie · Risk Weather */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <SectorPieChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
+              <SectorPieChart holdings={holdings} isEn={isEn} />
               <StrategyPieChart holdings={holdings} isEn={isEn} />
               <RiskWeatherCard riskDash={riskDash} isEn={isEn} />
             </div>
