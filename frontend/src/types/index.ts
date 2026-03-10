@@ -427,3 +427,10 @@ export interface MarketQuote {
   price:      string | null
   change_pct: number | null
 }
+
+// ── Symbol search & validation (Phase 14.5) ───────────────────────────────────
+export interface SymbolSuggestion {
+  symbol: string
+  name:   string
+  type:   string
+}

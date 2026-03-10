@@ -8,12 +8,12 @@
  *   - Trade reason / tags collapsible (closed by default)
  *   - onSuccess callback replaces page navigation
  */
-import { useState } from 'react'
-import { createTrade }  from '@/api/holdings'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createTrade, searchSymbols, validateSymbol } from '@/api/holdings'
 import { usePortfolio } from '@/context/PortfolioContext'
 import { useLanguage }  from '@/context/LanguageContext'
 import type {
-  TradeAction, InstrumentType, OptionType, ClosePositionState,
+  TradeAction, InstrumentType, OptionType, ClosePositionState, SymbolSuggestion,
 } from '@/types'
 import { fmtUSDSigned, fmtNum } from '@/utils/format'
 import { parseClipboard } from '@/utils/clipboardParser'
@@ -146,6 +146,110 @@ function CollapseSection({
   )
 }
 
+// ── Symbol autocomplete ───────────────────────────────────────────────────────
+function SymbolAutocomplete({
+  value,
+  onChange,
+  onValidChange,
+  disabled,
+}: {
+  value:          string
+  onChange:       (v: string) => void
+  onValidChange:  (valid: boolean | null) => void
+  disabled?:      boolean
+}) {
+  const [suggestions, setSuggestions] = useState<SymbolSuggestion[]>([])
+  const [open,        setOpen]        = useState(false)
+  const debounceRef                   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const containerRef                  = useRef<HTMLDivElement>(null)
+
+  // Debounced search on input
+  const handleInput = useCallback((raw: string) => {
+    const upper = raw.toUpperCase()
+    onChange(upper)
+    onValidChange(null)   // reset validity while typing
+
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    if (upper.length < 2) { setSuggestions([]); setOpen(false); return }
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await searchSymbols(upper)
+        setSuggestions(res)
+        setOpen(res.length > 0)
+      } catch {
+        setSuggestions([]); setOpen(false)
+      }
+    }, 220)
+  }, [onChange, onValidChange])
+
+  // Validate on blur (for manually typed symbols)
+  const handleBlur = useCallback(async () => {
+    // Short delay so onMouseDown on a suggestion fires first
+    await new Promise(r => setTimeout(r, 120))
+    setOpen(false)
+    if (!value || value.length < 1) { onValidChange(null); return }
+    try {
+      const res = await validateSymbol(value)
+      onValidChange(res.valid)
+    } catch {
+      onValidChange(null)
+    }
+  }, [value, onValidChange])
+
+  // Select a suggestion
+  const select = (sym: SymbolSuggestion) => {
+    onChange(sym.symbol)
+    onValidChange(true)
+    setSuggestions([])
+    setOpen(false)
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <input
+        type="text"
+        placeholder="Symbol (e.g. NVDA)"
+        value={value}
+        onChange={e => handleInput(e.target.value)}
+        onBlur={handleBlur}
+        onFocus={() => suggestions.length > 0 && setOpen(true)}
+        required
+        disabled={disabled}
+        className={`${INP} font-mono font-bold uppercase`}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+          {suggestions.map((s) => (
+            <button
+              key={s.symbol}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); select(s) }}
+              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-50 transition-colors"
+            >
+              <span className="font-mono font-bold text-[12px] text-slate-800">{s.symbol}</span>
+              <span className="text-[10px] text-slate-400 uppercase tracking-wide ml-2">{s.type}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function TradeEntryForm({
   closeState,
@@ -157,15 +261,19 @@ export default function TradeEntryForm({
   const { selectedPortfolioId, triggerRefresh } = usePortfolio()
   const { t } = useLanguage()
 
-  const [form,      setForm]     = useState<FormState>(() =>
+  const [form,        setForm]       = useState<FormState>(() =>
     closeState ? fromClose(closeState) : INITIAL)
-  const [loading,   setLoading]  = useState(false)
-  const [error,     setError]    = useState<string | null>(null)
-  const [impact,    setImpact]   = useState<string | null>(null)
-  const [clipOpen,  setClipOpen] = useState(false)
-  const [reasonOpen, setReasonOpen] = useState(!!closeState)
-  const [clipText,  setClipText] = useState('')
-  const [parsed,    setParsed]   = useState<ParsedTrade | null>(null)
+  const [loading,     setLoading]    = useState(false)
+  const [error,       setError]      = useState<string | null>(null)
+  const [impact,      setImpact]     = useState<string | null>(null)
+  const [clipOpen,    setClipOpen]   = useState(false)
+  const [reasonOpen,  setReasonOpen] = useState(!!closeState)
+  const [clipText,    setClipText]   = useState('')
+  const [parsed,      setParsed]     = useState<ParsedTrade | null>(null)
+  // null = unchecked, true = valid, false = invalid
+  const [symbolValid, setSymbolValid] = useState<boolean | null>(
+    closeState ? true : null
+  )
 
   const isOption = form.instrumentType === 'OPTION'
   const isSell   = form.action === 'SELL_OPEN' || form.action === 'SELL_CLOSE'
@@ -192,6 +300,7 @@ export default function TradeEntryForm({
       ...(parsed.quantity       && { quantity:       parsed.quantity }),
       ...(parsed.price          && { price:          parsed.price }),
     }))
+    if (parsed.symbol) setSymbolValid(null)  // re-validate on blur after apply
     setClipText(''); setParsed(null); setClipOpen(false)
   }
 
@@ -296,11 +405,18 @@ export default function TradeEntryForm({
         />
 
         {/* Symbol */}
-        <input
-          type="text" placeholder="Symbol (e.g. NVDA)" value={form.symbol}
-          onChange={e => set('symbol', e.target.value.toUpperCase())} required
-          className={`${INP} font-mono font-bold uppercase`}
-        />
+        <div>
+          <SymbolAutocomplete
+            value={form.symbol}
+            onChange={v => { set('symbol', v); setSymbolValid(null) }}
+            onValidChange={setSymbolValid}
+          />
+          {symbolValid === false && form.symbol.length > 0 && (
+            <p className="mt-1 text-[10px] text-rose-500 font-medium">
+              ⚠ Unknown symbol — check ticker before recording
+            </p>
+          )}
+        </div>
 
         {/* Option-specific fields */}
         {isOption && (
@@ -380,7 +496,7 @@ export default function TradeEntryForm({
 
         {/* Submit */}
         <button
-          type="submit" disabled={loading}
+          type="submit" disabled={loading || symbolValid === false}
           className="w-full py-2 rounded-xl bg-primary text-white text-xs font-bold
                      hover:bg-primary/90 transition-colors shadow-sm
                      disabled:opacity-50 disabled:cursor-not-allowed"

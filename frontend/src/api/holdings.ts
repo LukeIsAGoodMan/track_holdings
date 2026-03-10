@@ -23,6 +23,7 @@ import type {
   PortfolioHistoryResponse,
   MarketQuote,
   Transaction,
+  SymbolSuggestion,
 } from '@/types'
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
@@ -222,3 +223,13 @@ export const fetchAccountHistory = (
       },
     })
     .then((r) => r.data)
+
+// ── Symbol search & validation (Phase 14.5) ───────────────────────────────────
+
+/** GET /api/symbols/search?q=NVD → up to 5 SymbolSuggestion */
+export const searchSymbols = (q: string): Promise<SymbolSuggestion[]> =>
+  api.get<SymbolSuggestion[]>('/symbols/search', { params: { q } }).then((r) => r.data)
+
+/** GET /api/symbols/validate/{symbol} → {valid: bool, symbol: str} */
+export const validateSymbol = (symbol: string): Promise<{ valid: boolean; symbol: string }> =>
+  api.get<{ valid: boolean; symbol: string }>(`/symbols/validate/${encodeURIComponent(symbol)}`).then((r) => r.data)
