@@ -1,12 +1,16 @@
 /**
  * TopNav — horizontal top navigation bar (light chrome shell)
  *
- * ┌─────────────────────────────────────────────────────────────────┐
- * │ [▣] Track Holdings │ Holdings  Trade Entry  Risk  Opportunities │ ● Live │ EN·中 │ user  Logout │
- * └─────────────────────────────────────────────────────────────────┘
+ * ┌───────────────────────────────────────────────────────────────────────┐
+ * │ [▣] Track Holdings │ Holdings ▼  Risk  Opportunities │ ● Live │ EN·中 │
+ * └───────────────────────────────────────────────────────────────────────┘
+ *
+ * Holdings nav item is a dropdown showing three sub-routes:
+ *   Overview · Details · Records
  */
-import { NavLink } from 'react-router-dom'
-import { useAuth } from '@/context/AuthContext'
+import { useState, useRef, useEffect } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
+import { useAuth }     from '@/context/AuthContext'
 import { useLanguage } from '@/context/LanguageContext'
 import { useWebSocket } from '@/context/WebSocketContext'
 
@@ -20,18 +24,54 @@ const BrandIcon = () => (
   </svg>
 )
 
-// ── Navigation items ──────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { to: '/',              end: true,  en: 'Holdings',      zh: '持仓' },
-  { to: '/risk',          end: false, en: 'Risk',          zh: '风险看板' },
-  { to: '/opportunities', end: false, en: 'Opportunities', zh: '机会扫描' },
+// ── Chevron icon ───────────────────────────────────────────────────────────────
+const ChevronDown = ({ open }: { open: boolean }) => (
+  <svg
+    className={`w-3 h-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+    viewBox="0 0 12 12" fill="none" aria-hidden="true"
+  >
+    <path d="M2 4.5L6 8l4-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+// ── Holdings sub-routes ────────────────────────────────────────────────────────
+const HOLDINGS_SUBITEMS = [
+  { to: '/holdings/overview', en: 'Overview', zh: '总览' },
+  { to: '/holdings/details',  en: 'Details',  zh: '持仓明细' },
+  { to: '/holdings/records',  en: 'Records',  zh: '交易记录' },
+]
+
+// ── Other top-level nav items ──────────────────────────────────────────────────
+const OTHER_NAV = [
+  { to: '/risk',          en: 'Risk',          zh: '风险看板' },
+  { to: '/opportunities', en: 'Opportunities', zh: '机会扫描' },
 ]
 
 // ── TopNav ────────────────────────────────────────────────────────────────────
 export default function TopNav() {
   const { lang, toggle } = useLanguage()
   const { user, logout } = useAuth()
-  const { connected } = useWebSocket()
+  const { connected }    = useWebSocket()
+  const location         = useLocation()
+
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const isHoldingsActive = location.pathname.startsWith('/holdings')
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function onOutsideClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onOutsideClick)
+    return () => document.removeEventListener('mousedown', onOutsideClick)
+  }, [])
+
+  // Close dropdown on route change
+  useEffect(() => { setDropdownOpen(false) }, [location.pathname])
 
   return (
     <header
@@ -57,13 +97,64 @@ export default function TopNav() {
       {/* ── Divider ──────────────────────────────────────────────────────── */}
       <div className="w-px h-7 bg-chrome-border mx-1 shrink-0" />
 
-      {/* ── Nav tabs ─────────────────────────────────────────────────────── */}
+      {/* ── Nav ──────────────────────────────────────────────────────────── */}
       <nav className="flex items-center gap-0.5 flex-1" aria-label="Main navigation">
-        {NAV_ITEMS.map(({ to, end, en, zh }) => (
+
+        {/* Holdings dropdown */}
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setDropdownOpen(o => !o)}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-[13.5px] font-medium
+                        transition-all duration-150 ${
+              isHoldingsActive
+                ? 'bg-primary/10 text-primary'
+                : 'text-chrome-muted hover:text-chrome-text hover:bg-chrome-subtle'
+            }`}
+            aria-haspopup="true"
+            aria-expanded={dropdownOpen}
+          >
+            {lang === 'zh' ? '持仓' : 'Holdings'}
+            <ChevronDown open={dropdownOpen} />
+          </button>
+
+          {/* Dropdown panel */}
+          {dropdownOpen && (
+            <div
+              className="absolute top-full left-0 mt-1.5 w-44 bg-white border border-slate-200
+                         rounded-xl shadow-lg py-1 z-50"
+              role="menu"
+            >
+              {HOLDINGS_SUBITEMS.map(({ to, en, zh }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  role="menuitem"
+                  className={({ isActive }) =>
+                    `flex items-center gap-2 px-3.5 py-2 text-[13px] font-medium transition-colors ${
+                      isActive
+                        ? 'bg-primary/10 text-primary'
+                        : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    }`
+                  }
+                >
+                  {/* Active dot */}
+                  {({ isActive }: { isActive: boolean }) => (
+                    <>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isActive ? 'bg-primary' : 'bg-transparent'}`} />
+                      {lang === 'zh' ? zh : en}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Other nav items */}
+        {OTHER_NAV.map(({ to, en, zh }) => (
           <NavLink
             key={to}
             to={to}
-            end={end}
             className={({ isActive }) =>
               `px-3.5 py-1.5 rounded-lg text-[13.5px] font-medium transition-all duration-150 ${
                 isActive

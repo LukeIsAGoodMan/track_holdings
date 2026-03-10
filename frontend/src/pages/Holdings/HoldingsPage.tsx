@@ -13,6 +13,7 @@
 let _lifecycleCalledThisSession = false
 
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { useLocation } from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -1412,7 +1413,11 @@ export default function HoldingsPage() {
   const { lang, t } = useLanguage()
   const { lastHoldingsUpdate, lastSpotChangePct } = useWebSocket()
 
-  const [activeTab,       setActiveTab]       = useState<Tab>('overview')
+  // Derive active tab from URL path — component stays mounted across tab changes
+  const location  = useLocation()
+  const activeTab: Tab = location.pathname.includes('/details') ? 'details'
+    : location.pathname.includes('/records') ? 'records'
+    : 'overview'
   const [holdings,        setHoldings]        = useState<HoldingGroup[]>([])
   const [cash,            setCash]            = useState<CashSummary | null>(null)
   const [riskDash,        setRiskDash]        = useState<RiskDashboard | null>(null)
@@ -1591,13 +1596,6 @@ export default function HoldingsPage() {
   const isEn = lang !== 'zh'
   const hadSettlement = lifecycleResult && lifecycleResult.expired + lifecycleResult.assigned > 0
 
-  // ── Tabs ──────────────────────────────────────────────────────────────────
-  const TABS: { key: Tab; en: string; zh: string }[] = [
-    { key: 'overview', en: 'Overview', zh: '总览' },
-    { key: 'details',  en: 'Details',  zh: '持仓明细' },
-    { key: 'records',  en: 'Records',  zh: '交易记录' },
-  ]
-
   return (
     <div className="max-w-7xl mx-auto font-sans space-y-4">
 
@@ -1611,23 +1609,6 @@ export default function HoldingsPage() {
           </span>
         </div>
       )}
-
-      {/* ── Tab header ────────────────────────────────────────────────────── */}
-      <div className="flex items-center border-b border-slate-200">
-        {TABS.map(({ key, en, zh }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-5 py-2.5 text-sm font-semibold transition-all duration-150 border-b-2 -mb-px ${
-              activeTab === key
-                ? 'border-primary text-primary'
-                : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-            }`}
-          >
-            {isEn ? en : zh}
-          </button>
-        ))}
-      </div>
 
       {/* ────────────────────────────────────────────────────────────────── */}
       {/* OVERVIEW TAB                                                      */}

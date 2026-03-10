@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { AuthProvider }      from '@/context/AuthContext'
 import { PortfolioProvider } from '@/context/PortfolioContext'
@@ -41,7 +41,17 @@ export default function App() {
                   </WebSocketProvider>
                 </PortfolioProvider>
               }>
-                <Route index                element={<HoldingsPage />} />
+                {/* / → /holdings/overview */}
+                <Route index element={<Navigate to="/holdings/overview" replace />} />
+
+                {/* Holdings — parent route keeps HoldingsPage mounted across tab switches */}
+                <Route path="holdings" element={<HoldingsPage />}>
+                  <Route index                element={<Navigate to="overview" replace />} />
+                  <Route path="overview" />
+                  <Route path="details" />
+                  <Route path="records" />
+                </Route>
+
                 <Route path="risk"          element={<RiskPage />}     />
                 <Route path="opportunities" element={<ScannerPage />}  />
               </Route>
