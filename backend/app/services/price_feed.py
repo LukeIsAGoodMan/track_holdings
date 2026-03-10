@@ -250,7 +250,14 @@ class PriceFeedService:
         port_spot = {s: spot_map.get(s) for s in symbols}
         port_vol = {s: _vol_cache.get(s, Decimal("0.30")) for s in symbols}
 
-        groups = compute_holding_groups(positions, port_spot, port_vol)
+        # Build perf_map — 1d from live FMP changepct cache (zero I/O, sync)
+        port_perf: dict[str, dict[str, float]] = {}
+        for s in symbols:
+            cp = yfinance_client.get_changepct_cached(s)
+            if cp is not None:
+                port_perf[s] = {"1d": float(cp), "5d": 0.0, "1m": 0.0, "3m": 0.0}
+
+        groups = compute_holding_groups(positions, port_spot, port_vol, perf_map=port_perf or None)
 
         # Serialize via Pydantic
         holdings_msg = {

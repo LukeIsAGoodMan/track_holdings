@@ -203,21 +203,24 @@ async def _send_initial_holdings(
 
         symbols = list({pos.instrument.symbol for pos in positions})
 
-        # Use cache for spots; fetch vols
-        spot_map = {}
-        for s in symbols:
-            cached_price = _cache.get(s)
-            if cached_price is not None:
-                spot_map[s] = cached_price
-            else:
-                spot_map[s] = await yfinance_client.get_spot_price(s)
+        # Force get_spot_price for all symbols — ensures FMP /quote is called,
+        # which populates changepct cache required for live perf_1d
+        spot_results = await asyncio.gather(
+            *[yfinance_client.get_spot_price(s) for s in symbols]
+        )
+        spot_map = {s: p for s, p in zip(symbols, spot_results) if p is not None}
 
         vol_results = await asyncio.gather(
             *[yfinance_client.get_hist_vol(s) for s in symbols]
         )
         vol_map = dict(zip(symbols, vol_results))
 
-        groups = compute_holding_groups(positions, spot_map, vol_map)
+        perf_results = await asyncio.gather(
+            *[yfinance_client.get_perf_cached(s) for s in symbols]
+        )
+        perf_map = dict(zip(symbols, perf_results))
+
+        groups = compute_holding_groups(positions, spot_map, vol_map, perf_map=perf_map)
         holdings_msg = {
             "type": "holdings_update",
             "portfolio_id": portfolio_id,

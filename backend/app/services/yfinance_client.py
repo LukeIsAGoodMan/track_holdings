@@ -298,7 +298,12 @@ async def get_perf_cached(ticker: str) -> dict[str, float]:
             return 0.0
         return round((closes[-1] / base - 1) * 100, 2)
 
-    return {"1d": _pct(1), "5d": _pct(5), "1m": _pct(22), "3m": _pct(66)}
+    result = {"1d": _pct(1), "5d": _pct(5), "1m": _pct(22), "3m": _pct(66)}
+    # Override 1d with live FMP changesPercentage (authoritative intraday figure)
+    live_1d = get_changepct_cached(ticker.upper())
+    if live_1d is not None:
+        result["1d"] = float(live_1d)
+    return result
 
 
 async def get_hist_vol(ticker: str) -> Decimal:
