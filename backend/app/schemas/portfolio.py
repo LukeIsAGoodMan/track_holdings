@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,6 +29,7 @@ class PortfolioNode(BaseModel):
     total_cash:           DecStr
     total_delta_exposure: DecStr
     total_margin:         DecStr
+    aggregated_cash:      DecStr = Field(default=Decimal("0"))
     children:             list[PortfolioNode] = []
 
 

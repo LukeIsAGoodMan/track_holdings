@@ -37,6 +37,7 @@ export const createPortfolio = (body: {
   name: string
   description?: string
   parent_id?: number | null
+  is_folder?: boolean
 }): Promise<Portfolio> =>
   api.post<Portfolio>('/portfolios', body).then((r) => r.data)
 

@@ -134,6 +134,17 @@ async def list_portfolios(
             if parent:
                 parent.children.append(node)
 
+    # Post-order rollup: aggregated_cash = own cash + sum of all descendants
+    def _aggregate_cash(node: PortfolioNode) -> Decimal:
+        total = Decimal(str(node.total_cash))
+        for child in node.children:
+            total += _aggregate_cash(child)
+        node.aggregated_cash = total
+        return total
+
+    for root in roots:
+        _aggregate_cash(root)
+
     return roots
 
 

@@ -15,6 +15,7 @@ import { useLanguage }           from '@/context/LanguageContext'
 import { useSidebar }            from '@/context/SidebarContext'
 import TradeEntryForm            from '@/components/TradeEntryForm'
 import PriceAlertsSidebar        from '@/components/PriceAlertsSidebar'
+import CreatePortfolioModal      from '@/components/CreatePortfolioModal'
 import { fmtCompact }            from '@/utils/format'
 import type { Portfolio }        from '@/types'
 
@@ -120,7 +121,7 @@ function PortfolioNode({ node, depth = 0 }: { node: Portfolio; depth?: number })
           }
           <span className="flex-1 truncate leading-none">{node.name}</span>
           <span className={`text-[10.5px] tabular-nums shrink-0 ${isActive ? 'text-sky-500/70' : 'text-slate-400'}`}>
-            {fmtCompact(node.total_cash)}
+            {fmtCompact(node.aggregated_cash)}
           </span>
         </button>
       </div>
@@ -202,8 +203,8 @@ function PanelHeader({
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 export default function Sidebar() {
-  const { portfolios, loading } = usePortfolio()
-  const { lang }                = useLanguage()
+  const { portfolios, loading, triggerRefresh } = usePortfolio()
+  const { lang }                               = useLanguage()
   const {
     mode, isExpanded,
     pendingClose, alertPrefill,
@@ -211,6 +212,14 @@ export default function Sidebar() {
     openPriceAlerts, exitPriceAlerts,
     toggleExpand,
   } = useSidebar()
+
+  const [showCreateModal, setShowCreateModal] = useState(false)
+
+  // After a trade is recorded: close form + refresh portfolio cash values
+  const handleTradeSuccess = () => {
+    exitTradeEntry()
+    triggerRefresh()
+  }
 
   const isTradeMode  = mode === 'trade_entry'
   const isAlertsMode = mode === 'price_alerts'
@@ -253,7 +262,7 @@ export default function Sidebar() {
             backTitle={L.back}
           />
           <div className="overflow-visible">
-            <TradeEntryForm closeState={pendingClose} onSuccess={exitTradeEntry} />
+            <TradeEntryForm closeState={pendingClose} onSuccess={handleTradeSuccess} />
           </div>
         </div>
 
@@ -284,7 +293,7 @@ export default function Sidebar() {
             </span>
             <button
               title={lang === 'zh' ? '新建组合' : 'New Portfolio'}
-              onClick={() => {/* placeholder — Phase 16B */}}
+              onClick={() => setShowCreateModal(true)}
               className="flex items-center justify-center w-6 h-6 rounded-md
                          text-slate-400 hover:text-slate-700 hover:bg-slate-100
                          transition-colors"
@@ -409,6 +418,10 @@ export default function Sidebar() {
           {/* Portfolio badge */}
           <PortfolioBadge />
         </div>
+      )}
+
+      {showCreateModal && (
+        <CreatePortfolioModal onClose={() => setShowCreateModal(false)} />
       )}
     </aside>
   )

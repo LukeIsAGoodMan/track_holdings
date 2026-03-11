@@ -15,6 +15,7 @@ export interface Portfolio {
   total_cash:           string   // DecStr
   total_delta_exposure: string   // DecStr
   total_margin:         string   // DecStr
+  aggregated_cash:      string   // DecStr — own cash + all descendants
   children:             Portfolio[]
 }
 
