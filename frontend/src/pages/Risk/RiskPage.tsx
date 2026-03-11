@@ -23,7 +23,7 @@ import { usePortfolio } from '@/context/PortfolioContext'
 import { useLanguage }  from '@/context/LanguageContext'
 import { useWebSocket } from '@/context/WebSocketContext'
 import { fetchRiskDashboard, fetchHoldings, fetchAccountHistory, fetchAttribution, fetchInsights } from '@/api/holdings'
-import type { RiskDashboard, HoldingGroup, AccountHistoryResponse, AttributionResponse, PortfolioInsight } from '@/types'
+import type { RiskDashboard, HoldingGroup, AccountHistoryResponse, AttributionResponse, PortfolioInsight, Portfolio } from '@/types'
 import { fmtNum, fmtUSD, fmtGreek, signClass } from '@/utils/format'
 import CoachPanel from './CoachPanel'
 
@@ -914,8 +914,8 @@ function StressTestPanel({
 
 // ── Page ───────────────────────────────────────────────────────────────────────
 export default function RiskPage() {
-  const { selectedPortfolioId, refreshKey } = usePortfolio()
-  const { t } = useLanguage()
+  const { selectedPortfolioId, refreshKey, portfolios } = usePortfolio()
+  const { t, lang } = useLanguage()
   const { lastRiskUpdate, lastHoldingsUpdate } = useWebSocket()
   const [dashboard, setDashboard] = useState<RiskDashboard | null>(null)
   const [holdings,  setHoldings]  = useState<HoldingGroup[]>([])
@@ -949,11 +949,47 @@ export default function RiskPage() {
   const hasSector    = dashboard && Object.keys(dashboard.sector_exposure ?? {}).length > 0
   const hasBenchmark = dashboard && (dashboard.benchmark_ytd ?? []).length > 0
 
+  // Find selected portfolio node for breadcrumb
+  const selectedPortfolio: Portfolio | null = (() => {
+    const walk = (nodes: Portfolio[]): Portfolio | null => {
+      for (const p of nodes) {
+        if (p.id === selectedPortfolioId) return p
+        const found = walk(p.children)
+        if (found) return found
+      }
+      return null
+    }
+    return walk(portfolios)
+  })()
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 font-sans">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">{t('risk_title')}</h1>
-        <p className="text-sm text-slate-500 mt-0.5">{t('risk_sub')}</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">{t('risk_title')}</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{t('risk_sub')}</p>
+        </div>
+        {selectedPortfolio && (
+          <div className="flex items-center gap-2 pt-0.5 shrink-0">
+            {selectedPortfolio.is_folder ? (
+              <svg className="w-3.5 h-3.5 shrink-0 text-sky-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" />
+              </svg>
+            ) : (
+              <svg className="w-3.5 h-3.5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="2" y="7" width="20" height="14" rx="2" />
+                <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+              </svg>
+            )}
+            <span className="text-[13px] font-semibold text-slate-700">{selectedPortfolio.name}</span>
+            {selectedPortfolio.is_folder && (
+              <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md
+                               bg-sky-50 text-sky-600 border border-sky-200">
+                {lang !== 'zh' ? 'Folder' : '文件夹'}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {error && (

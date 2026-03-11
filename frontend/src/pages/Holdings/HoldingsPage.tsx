@@ -29,7 +29,7 @@ import {
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
   TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
-  RiskDashboard, Transaction,
+  RiskDashboard, Transaction, Portfolio,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
@@ -1562,7 +1562,7 @@ function TransactionHistorySection({ portfolioId }: { portfolioId: number | null
 type Tab = 'overview' | 'details' | 'records'
 
 export default function HoldingsPage() {
-  const { selectedPortfolioId, refreshKey, triggerRefresh } = usePortfolio()
+  const { selectedPortfolioId, refreshKey, triggerRefresh, portfolios } = usePortfolio()
   const { lang, t } = useLanguage()
   const { lastHoldingsUpdate, lastSpotChangePct } = useWebSocket()
 
@@ -1749,8 +1749,44 @@ export default function HoldingsPage() {
   const isEn = lang !== 'zh'
   const hadSettlement = lifecycleResult && lifecycleResult.expired + lifecycleResult.assigned > 0
 
+  // Find the currently selected portfolio node in the tree (for breadcrumb)
+  const selectedPortfolio: Portfolio | null = (() => {
+    const walk = (nodes: Portfolio[]): Portfolio | null => {
+      for (const p of nodes) {
+        if (p.id === selectedPortfolioId) return p
+        const found = walk(p.children)
+        if (found) return found
+      }
+      return null
+    }
+    return walk(portfolios)
+  })()
+
   return (
     <div className="max-w-7xl mx-auto font-sans space-y-4">
+
+      {/* ── Portfolio context indicator ───────────────────────────────────── */}
+      {selectedPortfolio && (
+        <div className="flex items-center gap-2">
+          {selectedPortfolio.is_folder ? (
+            <svg className="w-3.5 h-3.5 shrink-0 text-sky-500" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="2" y="7" width="20" height="14" rx="2" />
+              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+            </svg>
+          )}
+          <span className="text-[13px] font-semibold text-slate-700">{selectedPortfolio.name}</span>
+          {selectedPortfolio.is_folder && (
+            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md
+                             bg-sky-50 text-sky-600 border border-sky-200">
+              {isEn ? 'Folder' : '文件夹'}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* ── Lifecycle banner ──────────────────────────────────────────────── */}
       {hadSettlement && (

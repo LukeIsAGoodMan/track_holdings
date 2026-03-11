@@ -3,6 +3,9 @@ GET /api/cash[?portfolio_id=N]
 
 Returns the current cash balance (sum of all CashLedger.amount rows)
 and the 50 most-recent ledger entries.
+
+Uses recursive roll-up: querying a folder portfolio automatically includes
+all child sub-portfolios (same pattern as /holdings and /risk/dashboard).
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ from app.dependencies import get_current_user
 from app.models import CashLedger, TradeEvent, TradeStatus
 from app.models.user import User
 from app.schemas.base import DecStr
+from app.services.portfolio_resolver import resolve_portfolio_ids
 
 router = APIRouter(tags=["cash"])
 
@@ -40,15 +44,23 @@ class CashSummary(BaseModel):
 
 @router.get("/cash", response_model=CashSummary)
 async def get_cash(
-    portfolio_id: int | None = Query(None, description="Filter by portfolio ID"),
+    portfolio_id: int | None = Query(None, description="Filter by portfolio ID (recursive rollup for folders)"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return current cash balance and recent ledger (last 50 entries)."""
-    # Balance — always scoped to user
-    stmt_sum = select(func.sum(CashLedger.amount)).where(CashLedger.user_id == user.id)
-    if portfolio_id is not None:
-        stmt_sum = stmt_sum.where(CashLedger.portfolio_id == portfolio_id)
+    """Return current cash balance and recent ledger (last 50 entries).
+
+    Uses recursive roll-up: querying a folder portfolio automatically includes
+    all child sub-portfolios, matching the behaviour of /holdings and /risk/dashboard.
+    """
+    pids = await resolve_portfolio_ids(db, user.id, portfolio_id)
+    if not pids:
+        return CashSummary(balance=Decimal("0"), realized_pnl=Decimal("0"), entries=[])
+
+    # Balance — sum across all resolved portfolio IDs
+    stmt_sum = select(func.sum(CashLedger.amount)).where(
+        CashLedger.portfolio_id.in_(pids)
+    )
     raw = await db.execute(stmt_sum)
     balance = Decimal(str(raw.scalar() or 0))
 
@@ -59,7 +71,7 @@ async def get_cash(
         select(func.sum(CashLedger.amount))
         .join(TradeEvent, CashLedger.trade_event_id == TradeEvent.id)
         .where(
-            CashLedger.user_id == user.id,
+            CashLedger.portfolio_id.in_(pids),
             TradeEvent.status.in_([
                 TradeStatus.CLOSED,
                 TradeStatus.EXPIRED,
@@ -67,20 +79,16 @@ async def get_cash(
             ]),
         )
     )
-    if portfolio_id is not None:
-        stmt_rpnl = stmt_rpnl.where(CashLedger.portfolio_id == portfolio_id)
     raw_rpnl = await db.execute(stmt_rpnl)
     realized_pnl = Decimal(str(raw_rpnl.scalar() or 0))
 
-    # Ledger — always scoped to user
+    # Ledger — entries from all resolved portfolios
     stmt_entries = (
         select(CashLedger)
-        .where(CashLedger.user_id == user.id)
+        .where(CashLedger.portfolio_id.in_(pids))
         .order_by(CashLedger.created_at.desc())
         .limit(50)
     )
-    if portfolio_id is not None:
-        stmt_entries = stmt_entries.where(CashLedger.portfolio_id == portfolio_id)
 
     result  = await db.execute(stmt_entries)
     entries = result.scalars().all()
