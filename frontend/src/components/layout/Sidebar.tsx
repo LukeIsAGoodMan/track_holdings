@@ -110,9 +110,10 @@ function PortfolioNode({ node, depth = 0 }: { node: Portfolio; depth?: number })
           className={[
             'flex-1 min-w-0 text-left flex items-center gap-2 rounded-lg px-2 py-1.5',
             'text-[12.5px] font-sans transition-all duration-150',
+            'border-l-[3px]',
             isActive
-              ? 'bg-sky-50 text-sky-700 font-semibold'
-              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+              ? 'border-l-sky-400 bg-sky-50 text-sky-700 font-semibold'
+              : 'border-l-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900',
           ].join(' ')}
         >
           {isExpandable

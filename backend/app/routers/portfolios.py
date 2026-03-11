@@ -82,6 +82,8 @@ async def _portfolio_stats(portfolio_id: int, db: AsyncSession) -> dict:
     for pos in positions:
         inst = pos.instrument
         if not (inst.option_type and inst.expiry):
+            # Stock / ETF: delta = net shares (1 share = 1Δ), no margin
+            total_delta += Decimal(str(pos.net_contracts))
             continue
         dte  = (inst.expiry - today).days
         T    = Decimal(str(max(dte, 0) / 365.0))
@@ -134,16 +136,23 @@ async def list_portfolios(
             if parent:
                 parent.children.append(node)
 
-    # Post-order rollup: aggregated_cash = own cash + sum of all descendants
-    def _aggregate_cash(node: PortfolioNode) -> Decimal:
-        total = Decimal(str(node.total_cash))
+    # Post-order rollup: aggregate cash, delta, and margin across all descendants
+    def _rollup_stats(node: PortfolioNode) -> tuple[Decimal, Decimal, Decimal]:
+        cash   = Decimal(str(node.total_cash))
+        delta  = Decimal(str(node.total_delta_exposure))
+        margin = Decimal(str(node.total_margin))
         for child in node.children:
-            total += _aggregate_cash(child)
-        node.aggregated_cash = total
-        return total
+            c, d, m = _rollup_stats(child)
+            cash   += c
+            delta  += d
+            margin += m
+        node.aggregated_cash   = cash
+        node.aggregated_delta  = delta
+        node.aggregated_margin = margin
+        return cash, delta, margin
 
     for root in roots:
-        _aggregate_cash(root)
+        _rollup_stats(root)
 
     return roots
 

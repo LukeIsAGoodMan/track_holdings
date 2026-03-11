@@ -57,7 +57,7 @@ export default function CreatePortfolioModal({ onClose }: Props) {
     try {
       await createPortfolio({
         name:      trimmed,
-        parent_id: parentId,
+        parent_id: parentId ?? null,
         is_folder: isFolder,
       })
       triggerRefresh()

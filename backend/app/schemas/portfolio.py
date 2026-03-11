@@ -30,6 +30,8 @@ class PortfolioNode(BaseModel):
     total_delta_exposure: DecStr
     total_margin:         DecStr
     aggregated_cash:      DecStr = Field(default=Decimal("0"))
+    aggregated_delta:     DecStr = Field(default=Decimal("0"))
+    aggregated_margin:    DecStr = Field(default=Decimal("0"))
     children:             list[PortfolioNode] = []
 
 

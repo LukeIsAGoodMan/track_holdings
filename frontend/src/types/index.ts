@@ -16,6 +16,8 @@ export interface Portfolio {
   total_delta_exposure: string   // DecStr
   total_margin:         string   // DecStr
   aggregated_cash:      string   // DecStr — own cash + all descendants
+  aggregated_delta:     string   // DecStr — net delta Δ across subtree
+  aggregated_margin:    string   // DecStr — maintenance margin across subtree
   children:             Portfolio[]
 }
 
