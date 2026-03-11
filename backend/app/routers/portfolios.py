@@ -50,54 +50,6 @@ class TransactionResponse(BaseModel):
 router = APIRouter(tags=["portfolios"])
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
-
-async def _portfolio_stats(portfolio_id: int, db: AsyncSession) -> dict:
-    """
-    Compute aggregated stats for one portfolio (direct trades only, not sub-portfolios).
-    Returns: {cash, delta, margin}
-    """
-    # Cash balance
-    raw = await db.execute(
-        select(func.sum(CashLedger.amount))
-        .where(CashLedger.portfolio_id == portfolio_id)
-    )
-    cash = Decimal(str(raw.scalar() or 0))
-
-    # Positions
-    positions = await position_engine.calculate_positions(db, portfolio_id=portfolio_id)
-    if not positions:
-        return {"cash": cash, "delta": Decimal("0"), "margin": Decimal("0")}
-
-    symbols    = list({pos.instrument.symbol for pos in positions})
-    spot_tasks = [yfinance_client.get_spot_price(s) for s in symbols]
-    spots      = await asyncio.gather(*spot_tasks)
-    spot_map   = dict(zip(symbols, spots))
-
-    today = date.today()
-    r_f   = Decimal(str(settings.risk_free_rate))
-    total_delta  = Decimal("0")
-    total_margin = Decimal("0")
-
-    for pos in positions:
-        inst = pos.instrument
-        if not (inst.option_type and inst.expiry):
-            # Stock / ETF: delta = net shares (1 share = 1Δ), no margin
-            total_delta += Decimal(str(pos.net_contracts))
-            continue
-        dte  = (inst.expiry - today).days
-        T    = Decimal(str(max(dte, 0) / 365.0))
-        spot = spot_map.get(inst.symbol)
-        marg = maintenance_margin(pos.net_contracts, inst.strike)
-        total_margin += marg
-        if spot and T > 0:
-            g = calculate_greeks(spot, inst.strike, T, inst.option_type.value,
-                                 DEFAULT_SIGMA, r_f)
-            total_delta += net_delta_exposure(pos.net_contracts, g)
-
-    return {"cash": cash, "delta": total_delta, "margin": total_margin}
-
-
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
 @router.get("/portfolios", response_model=list[PortfolioNode])
@@ -105,28 +57,91 @@ async def list_portfolios(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the full portfolio hierarchy as a nested tree."""
-    result = await db.execute(
+    """
+    Return the full portfolio hierarchy as a nested tree.
+
+    Query plan (avoids N+1):
+      1. One SELECT portfolios WHERE user_id = ?
+      2. One SELECT cash_ledger GROUP BY portfolio_id  (cash for all portfolios)
+      3. N sequential calculate_positions calls         (session is not concurrent-safe)
+      4. One asyncio.gather for all unique spot prices  (HTTP, safe to parallelise)
+      5. Pure-Python stat computation — no further DB calls
+      6. Tree assembly + post-order rollup (cash / delta / margin)
+    """
+    port_result = await db.execute(
         select(Portfolio).where(Portfolio.user_id == user.id).order_by(Portfolio.id)
     )
-    all_portfolios = result.scalars().all()
+    all_portfolios = port_result.scalars().all()
+    if not all_portfolios:
+        return []
 
-    # Build flat node map
+    pid_list = [p.id for p in all_portfolios]
+
+    # ── 1. Batch cash: one GROUP BY query for all portfolios ──────────────────
+    cash_result = await db.execute(
+        select(CashLedger.portfolio_id, func.sum(CashLedger.amount))
+        .where(CashLedger.portfolio_id.in_(pid_list))
+        .group_by(CashLedger.portfolio_id)
+    )
+    cash_by_pid: dict[int, Decimal] = {
+        row[0]: Decimal(str(row[1] or 0))
+        for row in cash_result.fetchall()
+    }
+
+    # ── 2. Positions per portfolio (sequential — same async session) ──────────
+    pos_by_pid: dict[int, list] = {}
+    all_symbols: set[str] = set()
+    for pid in pid_list:
+        positions = await position_engine.calculate_positions(db, portfolio_id=pid)
+        pos_by_pid[pid] = positions
+        for pos in positions:
+            all_symbols.add(pos.instrument.symbol)
+
+    # ── 3. Batch spot prices: one gather for all unique symbols ───────────────
+    symbols_list = list(all_symbols)
+    spot_values  = await asyncio.gather(
+        *[yfinance_client.get_spot_price(s) for s in symbols_list]
+    )
+    spot_map = dict(zip(symbols_list, spot_values))
+
+    # ── 4. Per-portfolio stat computation (pure Python, no I/O) ──────────────
+    today = date.today()
+    r_f   = Decimal(str(settings.risk_free_rate))
     nodes: dict[int, PortfolioNode] = {}
+
     for p in all_portfolios:
-        stats = await _portfolio_stats(p.id, db)
+        cash         = cash_by_pid.get(p.id, Decimal("0"))
+        total_delta  = Decimal("0")
+        total_margin = Decimal("0")
+
+        for pos in pos_by_pid[p.id]:
+            inst = pos.instrument
+            if not (inst.option_type and inst.expiry):
+                # Stock / ETF: delta = net shares (1 share = 1Δ), no margin
+                total_delta += Decimal(str(pos.net_contracts))
+                continue
+            dte  = (inst.expiry - today).days
+            T    = Decimal(str(max(dte, 0) / 365.0))
+            spot = spot_map.get(inst.symbol)
+            marg = maintenance_margin(pos.net_contracts, inst.strike)
+            total_margin += marg
+            if spot and T > 0:
+                g = calculate_greeks(spot, inst.strike, T, inst.option_type.value,
+                                     DEFAULT_SIGMA, r_f)
+                total_delta += net_delta_exposure(pos.net_contracts, g)
+
         nodes[p.id] = PortfolioNode(
             id=p.id,
             name=p.name,
             description=p.description,
             parent_id=p.parent_id,
             is_folder=p.is_folder,
-            total_cash=stats["cash"],
-            total_delta_exposure=stats["delta"],
-            total_margin=stats["margin"],
+            total_cash=cash,
+            total_delta_exposure=total_delta,
+            total_margin=total_margin,
         )
 
-    # Assemble tree
+    # ── 5. Assemble tree ──────────────────────────────────────────────────────
     roots: list[PortfolioNode] = []
     for node in nodes.values():
         if node.parent_id is None:
@@ -136,7 +151,7 @@ async def list_portfolios(
             if parent:
                 parent.children.append(node)
 
-    # Post-order rollup: aggregate cash, delta, and margin across all descendants
+    # ── 6. Post-order rollup: aggregate cash, delta, margin across subtree ────
     def _rollup_stats(node: PortfolioNode) -> tuple[Decimal, Decimal, Decimal]:
         cash   = Decimal(str(node.total_cash))
         delta  = Decimal(str(node.total_delta_exposure))

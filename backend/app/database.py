@@ -91,6 +91,10 @@ async def _migrate_db():
             await conn.execute(
                 text("ALTER TABLE portfolios ADD COLUMN user_id INTEGER REFERENCES users(id)")
             )
+        # Data recovery: portfolios created before user isolation → assign to user 1
+        await conn.execute(
+            text("UPDATE portfolios SET user_id = 1 WHERE user_id IS NULL")
+        )
         if "is_folder" not in port_cols:
             await conn.execute(
                 text("ALTER TABLE portfolios ADD COLUMN is_folder INTEGER NOT NULL DEFAULT 0")
