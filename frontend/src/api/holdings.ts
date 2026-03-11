@@ -41,6 +41,16 @@ export const createPortfolio = (body: {
 }): Promise<Portfolio> =>
   api.post<Portfolio>('/portfolios', body).then((r) => r.data)
 
+/** PATCH /api/portfolios/{id}/move — parent reassignment + sibling sort */
+export const movePortfolio = (
+  id:         number,
+  parentId:   number | null,
+  sortOrder:  number = 0,
+): Promise<Portfolio> =>
+  api
+    .patch<Portfolio>(`/portfolios/${id}/move`, { parent_id: parentId, sort_order: sortOrder })
+    .then((r) => r.data)
+
 // ── Holdings ──────────────────────────────────────────────────────────────────
 
 /** GET /api/holdings[?portfolio_id=N] */

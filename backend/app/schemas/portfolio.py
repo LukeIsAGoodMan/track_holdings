@@ -14,6 +14,11 @@ class PortfolioCreate(BaseModel):
     is_folder:   bool = False
 
 
+class PortfolioMoveBody(BaseModel):
+    parent_id:  int | None  # None = move to root level
+    sort_order: int = 0
+
+
 class PortfolioNode(BaseModel):
     """
     One node in the portfolio tree.
@@ -26,6 +31,7 @@ class PortfolioNode(BaseModel):
     description:          str | None
     parent_id:            int | None
     is_folder:            bool
+    sort_order:           int = 0
     total_cash:           DecStr
     total_delta_exposure: DecStr
     total_margin:         DecStr

@@ -8,7 +8,7 @@ Example:
 """
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, func
+from sqlalchemy import Boolean, Column, Integer, String, DateTime, ForeignKey, func, SmallInteger
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -21,6 +21,7 @@ class Portfolio(Base):
     name        = Column(String(100), nullable=False, unique=True)
     description = Column(String(500), nullable=True)
     is_folder   = Column(Boolean, nullable=False, default=False, server_default="0")
+    sort_order  = Column(SmallInteger, nullable=False, default=0, server_default="0")
     parent_id   = Column(
         Integer, ForeignKey("portfolios.id"), nullable=True, index=True
     )

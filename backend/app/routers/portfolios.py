@@ -1,7 +1,8 @@
 """
-GET  /api/portfolios              — portfolio tree with aggregated stats
-POST /api/portfolios              — create portfolio or sub-portfolio
-GET  /api/portfolios/{id}/trades  — transaction history for a portfolio
+GET   /api/portfolios              — portfolio tree with aggregated stats
+POST  /api/portfolios              — create portfolio or sub-portfolio
+PATCH /api/portfolios/{id}/move   — move portfolio (parent reassignment + sibling sort)
+GET   /api/portfolios/{id}/trades — transaction history for a portfolio
 """
 from __future__ import annotations
 
@@ -22,8 +23,9 @@ from app.dependencies import get_current_user
 from app.models import Portfolio, CashLedger
 from app.models.trade_event import TradeEvent
 from app.models.user import User
-from app.schemas.portfolio import PortfolioCreate, PortfolioNode
+from app.schemas.portfolio import PortfolioCreate, PortfolioMoveBody, PortfolioNode
 from app.services import position_engine, yfinance_client
+from app.services.position_engine import collect_portfolio_ids
 from app.services.black_scholes import (
     DEFAULT_SIGMA,
     calculate_greeks,
@@ -69,7 +71,8 @@ async def list_portfolios(
       6. Tree assembly + post-order rollup (cash / delta / margin)
     """
     port_result = await db.execute(
-        select(Portfolio).where(Portfolio.user_id == user.id).order_by(Portfolio.id)
+        select(Portfolio).where(Portfolio.user_id == user.id)
+        .order_by(Portfolio.sort_order.asc(), Portfolio.id.asc())
     )
     all_portfolios = port_result.scalars().all()
     if not all_portfolios:
@@ -136,6 +139,7 @@ async def list_portfolios(
             description=p.description,
             parent_id=p.parent_id,
             is_folder=p.is_folder,
+            sort_order=p.sort_order,
             total_cash=cash,
             total_delta_exposure=total_delta,
             total_margin=total_margin,
@@ -203,6 +207,58 @@ async def create_portfolio(
         description=portfolio.description,
         parent_id=portfolio.parent_id,
         is_folder=portfolio.is_folder,
+        sort_order=portfolio.sort_order,
+        total_cash=Decimal("0"),
+        total_delta_exposure=Decimal("0"),
+        total_margin=Decimal("0"),
+    )
+
+
+@router.patch("/portfolios/{portfolio_id}/move", response_model=PortfolioNode)
+async def move_portfolio(
+    portfolio_id: int,
+    body: PortfolioMoveBody,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Move a portfolio to a new parent (or to root if parent_id=None) and/or
+    update its sort_order for sibling reordering.
+
+    Cycle guard: raises 400 if the destination parent is a descendant of the
+    portfolio being moved (which would create a circular reference).
+    """
+    port = await db.get(Portfolio, portfolio_id)
+    if port is None or port.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    new_parent_id = body.parent_id
+
+    if new_parent_id is not None:
+        parent = await db.get(Portfolio, new_parent_id)
+        if parent is None or parent.user_id != user.id:
+            raise HTTPException(status_code=404, detail="Parent portfolio not found")
+
+        # Cycle check: new parent must NOT be the portfolio itself or any of its descendants
+        subtree = await collect_portfolio_ids(db, portfolio_id)
+        if new_parent_id in subtree:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot move a portfolio into its own subtree (cycle detected)",
+            )
+
+    port.parent_id  = new_parent_id
+    port.sort_order = body.sort_order
+    await db.commit()
+    await db.refresh(port)
+
+    return PortfolioNode(
+        id=port.id,
+        name=port.name,
+        description=port.description,
+        parent_id=port.parent_id,
+        is_folder=port.is_folder,
+        sort_order=port.sort_order,
         total_cash=Decimal("0"),
         total_delta_exposure=Decimal("0"),
         total_margin=Decimal("0"),

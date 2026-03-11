@@ -6,10 +6,31 @@
  * State 3a — Trade       (520px):  TradeEntryForm, locked until Back pressed
  * State 3b — Price Alerts(520px):  PriceAlertsSidebar, locked until Back pressed
  *
+ * Phase 16D: Drag & drop portfolio reorganization (@dnd-kit).
+ *   - Sibling reorder via sort_order
+ *   - Parent reassignment by dropping onto a folder
+ *   - DragOverlay for visual feedback; cycle-safe (backend validates)
+ *
  * Sticky below TopNav (top-14), fills remaining viewport height.
- * Each state's inner content scrolls independently via flex-1 overflow-y-auto.
  */
-import { useMemo, useState }     from 'react'
+import { useMemo, useState } from 'react'
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS }                   from '@dnd-kit/utilities'
 import { usePortfolio }          from '@/context/PortfolioContext'
 import { useLanguage }           from '@/context/LanguageContext'
 import { useSidebar }            from '@/context/SidebarContext'
@@ -17,9 +38,11 @@ import TradeEntryForm            from '@/components/TradeEntryForm'
 import PriceAlertsSidebar        from '@/components/PriceAlertsSidebar'
 import CreatePortfolioModal      from '@/components/CreatePortfolioModal'
 import { fmtCompact }            from '@/utils/format'
+import { movePortfolio }         from '@/api/holdings'
 import type { Portfolio }        from '@/types'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
+
 const IconChevronLeft = () => (
   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M15 18l-6-6 6-6" />
@@ -69,21 +92,82 @@ const IconBriefcase = ({ active }: { active?: boolean }) => (
   </svg>
 )
 
-// ── Portfolio tree node ───────────────────────────────────────────────────────
-function PortfolioNode({ node, depth = 0 }: { node: Portfolio; depth?: number }) {
+const IconGrip = () => (
+  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <circle cx="9" cy="7" r="1.5" />
+    <circle cx="15" cy="7" r="1.5" />
+    <circle cx="9" cy="12" r="1.5" />
+    <circle cx="15" cy="12" r="1.5" />
+    <circle cx="9" cy="17" r="1.5" />
+    <circle cx="15" cy="17" r="1.5" />
+  </svg>
+)
+
+// ── Sortable portfolio tree node ───────────────────────────────────────────────
+
+function SortablePortfolioNode({
+  node,
+  depth = 0,
+  parentId = null,
+  activeId,
+}: {
+  node:      Portfolio
+  depth?:    number
+  parentId?: number | null
+  activeId:  number | null
+}) {
   const { selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
-  const isActive      = selectedPortfolioId === node.id
-  const hasChildren   = node.children.length > 0
-  const isExpandable  = hasChildren || node.is_folder
+  const isActive     = selectedPortfolioId === node.id
+  const hasChildren  = node.children.length > 0
+  const isExpandable = hasChildren || node.is_folder
   const [expanded, setExpanded] = useState(true)
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+    isOver,
+  } = useSortable({
+    id:   node.id,
+    data: { type: 'portfolio', node, parentId },
+  })
+
+  const style: React.CSSProperties = {
+    transform:  CSS.Transform.toString(transform),
+    transition: transition ?? undefined,
+  }
+
+  // Highlight when another item is dragged over this folder
+  const isDropTarget = isOver && node.is_folder && activeId !== null && activeId !== node.id
+
   return (
-    <li>
+    <li ref={setNodeRef} style={style} className="group">
       <div
-        className="flex items-center gap-0.5"
+        className={[
+          'flex items-center gap-0.5 rounded-lg transition-all duration-150',
+          isDragging    ? 'opacity-30'                            : '',
+          isDropTarget  ? 'ring-2 ring-sky-400 ring-offset-1 bg-sky-50/60' : '',
+        ].join(' ')}
         style={{ paddingLeft: depth * 12 }}
       >
-        {/* Chevron — only shown for expandable nodes */}
+        {/* Drag handle — appears on hover */}
+        <button
+          {...attributes}
+          {...listeners}
+          tabIndex={-1}
+          title="Drag to reorder"
+          className="flex items-center justify-center w-4 h-5 rounded shrink-0
+                     text-slate-300 hover:text-slate-500
+                     cursor-grab active:cursor-grabbing
+                     opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+        >
+          <IconGrip />
+        </button>
+
+        {/* Chevron — expandable nodes only */}
         <button
           onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
           tabIndex={isExpandable ? 0 : -1}
@@ -127,18 +211,31 @@ function PortfolioNode({ node, depth = 0 }: { node: Portfolio; depth?: number })
         </button>
       </div>
 
+      {/* Children wrapped in their own SortableContext */}
       {isExpandable && expanded && hasChildren && (
-        <ul className="mt-0.5 space-y-0.5">
-          {node.children.map(child => (
-            <PortfolioNode key={child.id} node={child} depth={depth + 1} />
-          ))}
-        </ul>
+        <SortableContext
+          items={node.children.map(c => c.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          <ul className="mt-0.5 space-y-0.5">
+            {node.children.map(child => (
+              <SortablePortfolioNode
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                parentId={node.id}
+                activeId={activeId}
+              />
+            ))}
+          </ul>
+        </SortableContext>
       )}
     </li>
   )
 }
 
 // ── Collapsed: selected portfolio badge ───────────────────────────────────────
+
 function PortfolioBadge() {
   const { portfolios, selectedPortfolioId } = usePortfolio()
 
@@ -164,14 +261,15 @@ function PortfolioBadge() {
 }
 
 // ── Reusable pinned-panel header ──────────────────────────────────────────────
+
 function PanelHeader({
   label, sublabel, sublabelClass = '', onBack, backTitle,
 }: {
-  label:         string
-  sublabel?:     string
+  label:          string
+  sublabel?:      string
   sublabelClass?: string
-  onBack:        () => void
-  backTitle:     string
+  onBack:         () => void
+  backTitle:      string
 }) {
   return (
     <div className="flex items-center gap-2.5 px-4 py-3 shrink-0
@@ -203,9 +301,10 @@ function PanelHeader({
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
+
 export default function Sidebar() {
   const { portfolios, loading, fetchError, triggerRefresh } = usePortfolio()
-  const { lang }                               = useLanguage()
+  const { lang }    = useLanguage()
   const {
     mode, isExpanded,
     pendingClose, alertPrefill,
@@ -215,6 +314,8 @@ export default function Sidebar() {
   } = useSidebar()
 
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [activeId, setActiveId]               = useState<number | null>(null)
+  const [moving, setMoving]                   = useState(false)
 
   // After a trade is recorded: close form + refresh portfolio cash values
   const handleTradeSuccess = () => {
@@ -240,6 +341,83 @@ export default function Sidebar() {
     collapse:    lang === 'zh' ? '折叠'      : 'Collapse',
     expand:      lang === 'zh' ? '展开'      : 'Expand',
   }
+
+  // ── DnD sensors ─────────────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  )
+
+  // ── id → { node, parentId } flat index ──────────────────────────────────────
+  const flatMap = useMemo(() => {
+    const map = new Map<number, { node: Portfolio; parentId: number | null }>()
+    const walk = (nodes: Portfolio[], pId: number | null) => {
+      nodes.forEach(n => {
+        map.set(n.id, { node: n, parentId: pId })
+        walk(n.children, n.id)
+      })
+    }
+    walk(portfolios, null)
+    return map
+  }, [portfolios])
+
+  // ── parentId → ordered sibling list ─────────────────────────────────────────
+  const siblingGroups = useMemo(() => {
+    const groups = new Map<number | null, Portfolio[]>()
+    const walk = (nodes: Portfolio[], pId: number | null) => {
+      groups.set(pId, [...nodes])
+      nodes.forEach(n => n.children.length > 0 && walk(n.children, n.id))
+    }
+    walk(portfolios, null)
+    return groups
+  }, [portfolios])
+
+  // ── Drag handlers ────────────────────────────────────────────────────────────
+  const handleDragStart = (e: DragStartEvent) => {
+    setActiveId(e.active.id as number)
+  }
+
+  const handleDragEnd = async (e: DragEndEvent) => {
+    setActiveId(null)
+    const { active, over } = e
+    if (!over || active.id === over.id || moving) return
+
+    const activeEntry = flatMap.get(active.id as number)
+    const overEntry   = flatMap.get(over.id as number)
+    if (!activeEntry || !overEntry) return
+
+    const overNode       = overEntry.node
+    const activeParentId = activeEntry.parentId
+    const overParentId   = overEntry.parentId
+
+    setMoving(true)
+    try {
+      // Drop onto a folder that is not the active item's current parent → reassign parent
+      if (overNode.is_folder && (over.id as number) !== activeParentId) {
+        await movePortfolio(active.id as number, over.id as number, 0)
+        triggerRefresh()
+        return
+      }
+
+      // Same parent → sibling reorder
+      if (activeParentId === overParentId) {
+        const siblings = siblingGroups.get(activeParentId) ?? []
+        const oldIdx   = siblings.findIndex(p => p.id === active.id)
+        const newIdx   = siblings.findIndex(p => p.id === over.id)
+        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return
+        const reordered = arrayMove(siblings, oldIdx, newIdx)
+        await Promise.all(
+          reordered.map((p, i) => movePortfolio(p.id, activeParentId, i))
+        )
+        triggerRefresh()
+      }
+    } catch (err) {
+      console.error('Portfolio move failed:', err)
+    } finally {
+      setMoving(false)
+    }
+  }
+
+  const activeNode = activeId ? (flatMap.get(activeId)?.node ?? null) : null
 
   return (
     <aside
@@ -377,9 +555,46 @@ export default function Sidebar() {
             ) : portfolios.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400">{L.noPf}</div>
             ) : (
-              <ul className="space-y-0.5">
-                {portfolios.map(p => <PortfolioNode key={p.id} node={p} />)}
-              </ul>
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext
+                  items={portfolios.map(p => p.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ul className="space-y-0.5">
+                    {portfolios.map(p => (
+                      <SortablePortfolioNode
+                        key={p.id}
+                        node={p}
+                        depth={0}
+                        parentId={null}
+                        activeId={activeId}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+
+                <DragOverlay dropAnimation={null}>
+                  {activeNode ? (
+                    <div
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg
+                                 bg-white/95 border border-sky-300 shadow-xl backdrop-blur-sm
+                                 text-[12.5px] font-semibold text-sky-700"
+                      style={{ width: 180 }}
+                    >
+                      {activeNode.is_folder
+                        ? <IconFolder active />
+                        : <IconBriefcase active />
+                      }
+                      <span className="truncate">{activeNode.name}</span>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </div>
         </div>

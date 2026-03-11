@@ -103,6 +103,10 @@ async def _migrate_db():
             await conn.execute(
                 text(f"ALTER TABLE portfolios ADD COLUMN is_folder {bool_ddl}")
             )
+        if "sort_order" not in port_cols:
+            await conn.execute(
+                text("ALTER TABLE portfolios ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0")
+            )
 
         # ── trade_events.user_id ────────────────────────────────────────
         te_cols2 = await conn.run_sync(get_cols, "trade_events")
