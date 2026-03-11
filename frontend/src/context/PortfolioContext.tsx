@@ -19,6 +19,7 @@ interface PortfolioContextValue {
   refreshKey:            number
   triggerRefresh:        () => void
   loading:               boolean
+  fetchError:            string | null
 }
 
 const PortfolioContext = createContext<PortfolioContextValue | null>(null)
@@ -28,12 +29,14 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<number | null>(null)
   const [refreshKey,          setRefreshKey]          = useState(0)
   const [loading,             setLoading]             = useState(true)
+  const [fetchError,          setFetchError]          = useState<string | null>(null)
 
   const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
   // Load portfolio tree on mount and on every refresh
   useEffect(() => {
     setLoading(true)
+    setFetchError(null)
     fetchPortfolios()
       .then((data) => {
         setPortfolios(data)
@@ -43,7 +46,11 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
           setSelectedPortfolioId(firstLeaf.id)
         }
       })
-      .catch(console.error)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        setFetchError(msg)
+        console.error('fetchPortfolios failed:', msg)
+      })
       .finally(() => setLoading(false))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey])
@@ -57,6 +64,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         refreshKey,
         triggerRefresh,
         loading,
+        fetchError,
       }}
     >
       {children}

@@ -204,7 +204,7 @@ function PanelHeader({
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 export default function Sidebar() {
-  const { portfolios, loading, triggerRefresh } = usePortfolio()
+  const { portfolios, loading, fetchError, triggerRefresh } = usePortfolio()
   const { lang }                               = useLanguage()
   const {
     mode, isExpanded,
@@ -360,6 +360,19 @@ export default function Sidebar() {
                 {[75, 60, 70].map(w => (
                   <div key={w} className="h-8 rounded-lg bg-slate-100 animate-pulse" style={{ width: `${w}%` }} />
                 ))}
+              </div>
+            ) : fetchError ? (
+              <div className="mx-1 mt-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5">
+                <p className="text-[11px] font-semibold text-rose-600">
+                  {lang === 'zh' ? '加载失败' : 'Load failed'}
+                </p>
+                <p className="mt-0.5 text-[10px] text-rose-400 break-all leading-snug">{fetchError}</p>
+                <button
+                  onClick={triggerRefresh}
+                  className="mt-1.5 text-[10px] font-semibold text-rose-500 hover:text-rose-700 underline underline-offset-2"
+                >
+                  {lang === 'zh' ? '重试' : 'Retry'}
+                </button>
               </div>
             ) : portfolios.length === 0 ? (
               <div className="py-8 text-center text-xs text-slate-400">{L.noPf}</div>

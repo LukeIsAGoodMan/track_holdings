@@ -5,7 +5,7 @@ Supports both SQLite (local dev) and PostgreSQL (production on Render).
 Render provides DATABASE_URL as postgres:// which needs conversion to
 postgresql+asyncpg:// for SQLAlchemy async.
 """
-from sqlalchemy import text
+from sqlalchemy import inspect as sa_inspect, text
 from sqlalchemy.ext.asyncio import (
     create_async_engine,
     AsyncSession,
@@ -55,34 +55,37 @@ async def init_db():
 
 async def _migrate_db():
     """
-    Additive-only SQLite migrations.
-    Each block checks for a missing column via PRAGMA and adds it if absent.
-    Safe to run on every startup — no-ops when columns already exist.
+    Additive-only migrations — dialect-agnostic (SQLite + PostgreSQL).
 
-    Skipped on PostgreSQL — create_all() creates the complete schema.
+    Uses SQLAlchemy inspect() via run_sync instead of SQLite-only PRAGMA,
+    so migrations run correctly on both local SQLite and Render PostgreSQL.
+    Safe to run on every startup — no-ops when columns already exist.
     """
-    if "sqlite" not in str(engine.url):
-        await _seed_instrument_tags()
-        return
+    is_pg = "postgresql" in str(engine.url)
 
     async with engine.begin() as conn:
+        def get_cols(sync_conn, table: str) -> set[str]:
+            try:
+                return {c["name"] for c in sa_inspect(sync_conn).get_columns(table)}
+            except Exception:
+                return set()
+
         # ── instruments.tags ─────────────────────────────────────────────
-        result = await conn.execute(text("PRAGMA table_info(instruments)"))
-        inst_cols = {row[1] for row in result.fetchall()}
+        inst_cols = await conn.run_sync(get_cols, "instruments")
         if "tags" not in inst_cols:
-            await conn.execute(text("ALTER TABLE instruments ADD COLUMN tags JSON"))
+            col_type = "JSONB" if is_pg else "JSON"
+            await conn.execute(text(f"ALTER TABLE instruments ADD COLUMN tags {col_type}"))
 
         # ── trade_events.trade_metadata ───────────────────────────────────
-        result = await conn.execute(text("PRAGMA table_info(trade_events)"))
-        te_cols = {row[1] for row in result.fetchall()}
+        te_cols = await conn.run_sync(get_cols, "trade_events")
         if "trade_metadata" not in te_cols:
+            col_type = "JSONB" if is_pg else "JSON"
             await conn.execute(
-                text("ALTER TABLE trade_events ADD COLUMN trade_metadata JSON")
+                text(f"ALTER TABLE trade_events ADD COLUMN trade_metadata {col_type}")
             )
 
         # ── portfolios.parent_id + user_id + is_folder ─────────────────
-        result = await conn.execute(text("PRAGMA table_info(portfolios)"))
-        port_cols = {row[1] for row in result.fetchall()}
+        port_cols = await conn.run_sync(get_cols, "portfolios")
         if "parent_id" not in port_cols:
             await conn.execute(
                 text("ALTER TABLE portfolios ADD COLUMN parent_id INTEGER REFERENCES portfolios(id)")
@@ -96,31 +99,27 @@ async def _migrate_db():
             text("UPDATE portfolios SET user_id = 1 WHERE user_id IS NULL")
         )
         if "is_folder" not in port_cols:
+            bool_ddl = "BOOLEAN NOT NULL DEFAULT FALSE" if is_pg else "INTEGER NOT NULL DEFAULT 0"
             await conn.execute(
-                text("ALTER TABLE portfolios ADD COLUMN is_folder INTEGER NOT NULL DEFAULT 0")
+                text(f"ALTER TABLE portfolios ADD COLUMN is_folder {bool_ddl}")
             )
 
         # ── trade_events.user_id ────────────────────────────────────────
-        # Re-read: te_cols was read above for trade_metadata migration
-        result = await conn.execute(text("PRAGMA table_info(trade_events)"))
-        te_cols2 = {row[1] for row in result.fetchall()}
+        te_cols2 = await conn.run_sync(get_cols, "trade_events")
         if "user_id" not in te_cols2:
             await conn.execute(
                 text("ALTER TABLE trade_events ADD COLUMN user_id INTEGER REFERENCES users(id)")
             )
 
         # ── cash_ledger.user_id ─────────────────────────────────────────
-        result = await conn.execute(text("PRAGMA table_info(cash_ledger)"))
-        cl_cols = {row[1] for row in result.fetchall()}
+        cl_cols = await conn.run_sync(get_cols, "cash_ledger")
         if "user_id" not in cl_cols:
             await conn.execute(
                 text("ALTER TABLE cash_ledger ADD COLUMN user_id INTEGER REFERENCES users(id)")
             )
 
-        # ── alerts table (Phase 7e) ─────────────────────────────────────
-        # New table created by create_all(); guard future column adds here.
-        result = await conn.execute(text("PRAGMA table_info(alerts)"))
-        alert_cols = {row[1] for row in result.fetchall()}
+        # ── alerts.trigger_count (Phase 7e) ──────────────────────────────
+        alert_cols = await conn.run_sync(get_cols, "alerts")
         if alert_cols and "trigger_count" not in alert_cols:
             await conn.execute(
                 text("ALTER TABLE alerts ADD COLUMN trigger_count INTEGER DEFAULT 0")
