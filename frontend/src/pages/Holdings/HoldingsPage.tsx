@@ -204,28 +204,103 @@ function StatCard({
   )
 }
 
-// ── Sector Pie Chart ──────────────────────────────────────────────────────────
-// Phase 15.3 colors for the special risk-engine buckets
-const KNOWN_SECTOR_COLORS: Record<string, string> = {
-  'Stock':     '#3b82f6',
-  'ETF/Index': '#10b981',
-  'Crypto':    '#8b5cf6',
-}
+// ── Shared donut-chart utilities ──────────────────────────────────────────────
+/** Format a raw dollar number to $1.2K / $3.4M / $567 */
+const fmtMoney = (v: number): string =>
+  v >= 1_000_000 ? `$${(v / 1_000_000).toFixed(1)}M`
+  : v >= 1_000   ? `$${(v / 1_000).toFixed(1)}K`
+  : `$${v.toFixed(0)}`
 
-// Fallback palette for user-defined sector tags (Technology, Healthcare, …)
-const SECTOR_PALETTE = [
-  '#0ea5e9', '#f97316', '#a855f7', '#ec4899',
-  '#14b8a6', '#eab308', '#ef4444', '#6366f1',
-  '#84cc16', '#f43f5e', '#06b6d4', '#d97706',
-]
-
-interface SectorDatum {
-  key:   string
-  value: number   // |delta| for pie area
-  delta: number   // signed for colour
+/** Shared datum shape for both donut charts */
+interface ChartDatum {
+  key:   string   // unique slice key
+  label: string   // full display name (may equal key)
+  value: number   // absolute dollar notional for pie area
   color: string
 }
 
+/** Shared 3-column legend row.
+ *  Col 1: [dot + label] flex-1, truncates only when absolutely necessary.
+ *  Col 2: dollar value, w-[68px] fixed, right-aligned.
+ *  Col 3: weight %, w-[40px] fixed, right-aligned, bold. */
+function DonutLegendRow({
+  datum, total, index, activeIndex, onToggle,
+}: {
+  datum: ChartDatum; total: number; index: number
+  activeIndex: number | null; onToggle: (i: number) => void
+}) {
+  const pct = total > 0 ? Math.round(datum.value / total * 100) : 0
+  const isActive = activeIndex === index
+  const dimmed   = activeIndex !== null && !isActive
+  return (
+    <button
+      title={datum.label}
+      className={`w-full flex items-center gap-2 px-2 py-[5px] rounded-lg transition-colors text-left ${
+        isActive ? 'bg-slate-100' : 'hover:bg-slate-50'
+      }`}
+      onClick={() => onToggle(index)}
+    >
+      {/* Col 1 — dot + label */}
+      <span
+        className="w-2 h-2 rounded-sm shrink-0 transition-opacity"
+        style={{ background: datum.color, opacity: dimmed ? 0.3 : 1 }}
+      />
+      <span
+        className="flex-1 min-w-0 truncate text-[11px] font-medium text-slate-700 text-left"
+        title={datum.label}
+        style={{ opacity: dimmed ? 0.5 : 1 }}
+      >
+        {datum.label}
+      </span>
+      {/* Col 2 — dollar amount */}
+      <span className="w-[68px] text-right tabular-nums text-[11px] text-slate-500 shrink-0">
+        {fmtMoney(datum.value)}
+      </span>
+      {/* Col 3 — weight */}
+      <span className="w-10 text-right tabular-nums text-[11px] font-bold text-slate-600 shrink-0">
+        {pct}%
+      </span>
+    </button>
+  )
+}
+
+/** Shared column-header row for the legend */
+function DonutLegendHeader({ col1 }: { col1: string }) {
+  return (
+    <div className="flex items-center gap-2 px-2 mb-0.5">
+      <span className="flex-1 min-w-0 text-[9px] font-bold uppercase tracking-widest text-slate-300">{col1}</span>
+      <span className="w-[68px] text-right text-[9px] font-bold uppercase tracking-widest text-slate-300 shrink-0">Notional</span>
+      <span className="w-10 text-right text-[9px] font-bold uppercase tracking-widest text-slate-300 shrink-0">Wt.</span>
+    </div>
+  )
+}
+
+// ── Sector Pie Chart ──────────────────────────────────────────────────────────
+// Asset-class bucket labels produced by the risk engine — these are NOT sectors;
+// they are filtered out and their exposure rolled into "Other / Diversified".
+const ASSET_CLASS_KEYS = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
+
+// Named colours for common sectors (high contrast, no overlap with Phase 15.3)
+const SECTOR_NAMED_COLORS: Record<string, string> = {
+  'Technology':               '#6366f1',
+  'Healthcare':               '#10b981',
+  'Finance':                  '#0ea5e9',
+  'Financials':               '#0ea5e9',
+  'Energy':                   '#f59e0b',
+  'Consumer Discretionary':   '#f97316',
+  'Consumer Staples':         '#84cc16',
+  'Industrials':              '#64748b',
+  'Materials':                '#78716c',
+  'Real Estate':              '#a78bfa',
+  'Communication Services':   '#22d3ee',
+  'Utilities':                '#4ade80',
+  'Other / Diversified':      '#94a3b8',
+}
+const SECTOR_FALLBACK_PALETTE = [
+  '#6366f1', '#0ea5e9', '#f97316', '#10b981',
+  '#f59e0b', '#ec4899', '#84cc16', '#22d3ee',
+  '#a78bfa', '#e11d48', '#4ade80', '#78716c',
+]
 
 function SectorPieChart({
   sectorExp, isEn,
@@ -235,15 +310,32 @@ function SectorPieChart({
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
-  const data = useMemo<SectorDatum[]>(() => {
+  const data = useMemo<ChartDatum[]>(() => {
     if (!sectorExp) return []
+    const sectorMap: Record<string, number> = {}
+    let otherTotal = 0
+
+    for (const [key, deltaStr] of Object.entries(sectorExp)) {
+      const val = Math.abs(parseFloat(deltaStr) || 0)
+      if (val < 0.001) continue
+      if (ASSET_CLASS_KEYS.has(key)) {
+        // Roll asset-class catch-alls into Other / Diversified
+        otherTotal += val
+      } else {
+        sectorMap[key] = (sectorMap[key] ?? 0) + val
+      }
+    }
+    if (otherTotal > 0.001) {
+      sectorMap['Other / Diversified'] = (sectorMap['Other / Diversified'] ?? 0) + otherTotal
+    }
+
     let palIdx = 0
-    return Object.entries(sectorExp)
-      .map(([key, deltaStr]) => ({
+    return Object.entries(sectorMap)
+      .map(([key, value]) => ({
         key,
-        value: Math.max(0.001, Math.abs(parseFloat(deltaStr) || 0)),
-        delta: parseFloat(deltaStr) || 0,
-        color: KNOWN_SECTOR_COLORS[key] ?? SECTOR_PALETTE[palIdx++ % SECTOR_PALETTE.length],
+        label: key,
+        value,
+        color: SECTOR_NAMED_COLORS[key] ?? SECTOR_FALLBACK_PALETTE[palIdx++ % SECTOR_FALLBACK_PALETTE.length],
       }))
       .sort((a, b) => b.value - a.value)
   }, [sectorExp])
@@ -251,108 +343,75 @@ function SectorPieChart({
   if (data.length === 0) return null
   const total = data.reduce((s, d) => s + d.value, 0)
 
-  const fmtDelta = (d: number) => {
-    const abs = Math.abs(d)
-    const str = abs >= 1000 ? `${(d / 1000).toFixed(1)}K` : d.toFixed(1)
-    return `${d >= 0 ? '+' : ''}${str}Δ`
-  }
+  const toggle = (i: number) => setActiveIndex(prev => prev === i ? null : i)
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 min-h-[300px] overflow-hidden">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 min-h-[300px]">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">
         {isEn ? 'Sector Exposure' : '板块敞口'}
       </div>
 
-      {/* Donut — centered, full width */}
-      <div className="flex justify-center mb-3">
-        <ResponsiveContainer width={180} height={180}>
-          <PieChart>
+      {/* Responsive: side-by-side when wide (≥ ~310px), stacks when narrower */}
+      <div className="flex flex-wrap items-start gap-4">
+
+        {/* Donut — fixed size, no ResponsiveContainer needed */}
+        <div className="shrink-0">
+          <PieChart width={130} height={130}>
             <Pie
               data={data}
               dataKey="value"
               nameKey="key"
-              cx="50%" cy="50%"
-              innerRadius={50}
-              outerRadius={76}
+              cx={65} cy={65}
+              innerRadius={36}
+              outerRadius={58}
               paddingAngle={2}
               stroke="none"
               onMouseEnter={(_, i) => setActiveIndex(i)}
               onMouseLeave={() => setActiveIndex(null)}
-              onClick={(_, i) => setActiveIndex(prev => prev === i ? null : i)}
+              onClick={(_, i) => toggle(i)}
             >
               {data.map((d, i) => (
                 <Cell
                   key={d.key}
                   fill={d.color}
-                  opacity={activeIndex === null || activeIndex === i ? 1 : 0.35}
+                  opacity={activeIndex === null || activeIndex === i ? 1 : 0.25}
                 />
               ))}
             </Pie>
             <Tooltip
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null
-                const d = payload[0]?.payload as SectorDatum | undefined
+                const d = payload[0]?.payload as ChartDatum | undefined
                 if (!d) return null
                 const pct = total > 0 ? (d.value / total * 100).toFixed(1) : '0'
                 return (
-                  <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: d.color }} />
-                      <span className="font-bold text-slate-900">{d.key}</span>
+                  <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs min-w-[150px]">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: d.color }} />
+                      <span className="font-bold text-slate-900">{d.label}</span>
                     </div>
-                    <div className={d.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                      {d.delta >= 0 ? '+' : ''}{d.delta.toFixed(2)} Δ
+                    <div className="flex justify-between gap-3 text-[11px]">
+                      <span className="text-slate-500">{fmtMoney(d.value)}</span>
+                      <span className="font-bold text-slate-700">{pct}%</span>
                     </div>
-                    <div className="text-slate-400 tabular-nums">{pct}% of exposure</div>
                   </div>
                 )
               }}
             />
           </PieChart>
-        </ResponsiveContainer>
-      </div>
+        </div>
 
-      {/* Legend — flex-wrap so items spill to next row when there are many sectors.
-          Each row is basis-full (one per row) with shrink-0 for grid alignment.
-          Label is capped at max-w-[120px] + truncate; values are in separate
-          shrink-0 spans so they are never clipped. */}
-      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
-        {data.map((d, i) => {
-          const pct = total > 0 ? (d.value / total * 100).toFixed(0) : '0'
-          const isActive = activeIndex === i
-          return (
-            <button
+        {/* 3-column legend — min-w triggers wrap-below when sidebar is very narrow */}
+        <div className="flex-1 min-w-[170px] flex flex-col">
+          <DonutLegendHeader col1="Sector" />
+          {data.map((d, i) => (
+            <DonutLegendRow
               key={d.key}
-              className={`basis-full flex-shrink-0 flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs transition-colors ${
-                isActive ? 'bg-slate-100' : 'hover:bg-slate-50'
-              }`}
-              onClick={() => setActiveIndex(prev => prev === i ? null : i)}
-            >
-              {/* Colour dot */}
-              <span
-                className="w-2 h-2 rounded-sm shrink-0 transition-opacity"
-                style={{ background: d.color, opacity: activeIndex === null || isActive ? 1 : 0.4 }}
-              />
-              {/* Sector name — truncated, full name visible on hover */}
-              <span
-                className="truncate text-left font-medium text-slate-700"
-                style={{ maxWidth: '120px' }}
-                title={d.key}
-              >
-                {d.key}
-              </span>
-              {/* Values — always fully visible, never truncated */}
-              <span className={`ml-auto tabular-nums font-semibold shrink-0 text-[11px] ${
-                d.delta >= 0 ? 'text-emerald-600' : 'text-rose-600'
-              }`}>
-                {fmtDelta(d.delta)}
-              </span>
-              <span className="tabular-nums shrink-0 text-[11px] text-slate-400 w-7 text-right">
-                {pct}%
-              </span>
-            </button>
-          )
-        })}
+              datum={d} total={total} index={i}
+              activeIndex={activeIndex} onToggle={toggle}
+            />
+          ))}
+        </div>
       </div>
     </div>
   )
@@ -408,10 +467,10 @@ const STRATEGY_LABELS: Record<string, string> = {
   SINGLE:      'Single',
 }
 
-interface PieDatum { name: string; displayName: string; value: number; color: string }
-
 function StrategyPieChart({ holdings, isEn }: { holdings: HoldingGroup[]; isEn: boolean }) {
-  const data = useMemo<PieDatum[]>(() => {
+  const [activeIndex, setActiveIndex] = useState<number | null>(null)
+
+  const data = useMemo<ChartDatum[]>(() => {
     const byStrategy: Record<string, number> = {}
     for (const g of holdings) {
       const type = g.strategy_type || 'SINGLE'
@@ -420,70 +479,85 @@ function StrategyPieChart({ holdings, isEn }: { holdings: HoldingGroup[]; isEn: 
     }
     return Object.entries(byStrategy)
       .map(([type, value]) => ({
-        name:        type,
-        displayName: STRATEGY_LABELS[type] ?? type,
+        key:   type,
+        label: STRATEGY_LABELS[type] ?? type,
         value,
-        color:       STRATEGY_COLORS[type] ?? '#94a3b8',
+        color: STRATEGY_COLORS[type] ?? '#94a3b8',
       }))
       .sort((a, b) => b.value - a.value)
   }, [holdings])
 
   if (data.length === 0) return null
 
-  const total = data.reduce((s, d) => s + d.value, 0)
-  const label = isEn ? 'Strategy Mix' : '策略分布'
+  const total  = data.reduce((s, d) => s + d.value, 0)
+  const toggle = (i: number) => setActiveIndex(prev => prev === i ? null : i)
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
-      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">{label}</div>
-      <div className="flex items-center gap-6 flex-wrap">
-        {/* Donut */}
+    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 min-h-[300px]">
+      <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4">
+        {isEn ? 'Strategy Mix' : '策略分布'}
+      </div>
+
+      {/* Responsive: side-by-side when wide, stacks when narrow */}
+      <div className="flex flex-wrap items-start gap-4">
+
+        {/* Donut — fixed size, no ResponsiveContainer needed */}
         <div className="shrink-0">
-          <ResponsiveContainer width={190} height={190}>
-            <PieChart>
-              <Pie
-                data={data}
-                dataKey="value"
-                nameKey="displayName"
-                cx="50%" cy="50%"
-                innerRadius={52}
-                outerRadius={82}
-                paddingAngle={2}
-                stroke="none"
-              >
-                {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-              </Pie>
-              <Tooltip
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null
-                  const d = payload[0]?.payload as PieDatum | undefined
-                  if (!d) return null
-                  const pct = total > 0 ? (d.value / total * 100).toFixed(1) : '0'
-                  return (
-                    <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs">
-                      <div className="font-bold text-slate-900 mb-1">{d.displayName}</div>
-                      <div className="text-slate-500">{fmtUSD(String(Math.round(d.value)))} notional</div>
-                      <div className="text-slate-400">{pct}% of exposure</div>
+          <PieChart width={130} height={130}>
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="label"
+              cx={65} cy={65}
+              innerRadius={36}
+              outerRadius={58}
+              paddingAngle={2}
+              stroke="none"
+              onMouseEnter={(_, i) => setActiveIndex(i)}
+              onMouseLeave={() => setActiveIndex(null)}
+              onClick={(_, i) => toggle(i)}
+            >
+              {data.map((d, i) => (
+                <Cell
+                  key={d.key}
+                  fill={d.color}
+                  opacity={activeIndex === null || activeIndex === i ? 1 : 0.25}
+                />
+              ))}
+            </Pie>
+            <Tooltip
+              content={({ active, payload }) => {
+                if (!active || !payload?.length) return null
+                const d = payload[0]?.payload as ChartDatum | undefined
+                if (!d) return null
+                const pct = total > 0 ? (d.value / total * 100).toFixed(1) : '0'
+                return (
+                  <div className="bg-white border border-slate-200 rounded-lg shadow-lg px-3 py-2 text-xs min-w-[150px]">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: d.color }} />
+                      <span className="font-bold text-slate-900">{d.label}</span>
                     </div>
-                  )
-                }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+                    <div className="flex justify-between gap-3 text-[11px]">
+                      <span className="text-slate-500">{fmtMoney(d.value)}</span>
+                      <span className="font-bold text-slate-700">{pct}%</span>
+                    </div>
+                  </div>
+                )
+              }}
+            />
+          </PieChart>
         </div>
-        {/* Legend */}
-        <div className="flex-1 space-y-2.5 min-w-0">
-          {data.map((entry) => {
-            const pct = total > 0 ? (entry.value / total * 100).toFixed(0) : '0'
-            return (
-              <div key={entry.name} className="flex items-center gap-2 text-xs">
-                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: entry.color }} />
-                <span className="text-slate-700 truncate flex-1 font-medium min-w-0">{entry.displayName}</span>
-                <span className="text-slate-500 tabular-nums shrink-0">{fmtUSD(String(Math.round(entry.value)))}</span>
-                <span className="text-slate-400 tabular-nums shrink-0 w-9 text-right">{pct}%</span>
-              </div>
-            )
-          })}
+
+        {/* 3-column legend */}
+        <div className="flex-1 min-w-[170px] flex flex-col">
+          <DonutLegendHeader col1="Strategy" />
+          {data.map((d, i) => (
+            <DonutLegendRow
+              key={d.key}
+              datum={d} total={total} index={i}
+              activeIndex={activeIndex} onToggle={toggle}
+            />
+          ))}
         </div>
       </div>
     </div>
