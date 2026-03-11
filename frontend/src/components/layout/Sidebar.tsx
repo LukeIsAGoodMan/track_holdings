@@ -9,7 +9,7 @@
  * Sticky below TopNav (top-14), fills remaining viewport height.
  * Each state's inner content scrolls independently via flex-1 overflow-y-auto.
  */
-import { useMemo }               from 'react'
+import { useMemo, useState }     from 'react'
 import { usePortfolio }          from '@/context/PortfolioContext'
 import { useLanguage }           from '@/context/LanguageContext'
 import { useSidebar }            from '@/context/SidebarContext'
@@ -57,34 +57,75 @@ const IconFolder = ({ active }: { active?: boolean }) => (
   </svg>
 )
 
+const IconBriefcase = ({ active }: { active?: boolean }) => (
+  <svg
+    className={`w-3.5 h-3.5 shrink-0 transition-colors ${active ? 'text-sky-500' : 'text-slate-400'}`}
+    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+  >
+    <rect x="2" y="7" width="20" height="14" rx="2" />
+    <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+  </svg>
+)
+
 // ── Portfolio tree node ───────────────────────────────────────────────────────
 function PortfolioNode({ node, depth = 0 }: { node: Portfolio; depth?: number }) {
   const { selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
-  const isActive = selectedPortfolioId === node.id
+  const isActive      = selectedPortfolioId === node.id
+  const hasChildren   = node.children.length > 0
+  const isExpandable  = hasChildren || node.is_folder
+  const [expanded, setExpanded] = useState(true)
 
   return (
     <li>
-      <button
-        onClick={() => setSelectedPortfolioId(node.id)}
-        title={node.name}
-        className={[
-          'w-full text-left flex items-center gap-2 rounded-lg px-2.5 py-1.5',
-          'text-[12.5px] font-sans transition-all duration-150',
-          'border-l-2',
-          depth > 0 ? 'ml-3' : '',
-          isActive
-            ? 'border-l-sky-400 bg-sky-50 text-sky-700 font-semibold'
-            : 'border-l-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-        ].join(' ')}
+      <div
+        className="flex items-center gap-0.5"
+        style={{ paddingLeft: depth * 12 }}
       >
-        <IconFolder active={isActive} />
-        <span className="flex-1 truncate leading-none">{node.name}</span>
-        <span className={`text-[10.5px] tabular-nums shrink-0 ${isActive ? 'text-sky-500/70' : 'text-slate-400'}`}>
-          {fmtCompact(node.total_cash)}
-        </span>
-      </button>
+        {/* Chevron — only shown for expandable nodes */}
+        <button
+          onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
+          tabIndex={isExpandable ? 0 : -1}
+          aria-label={expanded ? 'Collapse' : 'Expand'}
+          className={`flex items-center justify-center w-5 h-5 rounded shrink-0 transition-colors ${
+            isExpandable
+              ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+              : 'invisible pointer-events-none'
+          }`}
+        >
+          <svg
+            className={`w-2.5 h-2.5 transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`}
+            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth={3} strokeLinecap="round" strokeLinejoin="round"
+          >
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
 
-      {node.children.length > 0 && (
+        {/* Portfolio select button */}
+        <button
+          onClick={() => setSelectedPortfolioId(node.id)}
+          title={node.name}
+          className={[
+            'flex-1 min-w-0 text-left flex items-center gap-2 rounded-lg px-2 py-1.5',
+            'text-[12.5px] font-sans transition-all duration-150',
+            isActive
+              ? 'bg-sky-50 text-sky-700 font-semibold'
+              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900',
+          ].join(' ')}
+        >
+          {isExpandable
+            ? <IconFolder active={isActive} />
+            : <IconBriefcase active={isActive} />
+          }
+          <span className="flex-1 truncate leading-none">{node.name}</span>
+          <span className={`text-[10.5px] tabular-nums shrink-0 ${isActive ? 'text-sky-500/70' : 'text-slate-400'}`}>
+            {fmtCompact(node.total_cash)}
+          </span>
+        </button>
+      </div>
+
+      {isExpandable && expanded && hasChildren && (
         <ul className="mt-0.5 space-y-0.5">
           {node.children.map(child => (
             <PortfolioNode key={child.id} node={child} depth={depth + 1} />
@@ -236,11 +277,20 @@ export default function Sidebar() {
          * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pt-8">
 
-          {/* Header row: label + collapse toggle */}
-          <div className="flex items-center justify-between px-3 pb-2.5 shrink-0">
-            <span className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-slate-400 pl-0.5">
+          {/* Header row: label + new portfolio + collapse toggle */}
+          <div className="flex items-center gap-1 px-3 pb-2.5 shrink-0">
+            <span className="flex-1 text-[10.5px] font-bold uppercase tracking-[0.1em] text-slate-400 pl-0.5">
               {L.portfolios}
             </span>
+            <button
+              title={lang === 'zh' ? '新建组合' : 'New Portfolio'}
+              onClick={() => {/* placeholder — Phase 16B */}}
+              className="flex items-center justify-center w-6 h-6 rounded-md
+                         text-slate-400 hover:text-slate-700 hover:bg-slate-100
+                         transition-colors"
+            >
+              <IconPlus />
+            </button>
             <button
               onClick={toggleExpand}
               title={L.collapse}

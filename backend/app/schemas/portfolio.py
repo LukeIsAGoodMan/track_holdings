@@ -11,6 +11,7 @@ class PortfolioCreate(BaseModel):
     name:        str = Field(..., min_length=1, max_length=100)
     description: str | None = None
     parent_id:   int | None = None
+    is_folder:   bool = False
 
 
 class PortfolioNode(BaseModel):
@@ -24,6 +25,7 @@ class PortfolioNode(BaseModel):
     name:                 str
     description:          str | None
     parent_id:            int | None
+    is_folder:            bool
     total_cash:           DecStr
     total_delta_exposure: DecStr
     total_margin:         DecStr

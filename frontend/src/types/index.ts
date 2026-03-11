@@ -11,6 +11,7 @@ export interface Portfolio {
   name:                 string
   description:          string | null
   parent_id:            number | null
+  is_folder:            boolean
   total_cash:           string   // DecStr
   total_delta_exposure: string   // DecStr
   total_margin:         string   // DecStr

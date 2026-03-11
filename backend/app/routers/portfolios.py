@@ -118,6 +118,7 @@ async def list_portfolios(
             name=p.name,
             description=p.description,
             parent_id=p.parent_id,
+            is_folder=p.is_folder,
             total_cash=stats["cash"],
             total_delta_exposure=stats["delta"],
             total_margin=stats["margin"],
@@ -154,6 +155,7 @@ async def create_portfolio(
         name=body.name,
         description=body.description,
         parent_id=body.parent_id,
+        is_folder=body.is_folder,
         user_id=user.id,
     )
     db.add(portfolio)
@@ -165,6 +167,7 @@ async def create_portfolio(
         name=portfolio.name,
         description=portfolio.description,
         parent_id=portfolio.parent_id,
+        is_folder=portfolio.is_folder,
         total_cash=Decimal("0"),
         total_delta_exposure=Decimal("0"),
         total_margin=Decimal("0"),

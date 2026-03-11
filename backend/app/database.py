@@ -80,12 +80,16 @@ async def _migrate_db():
                 text("ALTER TABLE trade_events ADD COLUMN trade_metadata JSON")
             )
 
-        # ── portfolios.user_id ──────────────────────────────────────────
+        # ── portfolios.user_id + is_folder ─────────────────────────────
         result = await conn.execute(text("PRAGMA table_info(portfolios)"))
         port_cols = {row[1] for row in result.fetchall()}
         if "user_id" not in port_cols:
             await conn.execute(
                 text("ALTER TABLE portfolios ADD COLUMN user_id INTEGER REFERENCES users(id)")
+            )
+        if "is_folder" not in port_cols:
+            await conn.execute(
+                text("ALTER TABLE portfolios ADD COLUMN is_folder INTEGER NOT NULL DEFAULT 0")
             )
 
         # ── trade_events.user_id ────────────────────────────────────────
