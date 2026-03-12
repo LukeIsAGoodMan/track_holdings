@@ -19,6 +19,7 @@ import {
   useSensors,
   closestCenter,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
 import {
@@ -99,6 +100,45 @@ const IconGrip = () => (
   </svg>
 )
 
+// ── DnD helpers ───────────────────────────────────────────────────────────────
+
+/**
+ * Walk up from potentialDescendant via parentId links.
+ * Returns true if potentialAncestor appears in that chain,
+ * i.e. potentialDescendant IS inside potentialAncestor's subtree.
+ */
+function isDescendantOf(
+  potentialDescendant: number,
+  potentialAncestor:   number,
+  map: Map<number, { node: Portfolio; parentId: number | null }>,
+): boolean {
+  let current: number | null = potentialDescendant
+  while (current !== null) {
+    if (current === potentialAncestor) return true
+    current = map.get(current)?.parentId ?? null
+  }
+  return false
+}
+
+// ── Portfolio tree flatten for deep-nest creation ─────────────────────────────
+
+interface FolderOption { id: number; label: string }
+
+function flattenFolders(nodes: Portfolio[], prefix = ''): FolderOption[] {
+  const result: FolderOption[] = []
+  for (const node of nodes) {
+    if (node.is_folder) {
+      const label = prefix ? `${prefix} › ${node.name}` : node.name
+      result.push({ id: node.id, label })
+      result.push(...flattenFolders(node.children, label))
+    } else {
+      // Non-folder: recurse to find any nested folders inside it
+      result.push(...flattenFolders(node.children, prefix))
+    }
+  }
+  return result
+}
+
 // ── Reusable pinned-panel header ──────────────────────────────────────────────
 
 function PanelHeader({
@@ -155,16 +195,8 @@ function PortfolioCreatePanel({ onBack }: { onBack: () => void }) {
   const nameRef = useRef<HTMLInputElement>(null)
   useEffect(() => { nameRef.current?.focus() }, [])
 
-  // Only folders can be parents
-  const folderOptions = useMemo(() => {
-    const acc: Portfolio[] = []
-    const walk = (ps: Portfolio[]) => ps.forEach(p => {
-      if (p.is_folder) acc.push(p)
-      walk(p.children)
-    })
-    walk(portfolios)
-    return acc
-  }, [portfolios])
+  // Flat ordered list of all folder nodes with full path labels (any depth)
+  const folderOptions = useMemo(() => flattenFolders(portfolios), [portfolios])
 
   const handleSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -291,7 +323,7 @@ function PortfolioCreatePanel({ onBack }: { onBack: () => void }) {
                 >
                   <option value="">{L.noParent}</option>
                   {folderOptions.map(f => (
-                    <option key={f.id} value={f.id}>{f.name}</option>
+                    <option key={f.id} value={f.id}>{f.label}</option>
                   ))}
                 </select>
                 {/* Chevron decoration */}
@@ -341,11 +373,13 @@ function SortablePortfolioNode({
   depth = 0,
   parentId = null,
   activeId,
+  hoverFolderId,
 }: {
-  node:      Portfolio
-  depth?:    number
-  parentId?: number | null
-  activeId:  number | null
+  node:          Portfolio
+  depth?:        number
+  parentId?:     number | null
+  activeId:      number | null
+  hoverFolderId: number | null
 }) {
   const { selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
   const isActive     = selectedPortfolioId === node.id
@@ -360,7 +394,6 @@ function SortablePortfolioNode({
     transform,
     transition,
     isDragging,
-    isOver,
   } = useSortable({
     id:   node.id,
     data: { type: 'portfolio', node, parentId },
@@ -371,7 +404,8 @@ function SortablePortfolioNode({
     transition: transition ?? undefined,
   }
 
-  const isDropTarget = isOver && node.is_folder && activeId !== null && activeId !== node.id
+  // Highlight controlled by 500ms hover timer in Sidebar — not the instant isOver flag
+  const isDropTarget = hoverFolderId === node.id && node.is_folder
 
   return (
     <li ref={setNodeRef} style={style} className="group">
@@ -455,6 +489,7 @@ function SortablePortfolioNode({
                 depth={depth + 1}
                 parentId={node.id}
                 activeId={activeId}
+                hoverFolderId={hoverFolderId}
               />
             ))}
           </ul>
@@ -504,8 +539,13 @@ export default function Sidebar() {
     toggleExpand,
   } = useSidebar()
 
-  const [activeId, setActiveId] = useState<number | null>(null)
-  const [moving,   setMoving]   = useState(false)
+  const [activeId,      setActiveId]      = useState<number | null>(null)
+  const [hoverFolderId, setHoverFolderId] = useState<number | null>(null)
+  const [moving,        setMoving]        = useState(false)
+
+  // Refs for 500ms folder-hover timer
+  const hoverTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastOverIdRef  = useRef<number | null>(null)
 
   const handleTradeSuccess = () => {
     exitTradeEntry()
@@ -562,12 +602,48 @@ export default function Sidebar() {
   }, [portfolios])
 
   // ── Drag handlers ────────────────────────────────────────────────────────────
+
+  function clearHoverTimer() {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current)
+      hoverTimerRef.current = null
+    }
+  }
+
   const handleDragStart = (e: DragStartEvent) => {
     setActiveId(e.active.id as number)
+    setHoverFolderId(null)
+    clearHoverTimer()
+    lastOverIdRef.current = null
   }
+
+  /**
+   * Called continuously as the pointer moves during a drag.
+   * Starts a 500ms timer when first hovering over a folder; clears it
+   * immediately if the pointer leaves or moves to a different target.
+   */
+  const handleDragOver = useCallback((e: DragOverEvent) => {
+    const overId = e.over ? (e.over.id as number) : null
+    if (overId === lastOverIdRef.current) return   // same target — no change
+
+    lastOverIdRef.current = overId
+    setHoverFolderId(null)
+    clearHoverTimer()
+
+    if (overId === null) return
+    const overNode = flatMap.get(overId)?.node
+    if (!overNode?.is_folder) return
+
+    hoverTimerRef.current = setTimeout(() => setHoverFolderId(overId), 500)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatMap])
 
   const handleDragEnd = async (e: DragEndEvent) => {
     setActiveId(null)
+    setHoverFolderId(null)
+    clearHoverTimer()
+    lastOverIdRef.current = null
+
     const { active, over } = e
     if (!over || active.id === over.id || moving) return
 
@@ -581,8 +657,10 @@ export default function Sidebar() {
 
     setMoving(true)
     try {
-      // Drop onto a folder (not the active item's current parent) → reassign parent
+      // Drop onto a folder that is not the active item's current parent → reassign parent
       if (overNode.is_folder && (over.id as number) !== activeParentId) {
+        // Frontend cycle guard: prevent dragging a folder into its own subtree
+        if (isDescendantOf(over.id as number, active.id as number, flatMap)) return
         await movePortfolio(active.id as number, over.id as number, 0)
         triggerRefresh()
         return
@@ -755,6 +833,7 @@ export default function Sidebar() {
                 sensors={sensors}
                 collisionDetection={closestCenter}
                 onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
               >
                 <SortableContext
@@ -769,6 +848,7 @@ export default function Sidebar() {
                         depth={0}
                         parentId={null}
                         activeId={activeId}
+                        hoverFolderId={hoverFolderId}
                       />
                     ))}
                   </ul>
