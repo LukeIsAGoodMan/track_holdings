@@ -26,6 +26,7 @@ from app.models.user import User
 from app.schemas.portfolio import PortfolioCreate, PortfolioMoveBody, PortfolioNode
 from app.services import position_engine, yfinance_client
 from app.services.position_engine import collect_portfolio_ids
+from app.services.portfolio_resolver import resolve_portfolio_ids
 from app.services.black_scholes import (
     DEFAULT_SIGMA,
     calculate_greeks,
@@ -35,19 +36,21 @@ from app.services.black_scholes import (
 
 
 class TransactionResponse(BaseModel):
-    id:             int
-    symbol:         str
+    id:              int
+    portfolio_id:    int       # source portfolio (useful in aggregated/folder views)
+    portfolio_name:  str       # display name of the source portfolio
+    symbol:          str
     instrument_type: str
-    option_type:    str | None
-    strike:         str | None
-    expiry:         str | None
-    action:         str
-    quantity:       int
-    price:          str
-    trade_date:     str
-    status:         str
-    notes:          str | None
-    trade_metadata: Any | None
+    option_type:     str | None
+    strike:          str | None
+    expiry:          str | None
+    action:          str
+    quantity:        int
+    price:           str
+    trade_date:      str
+    status:          str
+    notes:           str | None
+    trade_metadata:  Any | None
 
 router = APIRouter(tags=["portfolios"])
 
@@ -271,15 +274,29 @@ async def get_portfolio_trades(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return full transaction log for a portfolio, newest first."""
-    portfolio = await db.get(Portfolio, portfolio_id)
-    if portfolio is None or portfolio.user_id != user.id:
-        raise HTTPException(status_code=404, detail="Portfolio not found")
+    """
+    Return full transaction log for a portfolio, newest first.
+
+    Uses recursive roll-up: if portfolio_id points to a folder, trades from
+    all descendant portfolios are included (same pattern as /holdings and /cash).
+    Each row carries portfolio_id + portfolio_name so the UI can label the
+    source sub-portfolio in aggregated (folder) views.
+    """
+    # resolve_portfolio_ids validates ownership and returns BFS subtree
+    pids = await resolve_portfolio_ids(db, user.id, portfolio_id)
+    if not pids:
+        return []
+
+    # Batch-load portfolio names for the resolved IDs
+    port_result = await db.execute(
+        select(Portfolio.id, Portfolio.name).where(Portfolio.id.in_(pids))
+    )
+    port_name_map: dict[int, str] = {row[0]: row[1] for row in port_result.fetchall()}
 
     result = await db.execute(
         select(TradeEvent)
         .options(selectinload(TradeEvent.instrument))
-        .where(TradeEvent.portfolio_id == portfolio_id)
+        .where(TradeEvent.portfolio_id.in_(pids))
         .order_by(TradeEvent.trade_date.desc())
     )
     trades = result.scalars().all()
@@ -287,6 +304,8 @@ async def get_portfolio_trades(
     return [
         TransactionResponse(
             id=t.id,
+            portfolio_id=t.portfolio_id,
+            portfolio_name=port_name_map.get(t.portfolio_id, ""),
             symbol=t.instrument.symbol,
             instrument_type=t.instrument.instrument_type.value,
             option_type=t.instrument.option_type.value if t.instrument.option_type else None,

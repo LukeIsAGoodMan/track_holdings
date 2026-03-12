@@ -1240,7 +1240,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ── Settlement history ────────────────────────────────────────────────────────
-function SettledTradesSection({ portfolioId }: { portfolioId: number | null | undefined }) {
+function SettledTradesSection({ portfolioId, isFolder }: { portfolioId: number | null | undefined; isFolder: boolean }) {
   const { t } = useLanguage()
   const [open,       setOpen]       = useState(false)
   const [trades,     setTrades]     = useState<SettledTrade[]>([])
@@ -1277,6 +1277,12 @@ function SettledTradesSection({ portfolioId }: { portfolioId: number | null | un
           {total > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200 font-semibold">
               {total}
+            </span>
+          )}
+          {isFolder && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold
+                             bg-sky-50 text-sky-600 border border-sky-200">
+              合并视图 · Aggregated
             </span>
           )}
           {sinceHours === 24 && total > 0 && hasAssigned && (
@@ -1405,7 +1411,7 @@ const ACTION_BADGE: Record<string, string> = {
   SELL_CLOSE: 'bg-amber-50 text-amber-700 border border-amber-200',
 }
 
-function TransactionHistorySection({ portfolioId }: { portfolioId: number | null | undefined }) {
+function TransactionHistorySection({ portfolioId, isFolder }: { portfolioId: number | null | undefined; isFolder: boolean }) {
   const { lang } = useLanguage()
   const isEn = lang !== 'zh'
 
@@ -1478,6 +1484,12 @@ function TransactionHistorySection({ portfolioId }: { portfolioId: number | null
               {rows.length}
             </span>
           )}
+          {isFolder && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold
+                             bg-sky-50 text-sky-600 border border-sky-200">
+              合并视图 · Aggregated
+            </span>
+          )}
         </div>
         <span className={`text-slate-400 text-xs transition-transform duration-150 ${open ? 'rotate-90' : ''}`}>▶</span>
       </button>
@@ -1507,6 +1519,9 @@ function TransactionHistorySection({ portfolioId }: { portfolioId: number | null
                         {isEn ? 'Date' : '日期'}<SortIcon f="date" />
                       </button>
                     </th>
+                    {isFolder && (
+                      <th className="th text-[10px] text-slate-400 font-semibold uppercase tracking-widest">{isEn ? 'Portfolio' : '组合'}</th>
+                    )}
                     <SortTh f="symbol" label={isEn ? 'Symbol' : '标的'} />
                     <SortTh f="action" label={isEn ? 'Action' : '操作'} />
                     <th className="th text-[10px] text-slate-400 font-semibold uppercase tracking-widest">{isEn ? 'Qty' : '数量'}</th>
@@ -1528,6 +1543,11 @@ function TransactionHistorySection({ portfolioId }: { portfolioId: number | null
                         <td className="td-left pl-4 text-slate-500 whitespace-nowrap font-mono text-[11px]">
                           {tx.trade_date ? tx.trade_date.slice(0, 16).replace('T', ' ') : '—'}
                         </td>
+                        {isFolder && (
+                          <td className="td text-[11px] text-slate-500 max-w-[100px]">
+                            <span className="truncate block" title={tx.portfolio_name}>{tx.portfolio_name}</span>
+                          </td>
+                        )}
                         <td className="td font-bold text-slate-900">{tx.symbol}</td>
                         <td className="td">
                           <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-bold ${ACTION_BADGE[tx.action] ?? 'bg-slate-100 text-slate-500 border border-slate-200'}`}>
@@ -1972,8 +1992,8 @@ export default function HoldingsPage() {
       {/* ────────────────────────────────────────────────────────────────── */}
       {activeTab === 'records' && (
         <div className="space-y-5">
-          <SettledTradesSection portfolioId={selectedPortfolioId} />
-          <TransactionHistorySection portfolioId={selectedPortfolioId} />
+          <SettledTradesSection portfolioId={selectedPortfolioId} isFolder={selectedPortfolio?.is_folder ?? false} />
+          <TransactionHistorySection portfolioId={selectedPortfolioId} isFolder={selectedPortfolio?.is_folder ?? false} />
         </div>
       )}
     </div>

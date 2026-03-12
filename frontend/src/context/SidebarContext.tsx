@@ -1,13 +1,14 @@
 /**
- * SidebarContext — state for the sidebar's three modes:
- *   'nav'          — collapsed/expanded portfolio + actions
- *   'trade_entry'  — 520px locked trade form
- *   'price_alerts' — 520px locked price-alert panel
+ * SidebarContext — state for the sidebar's four modes:
+ *   'nav'               — collapsed/expanded portfolio + actions
+ *   'trade_entry'       — 520px locked trade form
+ *   'price_alerts'      — 520px locked price-alert panel
+ *   'portfolio_create'  — 520px inline portfolio-creation form (Phase 16E)
  */
 import React, { createContext, useCallback, useContext, useState } from 'react'
 import type { ClosePositionState } from '@/types'
 
-export type SidebarMode = 'nav' | 'trade_entry' | 'price_alerts'
+export type SidebarMode = 'nav' | 'trade_entry' | 'price_alerts' | 'portfolio_create'
 
 export interface AlertPrefill {
   symbol: string
@@ -15,15 +16,17 @@ export interface AlertPrefill {
 }
 
 interface SidebarContextValue {
-  mode:             SidebarMode
-  isExpanded:       boolean
-  pendingClose:     ClosePositionState | null
-  alertPrefill:     AlertPrefill | null
-  openTradeEntry:   (cs?: ClosePositionState) => void
-  exitTradeEntry:   () => void
-  openPriceAlerts:  (prefill?: AlertPrefill) => void
-  exitPriceAlerts:  () => void
-  toggleExpand:     () => void
+  mode:                 SidebarMode
+  isExpanded:           boolean
+  pendingClose:         ClosePositionState | null
+  alertPrefill:         AlertPrefill | null
+  openTradeEntry:       (cs?: ClosePositionState) => void
+  exitTradeEntry:       () => void
+  openPriceAlerts:      (prefill?: AlertPrefill) => void
+  exitPriceAlerts:      () => void
+  openPortfolioCreate:  () => void
+  exitPortfolioCreate:  () => void
+  toggleExpand:         () => void
 }
 
 const SidebarContext = createContext<SidebarContextValue | null>(null)
@@ -58,14 +61,26 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     setAlertPrefill(null)
   }, [])
 
+  const openPortfolioCreate = useCallback(() => {
+    setPendingClose(null)
+    setAlertPrefill(null)
+    setMode('portfolio_create')
+    setIsExpanded(true)
+  }, [])
+
+  const exitPortfolioCreate = useCallback(() => {
+    setMode('nav')
+  }, [])
+
   const toggleExpand = useCallback(() => setIsExpanded(v => !v), [])
 
   return (
     <SidebarContext.Provider
       value={{
         mode, isExpanded, pendingClose, alertPrefill,
-        openTradeEntry, exitTradeEntry,
-        openPriceAlerts, exitPriceAlerts,
+        openTradeEntry,      exitTradeEntry,
+        openPriceAlerts,     exitPriceAlerts,
+        openPortfolioCreate, exitPortfolioCreate,
         toggleExpand,
       }}
     >

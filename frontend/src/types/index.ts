@@ -388,6 +388,8 @@ export interface PortfolioHistoryResponse {
 // ── Transaction History (Phase 14c) ──────────────────────────────────────────
 export interface Transaction {
   id:              number
+  portfolio_id:    number           // source portfolio
+  portfolio_name:  string           // display name of source portfolio
   symbol:          string
   instrument_type: 'STOCK' | 'OPTION'
   option_type:     string | null
