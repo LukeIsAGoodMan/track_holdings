@@ -13,7 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -38,6 +38,10 @@ from app.services.black_scholes import (
 class ReorderItem(BaseModel):
     id:         int
     sort_order: int
+
+
+class PortfolioUpdateBody(BaseModel):
+    name: str
 
 
 class TransactionResponse(BaseModel):
@@ -235,6 +239,82 @@ async def reorder_portfolios(
             port.sort_order = item.sort_order
     await db.commit()
     return {"reordered": len(body)}
+
+
+@router.patch("/portfolios/{portfolio_id}", response_model=PortfolioNode)
+async def rename_portfolio(
+    portfolio_id: int,
+    body: PortfolioUpdateBody,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a portfolio. Returns 409 if the name is already taken."""
+    port = await db.get(Portfolio, portfolio_id)
+    if port is None or port.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    new_name = body.name.strip()
+    if not new_name:
+        raise HTTPException(status_code=422, detail="Name cannot be empty")
+
+    # Unique-name guard (portfolio names are globally unique per the model)
+    existing = await db.execute(
+        select(Portfolio.id).where(Portfolio.name == new_name)
+    )
+    conflict_id = existing.scalar_one_or_none()
+    if conflict_id is not None and conflict_id != portfolio_id:
+        raise HTTPException(status_code=409, detail="A portfolio with that name already exists")
+
+    port.name = new_name
+    await db.commit()
+    await db.refresh(port)
+
+    return PortfolioNode(
+        id=port.id,
+        name=port.name,
+        description=port.description,
+        parent_id=port.parent_id,
+        is_folder=port.is_folder,
+        sort_order=port.sort_order,
+        total_cash=Decimal("0"),
+        total_delta_exposure=Decimal("0"),
+        total_margin=Decimal("0"),
+    )
+
+
+@router.delete("/portfolios/{portfolio_id}", status_code=204)
+async def delete_portfolio(
+    portfolio_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Cascade-delete a portfolio and its entire subtree.
+    Deletes CashLedger and TradeEvent rows for all descendant portfolios,
+    then deletes the portfolio rows (deepest first to satisfy FK constraints).
+    """
+    port = await db.get(Portfolio, portfolio_id)
+    if port is None or port.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+
+    # BFS subtree (includes portfolio_id itself)
+    all_ids = await collect_portfolio_ids(db, portfolio_id)
+
+    # Delete dependent rows first
+    await db.execute(delete(CashLedger).where(CashLedger.portfolio_id.in_(all_ids)))
+    await db.execute(delete(TradeEvent).where(TradeEvent.portfolio_id.in_(all_ids)))
+
+    # Delete portfolios leaf-first (reverse BFS order) to respect self-referential FK
+    result = await db.execute(
+        select(Portfolio).where(Portfolio.id.in_(all_ids))
+    )
+    subtree_ports = result.scalars().all()
+    # Sort children before parents (deepest id first is fine for SQLite; for safety sort by depth)
+    subtree_ports_sorted = sorted(subtree_ports, key=lambda p: (p.parent_id is None, p.id))
+    for p in reversed(subtree_ports_sorted):
+        await db.delete(p)
+
+    await db.commit()
 
 
 @router.patch("/portfolios/{portfolio_id}/move", response_model=PortfolioNode)

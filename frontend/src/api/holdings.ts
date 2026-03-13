@@ -243,6 +243,14 @@ export const fetchAccountHistory = (
 
 // ── Symbol search & validation (Phase 14.5) ───────────────────────────────────
 
+/** PATCH /api/portfolios/{id} — rename */
+export const updatePortfolioName = (id: number, name: string): Promise<Portfolio> =>
+  api.patch<Portfolio>(`/portfolios/${id}`, { name }).then((r) => r.data)
+
+/** DELETE /api/portfolios/{id} — cascade delete subtree */
+export const deletePortfolio = (id: number): Promise<void> =>
+  api.delete(`/portfolios/${id}`).then(() => undefined)
+
 /** GET /api/symbols/search?q=NVD → up to 5 SymbolSuggestion */
 export const searchSymbols = (q: string): Promise<SymbolSuggestion[]> =>
   api.get<SymbolSuggestion[]>('/symbols/search', { params: { q } }).then((r) => r.data)

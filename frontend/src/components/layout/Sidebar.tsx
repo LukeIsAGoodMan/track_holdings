@@ -35,7 +35,7 @@ import { useSidebar }         from '@/context/SidebarContext'
 import TradeEntryForm         from '@/components/TradeEntryForm'
 import PriceAlertsSidebar     from '@/components/PriceAlertsSidebar'
 import { fmtCompact }         from '@/utils/format'
-import { createPortfolio, movePortfolio, batchReorderPortfolios } from '@/api/holdings'
+import { createPortfolio, movePortfolio, batchReorderPortfolios, updatePortfolioName, deletePortfolio } from '@/api/holdings'
 import type { Portfolio }     from '@/types'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -97,6 +97,30 @@ const IconGrip = () => (
     <circle cx="15" cy="12" r="1.5" />
     <circle cx="9" cy="17" r="1.5" />
     <circle cx="15" cy="17" r="1.5" />
+  </svg>
+)
+
+const IconDots = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <circle cx="5" cy="12" r="2" />
+    <circle cx="12" cy="12" r="2" />
+    <circle cx="19" cy="12" r="2" />
+  </svg>
+)
+
+const IconPencil = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+)
+
+const IconTrash = () => (
+  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+    <path d="M10 11v6M14 11v6" />
+    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
   </svg>
 )
 
@@ -185,13 +209,13 @@ function PanelHeader({
 
 // ── Portfolio Create Panel (State 3c) ─────────────────────────────────────────
 
-function PortfolioCreatePanel({ onBack, initialIsFolder = false }: { onBack: () => void; initialIsFolder?: boolean }) {
+function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId = null }: { onBack: () => void; initialIsFolder?: boolean; initialParentId?: number | null }) {
   const { portfolios, triggerRefresh } = usePortfolio()
   const { lang } = useLanguage()
   const isEn = lang !== 'zh'
 
   const [name,     setName]     = useState('')
-  const [parentId, setParentId] = useState<number | null>(null)
+  const [parentId, setParentId] = useState<number | null>(initialParentId)
   const [isFolder, setIsFolder] = useState(initialIsFolder)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
@@ -371,6 +395,76 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false }: { onBack: () 
   )
 }
 
+// ── Confirm Delete Modal ──────────────────────────────────────────────────────
+
+function ConfirmDeleteModal({
+  target,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  target:    Portfolio
+  loading:   boolean
+  onConfirm: () => void
+  onCancel:  () => void
+}) {
+  const { lang } = useLanguage()
+  const isEn = lang !== 'zh'
+  const isFolder = target.is_folder
+  const hasChildren = target.children.length > 0
+
+  const title   = isEn ? `Delete ${isFolder ? 'Portfolio' : 'Account'}` : `删除${isFolder ? '组合' : '账户'}`
+  const warning = isFolder && hasChildren
+    ? isEn
+      ? `"${target.name}" contains sub-portfolios and accounts. Deleting it will permanently remove all nested items, trades, and cash entries.`
+      : `"${target.name}" 包含子组合和账户。删除后将永久移除所有嵌套项目、交易记录和资金记录。`
+    : isEn
+      ? `This will permanently delete "${target.name}" and all its trades and cash entries. This action cannot be undone.`
+      : `将永久删除"${target.name}"及其所有交易记录和资金记录，此操作无法撤销。`
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
+        onClick={onCancel}
+      />
+      {/* Modal */}
+      <div className="relative z-10 bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+        <div className="flex items-start gap-3">
+          <span className="w-9 h-9 rounded-xl bg-rose-100 flex items-center justify-center shrink-0 text-rose-600">
+            <IconTrash />
+          </span>
+          <div>
+            <h3 className="text-[14px] font-bold text-slate-800">{title}</h3>
+            <p className="mt-1.5 text-[12.5px] text-slate-500 leading-relaxed">{warning}</p>
+          </div>
+        </div>
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onCancel}
+            disabled={loading}
+            className="flex-1 rounded-xl border border-slate-200 py-2.5
+                       text-[13px] font-semibold text-slate-600
+                       hover:bg-slate-50 disabled:opacity-50 transition"
+          >
+            {isEn ? 'Cancel' : '取消'}
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 rounded-xl bg-rose-500 py-2.5
+                       text-[13px] font-semibold text-white
+                       hover:bg-rose-600 disabled:opacity-50 transition"
+          >
+            {loading ? (isEn ? 'Deleting…' : '删除中…') : (isEn ? 'Delete' : '删除')}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Sortable portfolio tree node ───────────────────────────────────────────────
 
 function SortablePortfolioNode({
@@ -381,26 +475,96 @@ function SortablePortfolioNode({
   dropState,
   expandSet,
   ancestorIds,
+  onRequestDelete,
+  onAddChild,
 }: {
-  node:        Portfolio
-  depth?:      number
-  parentId?:   number | null
-  activeId:    number | null
-  dropState:   DropState
-  expandSet:   ReadonlySet<number>
-  ancestorIds: ReadonlySet<number>
+  node:            Portfolio
+  depth?:          number
+  parentId?:       number | null
+  activeId:        number | null
+  dropState:       DropState
+  expandSet:       ReadonlySet<number>
+  ancestorIds:     ReadonlySet<number>
+  onRequestDelete: (node: Portfolio) => void
+  onAddChild:      (parentId: number, isFolder: boolean) => void
 }) {
-  const { selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
+  const { selectedPortfolioId, setSelectedPortfolioId, triggerRefresh } = usePortfolio()
+  const { lang } = useLanguage()
+  const isEn = lang !== 'zh'
+
   const isActive       = selectedPortfolioId === node.id
   const isInActivePath = ancestorIds.has(node.id)
   const hasChildren    = node.children.length > 0
   const isExpandable   = hasChildren || node.is_folder
-  const [expanded, setExpanded] = useState(true)
+
+  const [expanded,     setExpanded]     = useState(true)
+  const [menuOpen,     setMenuOpen]     = useState(false)
+  const [menuPos,      setMenuPos]      = useState<{ top: number; left: number } | null>(null)
+  const [isRenaming,   setIsRenaming]   = useState(false)
+  const [renameValue,  setRenameValue]  = useState(node.name)
+  const [renameError,  setRenameError]  = useState<string | null>(null)
+  const [renameSaving, setRenameSaving] = useState(false)
+
+  const dotsRef        = useRef<HTMLButtonElement>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const skipBlurRef    = useRef(false)
 
   // Auto-expand: selection trail
   useEffect(() => { if (isInActivePath) setExpanded(true) }, [isInActivePath])
   // Auto-expand: drag-hover timer
   useEffect(() => { if (expandSet.has(node.id)) setExpanded(true) }, [expandSet, node.id])
+  // Focus rename input when it appears
+  useEffect(() => { if (isRenaming) renameInputRef.current?.select() }, [isRenaming])
+  // Sync rename value when name changes externally
+  useEffect(() => { setRenameValue(node.name) }, [node.name])
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return
+    const handle = (e: MouseEvent) => {
+      if (dotsRef.current && dotsRef.current.contains(e.target as Node)) return
+      setMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [menuOpen])
+
+  const openMenu = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const rect = dotsRef.current?.getBoundingClientRect()
+    if (!rect) return
+    setMenuPos({ top: rect.bottom + 4, left: rect.left })
+    setMenuOpen(v => !v)
+  }
+
+  const startRename = () => {
+    setMenuOpen(false)
+    setRenameValue(node.name)
+    setRenameError(null)
+    setIsRenaming(true)
+  }
+
+  const cancelRename = () => {
+    setIsRenaming(false)
+    setRenameError(null)
+    setRenameValue(node.name)
+  }
+
+  const submitRename = async () => {
+    const trimmed = renameValue.trim()
+    if (!trimmed || trimmed === node.name) { cancelRename(); return }
+    setRenameSaving(true)
+    try {
+      await updatePortfolioName(node.id, trimmed)
+      triggerRefresh()
+      setIsRenaming(false)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setRenameError(msg.includes('409') || msg.includes('already') ? (isEn ? 'Name already taken' : '名称已存在') : (isEn ? 'Save failed' : '保存失败'))
+    } finally {
+      setRenameSaving(false)
+    }
+  }
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id:   node.id,
@@ -413,10 +577,10 @@ function SortablePortfolioNode({
   }
 
   // Per-node drop indicators
-  const isTarget  = dropState.targetId === node.id
-  const showBefore = isTarget && dropState.intent === 'before' && dropState.valid
-  const showAfter  = isTarget && dropState.intent === 'after'  && dropState.valid
-  const showInside = isTarget && dropState.intent === 'inside' && dropState.valid
+  const isTarget    = dropState.targetId === node.id
+  const showBefore  = isTarget && dropState.intent === 'before' && dropState.valid
+  const showAfter   = isTarget && dropState.intent === 'after'  && dropState.valid
+  const showInside  = isTarget && dropState.intent === 'inside' && dropState.valid
   const showInvalid = isTarget && !dropState.valid
 
   const btnClass = [
@@ -433,17 +597,16 @@ function SortablePortfolioNode({
 
   return (
     <li ref={setNodeRef} style={dndStyle} className="group relative">
-      {/* Row ─── contains insertion lines (relative context) */}
+      {/* Row */}
       <div
         className={[
           'relative flex items-center gap-0.5 rounded-lg transition-all duration-150',
-          isDragging  ? 'opacity-30'                                  : '',
-          showInside  ? 'bg-sky-100/50 ring-1 ring-sky-300/60'        : '',
-          showInvalid ? 'cursor-not-allowed'                          : '',
+          isDragging  ? 'opacity-30'                           : '',
+          showInside  ? 'bg-sky-100/50 ring-1 ring-sky-300/60' : '',
+          showInvalid ? 'cursor-not-allowed'                   : '',
         ].join(' ')}
         style={{ paddingLeft: depth * 20 }}
       >
-        {/* ── Insertion lines ─────────────────────────────── */}
         {showBefore && (
           <div className="absolute inset-x-0 -top-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none" />
         )}
@@ -451,7 +614,7 @@ function SortablePortfolioNode({
           <div className="absolute inset-x-0 -bottom-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none" />
         )}
 
-        {/* Drag handle — appears on hover */}
+        {/* Drag handle */}
         <button
           {...attributes}
           {...listeners}
@@ -467,7 +630,7 @@ function SortablePortfolioNode({
           <IconGrip />
         </button>
 
-        {/* Chevron — expandable nodes only */}
+        {/* Chevron */}
         <button
           onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
           tabIndex={isExpandable ? 0 : -1}
@@ -487,22 +650,117 @@ function SortablePortfolioNode({
           </svg>
         </button>
 
-        {/* Portfolio / Account select button */}
-        <button
-          onClick={() => setSelectedPortfolioId(node.id)}
-          title={node.name}
-          className={btnClass}
-        >
-          {node.is_folder
-            ? <IconFolder active={isActive || isInActivePath} />
-            : <IconBriefcase active={isActive} />
-          }
-          <span className="flex-1 truncate leading-none">{node.name}</span>
-          <span className={`text-[10.5px] tabular-nums shrink-0 ${isActive ? 'text-sky-500/70' : 'text-slate-400'}`}>
-            {fmtCompact(node.aggregated_cash)}
-          </span>
-        </button>
+        {/* Select button OR inline rename */}
+        {isRenaming ? (
+          <div className="flex-1 min-w-0 flex items-center gap-1 px-1">
+            <input
+              ref={renameInputRef}
+              value={renameValue}
+              onChange={e => { setRenameValue(e.target.value); setRenameError(null) }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { e.preventDefault(); submitRename() }
+                if (e.key === 'Escape') { skipBlurRef.current = true; cancelRename() }
+              }}
+              onBlur={() => {
+                if (skipBlurRef.current) { skipBlurRef.current = false; return }
+                cancelRename()
+              }}
+              disabled={renameSaving}
+              maxLength={100}
+              className={[
+                'flex-1 min-w-0 rounded-md border px-2 py-0.5',
+                'text-[12.5px] text-slate-900 bg-white',
+                'focus:outline-none focus:ring-1 focus:ring-sky-400',
+                renameError ? 'border-rose-400' : 'border-slate-300',
+              ].join(' ')}
+            />
+            {renameError && (
+              <span className="text-[10px] text-rose-500 shrink-0">{renameError}</span>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={() => setSelectedPortfolioId(node.id)}
+            title={node.name}
+            className={btnClass}
+          >
+            {node.is_folder
+              ? <IconFolder active={isActive || isInActivePath} />
+              : <IconBriefcase active={isActive} />
+            }
+            <span className="flex-1 truncate leading-none">{node.name}</span>
+            <span className={`text-[10.5px] tabular-nums shrink-0 ${isActive ? 'text-sky-500/70' : 'text-slate-400'}`}>
+              {fmtCompact(node.aggregated_cash)}
+            </span>
+          </button>
+        )}
+
+        {/* ... action button */}
+        {!isRenaming && (
+          <button
+            ref={dotsRef}
+            onClick={openMenu}
+            title={isEn ? 'Actions' : '操作'}
+            className={[
+              'flex items-center justify-center w-6 h-6 rounded shrink-0',
+              'text-slate-300 hover:text-slate-600 hover:bg-slate-100',
+              'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+            ].join(' ')}
+          >
+            <IconDots />
+          </button>
+        )}
       </div>
+
+      {/* Fixed-position dropdown menu */}
+      {menuOpen && menuPos && (
+        <div
+          className="fixed z-[100] bg-white border border-slate-200 rounded-xl shadow-xl py-1 min-w-[176px]"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <button
+            onClick={() => { setMenuOpen(false); startRename() }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2
+                       text-[12.5px] font-medium text-slate-700
+                       hover:bg-slate-50 transition-colors"
+          >
+            <IconPencil />
+            {isEn ? 'Rename' : '重命名'}
+          </button>
+          {node.is_folder && (
+            <>
+              <button
+                onClick={() => { setMenuOpen(false); onAddChild(node.id, true) }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2
+                           text-[12.5px] font-medium text-slate-700
+                           hover:bg-slate-50 transition-colors"
+              >
+                <IconFolder />
+                {isEn ? 'Add Child Portfolio' : '添加子组合'}
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); onAddChild(node.id, false) }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2
+                           text-[12.5px] font-medium text-slate-700
+                           hover:bg-slate-50 transition-colors"
+              >
+                <IconBriefcase />
+                {isEn ? 'Add Child Account' : '添加子账户'}
+              </button>
+            </>
+          )}
+          <div className="my-1 mx-3 h-px bg-slate-100" />
+          <button
+            onClick={() => { setMenuOpen(false); onRequestDelete(node) }}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2
+                       text-[12.5px] font-medium text-rose-600
+                       hover:bg-rose-50 transition-colors"
+          >
+            <IconTrash />
+            {isEn ? 'Delete' : '删除'}
+          </button>
+        </div>
+      )}
 
       {/* Children with guide line + subtle group shading */}
       {isExpandable && expanded && hasChildren && (
@@ -527,6 +785,8 @@ function SortablePortfolioNode({
                     dropState={dropState}
                     expandSet={expandSet}
                     ancestorIds={ancestorIds}
+                    onRequestDelete={onRequestDelete}
+                    onAddChild={onAddChild}
                   />
                 ))}
               </ul>
@@ -567,7 +827,7 @@ function PortfolioBadge() {
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
-  const { portfolios, loading, fetchError, triggerRefresh, selectedPortfolioId } = usePortfolio()
+  const { portfolios, loading, fetchError, triggerRefresh, selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
   const { lang } = useLanguage()
   const {
     mode, isExpanded,
@@ -584,6 +844,9 @@ export default function Sidebar() {
   const [moving,           setMoving]           = useState(false)
   const [showCreateMenu,   setShowCreateMenu]   = useState(false)
   const [createIsFolder,   setCreateIsFolder]   = useState(false)
+  const [createParentId,   setCreateParentId]   = useState<number | null>(null)
+  const [pendingDelete,    setPendingDelete]    = useState<Portfolio | null>(null)
+  const [deleteLoading,    setDeleteLoading]    = useState(false)
 
   // Refs
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -620,6 +883,27 @@ export default function Sidebar() {
   const handleTradeSuccess = () => {
     exitTradeEntry()
     triggerRefresh()
+  }
+
+  const handleAddChild = (pId: number, isFolder: boolean) => {
+    setCreateParentId(pId)
+    setCreateIsFolder(isFolder)
+    openPortfolioCreate()
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return
+    setDeleteLoading(true)
+    try {
+      await deletePortfolio(pendingDelete.id)
+      if (selectedPortfolioId === pendingDelete.id) setSelectedPortfolioId(null)
+      setPendingDelete(null)
+      triggerRefresh()
+    } catch (err) {
+      console.error('Delete failed:', err)
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   const isTradeMode  = mode === 'trade_entry'
@@ -847,7 +1131,11 @@ export default function Sidebar() {
         /* ══════════════════════════════════════════════════════════════════
          * STATE 3c — PORTFOLIO CREATE  (520px)
          * ══════════════════════════════════════════════════════════════════ */
-        <PortfolioCreatePanel onBack={exitPortfolioCreate} initialIsFolder={createIsFolder} />
+        <PortfolioCreatePanel
+          onBack={() => { setCreateParentId(null); exitPortfolioCreate() }}
+          initialIsFolder={createIsFolder}
+          initialParentId={createParentId}
+        />
 
       ) : isExpanded ? (
         /* ══════════════════════════════════════════════════════════════════
@@ -972,7 +1260,17 @@ export default function Sidebar() {
                 </button>
               </div>
             ) : portfolios.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400">{L.noPf}</div>
+              <div className="py-8 px-3 text-center">
+                <div className="flex justify-center mb-2 text-slate-300">
+                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" />
+                  </svg>
+                </div>
+                <p className="text-[12px] font-medium text-slate-400">{L.noPf}</p>
+                <p className="mt-1 text-[11px] text-slate-300 leading-snug">
+                  {isEn ? 'Create your first portfolio to organize accounts and strategies' : '创建第一个组合来组织账户和策略'}
+                </p>
+              </div>
             ) : (
               <DndContext
                 sensors={sensors}
@@ -996,6 +1294,8 @@ export default function Sidebar() {
                         dropState={dropState}
                         expandSet={forceExpandedIds}
                         ancestorIds={ancestorIds}
+                        onRequestDelete={setPendingDelete}
+                        onAddChild={handleAddChild}
                       />
                     ))}
                   </ul>
@@ -1066,6 +1366,16 @@ export default function Sidebar() {
 
           <PortfolioBadge />
         </div>
+      )}
+
+      {/* Confirm delete modal — rendered outside aside flow via fixed positioning */}
+      {pendingDelete && (
+        <ConfirmDeleteModal
+          target={pendingDelete}
+          loading={deleteLoading}
+          onConfirm={handleConfirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
       )}
     </aside>
   )
