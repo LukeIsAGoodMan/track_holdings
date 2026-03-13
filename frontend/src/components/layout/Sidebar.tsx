@@ -375,18 +375,26 @@ function SortablePortfolioNode({
   parentId = null,
   activeId,
   hoverFolderId,
+  ancestorIds,
 }: {
   node:          Portfolio
   depth?:        number
   parentId?:     number | null
   activeId:      number | null
   hoverFolderId: number | null
+  ancestorIds:   ReadonlySet<number>
 }) {
   const { selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
-  const isActive     = selectedPortfolioId === node.id
-  const hasChildren  = node.children.length > 0
-  const isExpandable = hasChildren || node.is_folder
+  const isActive       = selectedPortfolioId === node.id
+  const isInActivePath = ancestorIds.has(node.id)
+  const hasChildren    = node.children.length > 0
+  const isExpandable   = hasChildren || node.is_folder
   const [expanded, setExpanded] = useState(true)
+
+  // Auto-expand when this node becomes an ancestor of the selected portfolio
+  useEffect(() => {
+    if (isInActivePath) setExpanded(true)
+  }, [isInActivePath])
 
   const {
     attributes,
@@ -400,23 +408,35 @@ function SortablePortfolioNode({
     data: { type: 'portfolio', node, parentId },
   })
 
-  const style: React.CSSProperties = {
+  const dndStyle: React.CSSProperties = {
     transform:  CSS.Transform.toString(transform),
     transition: transition ?? undefined,
   }
 
-  // Highlight controlled by 500ms hover timer in Sidebar — not the instant isOver flag
   const isDropTarget = hoverFolderId === node.id && node.is_folder
 
+  // Visual weight: portfolios (folders) are heavier than accounts (leaves)
+  const btnClass = [
+    'flex-1 min-w-0 text-left flex items-center gap-2 rounded-lg px-2 py-1.5',
+    'text-[12.5px] transition-all duration-150 border-l-[3px]',
+    isActive
+      ? 'border-l-sky-400 bg-sky-50 text-sky-700 font-semibold'
+      : isInActivePath
+        ? 'border-l-sky-200/70 text-sky-600/80 font-semibold hover:bg-sky-50/40'
+        : node.is_folder
+          ? 'border-l-transparent text-slate-700 font-semibold hover:bg-slate-50 hover:text-slate-900'
+          : 'border-l-transparent text-slate-500 font-medium hover:bg-slate-50 hover:text-slate-700',
+  ].join(' ')
+
   return (
-    <li ref={setNodeRef} style={style} className="group">
+    <li ref={setNodeRef} style={dndStyle} className="group relative">
       <div
         className={[
           'flex items-center gap-0.5 rounded-lg transition-all duration-150',
-          isDragging   ? 'opacity-30'                                  : '',
+          isDragging   ? 'opacity-30'                                     : '',
           isDropTarget ? 'ring-2 ring-sky-400 ring-offset-1 bg-sky-50/60' : '',
         ].join(' ')}
-        style={{ paddingLeft: depth * 12 }}
+        style={{ paddingLeft: depth * 20 }}
       >
         {/* Drag handle — appears on hover */}
         <button
@@ -452,21 +472,14 @@ function SortablePortfolioNode({
           </svg>
         </button>
 
-        {/* Portfolio select button */}
+        {/* Portfolio / Account select button */}
         <button
           onClick={() => setSelectedPortfolioId(node.id)}
           title={node.name}
-          className={[
-            'flex-1 min-w-0 text-left flex items-center gap-2 rounded-lg px-2 py-1.5',
-            'text-[12.5px] font-sans transition-all duration-150',
-            'border-l-[3px]',
-            isActive
-              ? 'border-l-sky-400 bg-sky-50 text-sky-700 font-semibold'
-              : 'border-l-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900',
-          ].join(' ')}
+          className={btnClass}
         >
-          {isExpandable
-            ? <IconFolder active={isActive} />
+          {node.is_folder
+            ? <IconFolder active={isActive || isInActivePath} />
             : <IconBriefcase active={isActive} />
           }
           <span className="flex-1 truncate leading-none">{node.name}</span>
@@ -476,25 +489,36 @@ function SortablePortfolioNode({
         </button>
       </div>
 
-      {/* Children with their own SortableContext */}
+      {/* Children with guide line + subtle group shading */}
       {isExpandable && expanded && hasChildren && (
-        <SortableContext
-          items={node.children.map(c => c.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          <ul className="mt-0.5 space-y-0.5">
-            {node.children.map(child => (
-              <SortablePortfolioNode
-                key={child.id}
-                node={child}
-                depth={depth + 1}
-                parentId={node.id}
-                activeId={activeId}
-                hoverFolderId={hoverFolderId}
-              />
-            ))}
-          </ul>
-        </SortableContext>
+        <>
+          {/* Vertical guide line — runs from below the row to the last child */}
+          <div
+            className="absolute w-px bg-slate-200/60 pointer-events-none"
+            style={{ left: depth * 20 + 28, top: 14, bottom: 6 }}
+          />
+
+          <SortableContext
+            items={node.children.map(c => c.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="mt-0.5 rounded-sm bg-slate-50/30">
+              <ul className="space-y-0.5">
+                {node.children.map(child => (
+                  <SortablePortfolioNode
+                    key={child.id}
+                    node={child}
+                    depth={depth + 1}
+                    parentId={node.id}
+                    activeId={activeId}
+                    hoverFolderId={hoverFolderId}
+                    ancestorIds={ancestorIds}
+                  />
+                ))}
+              </ul>
+            </div>
+          </SortableContext>
+        </>
       )}
     </li>
   )
@@ -529,7 +553,7 @@ function PortfolioBadge() {
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
 export default function Sidebar() {
-  const { portfolios, loading, fetchError, triggerRefresh } = usePortfolio()
+  const { portfolios, loading, fetchError, triggerRefresh, selectedPortfolioId } = usePortfolio()
   const { lang } = useLanguage()
   const {
     mode, isExpanded,
@@ -624,6 +648,18 @@ export default function Sidebar() {
     walk(portfolios, null)
     return groups
   }, [portfolios])
+
+  // ── Ancestor IDs of the selected portfolio (for trail highlighting + auto-expand)
+  const ancestorIds = useMemo<ReadonlySet<number>>(() => {
+    const ids = new Set<number>()
+    if (!selectedPortfolioId) return ids
+    let cur = flatMap.get(selectedPortfolioId)
+    while (cur?.parentId != null) {
+      ids.add(cur.parentId)
+      cur = flatMap.get(cur.parentId)
+    }
+    return ids
+  }, [selectedPortfolioId, flatMap])
 
   // ── Drag handlers ────────────────────────────────────────────────────────────
 
@@ -902,6 +938,7 @@ export default function Sidebar() {
                         parentId={null}
                         activeId={activeId}
                         hoverFolderId={hoverFolderId}
+                        ancestorIds={ancestorIds}
                       />
                     ))}
                   </ul>
