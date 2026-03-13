@@ -35,6 +35,11 @@ from app.services.black_scholes import (
 )
 
 
+class ReorderItem(BaseModel):
+    id:         int
+    sort_order: int
+
+
 class TransactionResponse(BaseModel):
     id:              int
     portfolio_id:    int       # source portfolio (useful in aggregated/folder views)
@@ -215,6 +220,21 @@ async def create_portfolio(
         total_delta_exposure=Decimal("0"),
         total_margin=Decimal("0"),
     )
+
+
+@router.patch("/portfolios/reorder", status_code=200)
+async def reorder_portfolios(
+    body: list[ReorderItem],
+    user: User = Depends(get_current_user),
+    db:   AsyncSession = Depends(get_db),
+):
+    """Batch-update sort_order for sibling portfolios (drag-and-drop reorder)."""
+    for item in body:
+        port = await db.get(Portfolio, item.id)
+        if port and port.user_id == user.id:
+            port.sort_order = item.sort_order
+    await db.commit()
+    return {"reordered": len(body)}
 
 
 @router.patch("/portfolios/{portfolio_id}/move", response_model=PortfolioNode)

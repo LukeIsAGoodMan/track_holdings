@@ -41,6 +41,12 @@ export const createPortfolio = (body: {
 }): Promise<Portfolio> =>
   api.post<Portfolio>('/portfolios', body).then((r) => r.data)
 
+/** PATCH /api/portfolios/reorder — batch sort_order update for siblings */
+export const batchReorderPortfolios = (
+  items: { id: number; sort_order: number }[],
+): Promise<void> =>
+  api.patch('/portfolios/reorder', items).then(() => undefined)
+
 /** PATCH /api/portfolios/{id}/move — parent reassignment + sibling sort */
 export const movePortfolio = (
   id:         number,

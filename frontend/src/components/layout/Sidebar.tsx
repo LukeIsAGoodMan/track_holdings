@@ -35,7 +35,7 @@ import { useSidebar }         from '@/context/SidebarContext'
 import TradeEntryForm         from '@/components/TradeEntryForm'
 import PriceAlertsSidebar     from '@/components/PriceAlertsSidebar'
 import { fmtCompact }         from '@/utils/format'
-import { createPortfolio, movePortfolio } from '@/api/holdings'
+import { createPortfolio, movePortfolio, batchReorderPortfolios } from '@/api/holdings'
 import type { Portfolio }     from '@/types'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
@@ -123,6 +123,10 @@ function isDescendantOf(
 // ── Portfolio tree flatten for deep-nest creation ─────────────────────────────
 
 interface FolderOption { id: number; label: string }
+
+type DropIntent = 'before' | 'inside' | 'after'
+interface DropState { targetId: number | null; intent: DropIntent | null; valid: boolean }
+const EMPTY_DROP: DropState = { targetId: null, intent: null, valid: false }
 
 function flattenFolders(nodes: Portfolio[], prefix = ''): FolderOption[] {
   const result: FolderOption[] = []
@@ -374,15 +378,17 @@ function SortablePortfolioNode({
   depth = 0,
   parentId = null,
   activeId,
-  hoverFolderId,
+  dropState,
+  expandSet,
   ancestorIds,
 }: {
-  node:          Portfolio
-  depth?:        number
-  parentId?:     number | null
-  activeId:      number | null
-  hoverFolderId: number | null
-  ancestorIds:   ReadonlySet<number>
+  node:        Portfolio
+  depth?:      number
+  parentId?:   number | null
+  activeId:    number | null
+  dropState:   DropState
+  expandSet:   ReadonlySet<number>
+  ancestorIds: ReadonlySet<number>
 }) {
   const { selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
   const isActive       = selectedPortfolioId === node.id
@@ -391,19 +397,12 @@ function SortablePortfolioNode({
   const isExpandable   = hasChildren || node.is_folder
   const [expanded, setExpanded] = useState(true)
 
-  // Auto-expand when this node becomes an ancestor of the selected portfolio
-  useEffect(() => {
-    if (isInActivePath) setExpanded(true)
-  }, [isInActivePath])
+  // Auto-expand: selection trail
+  useEffect(() => { if (isInActivePath) setExpanded(true) }, [isInActivePath])
+  // Auto-expand: drag-hover timer
+  useEffect(() => { if (expandSet.has(node.id)) setExpanded(true) }, [expandSet, node.id])
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id:   node.id,
     data: { type: 'portfolio', node, parentId },
   })
@@ -413,9 +412,13 @@ function SortablePortfolioNode({
     transition: transition ?? undefined,
   }
 
-  const isDropTarget = hoverFolderId === node.id && node.is_folder
+  // Per-node drop indicators
+  const isTarget  = dropState.targetId === node.id
+  const showBefore = isTarget && dropState.intent === 'before' && dropState.valid
+  const showAfter  = isTarget && dropState.intent === 'after'  && dropState.valid
+  const showInside = isTarget && dropState.intent === 'inside' && dropState.valid
+  const showInvalid = isTarget && !dropState.valid
 
-  // Visual weight: portfolios (folders) are heavier than accounts (leaves)
   const btnClass = [
     'flex-1 min-w-0 text-left flex items-center gap-2 rounded-lg px-2 py-1.5',
     'text-[12.5px] transition-all duration-150 border-l-[3px]',
@@ -430,24 +433,36 @@ function SortablePortfolioNode({
 
   return (
     <li ref={setNodeRef} style={dndStyle} className="group relative">
+      {/* Row ─── contains insertion lines (relative context) */}
       <div
         className={[
-          'flex items-center gap-0.5 rounded-lg transition-all duration-150',
-          isDragging   ? 'opacity-30'                                     : '',
-          isDropTarget ? 'ring-2 ring-sky-400 ring-offset-1 bg-sky-50/60' : '',
+          'relative flex items-center gap-0.5 rounded-lg transition-all duration-150',
+          isDragging  ? 'opacity-30'                                  : '',
+          showInside  ? 'bg-sky-100/50 ring-1 ring-sky-300/60'        : '',
+          showInvalid ? 'cursor-not-allowed'                          : '',
         ].join(' ')}
         style={{ paddingLeft: depth * 20 }}
       >
+        {/* ── Insertion lines ─────────────────────────────── */}
+        {showBefore && (
+          <div className="absolute inset-x-0 -top-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none" />
+        )}
+        {showAfter && (
+          <div className="absolute inset-x-0 -bottom-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none" />
+        )}
+
         {/* Drag handle — appears on hover */}
         <button
           {...attributes}
           {...listeners}
           tabIndex={-1}
           title="Drag to reorder"
-          className="flex items-center justify-center w-4 h-5 rounded shrink-0
-                     text-slate-300 hover:text-slate-500
-                     cursor-grab active:cursor-grabbing
-                     opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+          className={[
+            'flex items-center justify-center w-4 h-5 rounded shrink-0',
+            'text-slate-300 hover:text-slate-500',
+            showInvalid ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing',
+            'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
+          ].join(' ')}
         >
           <IconGrip />
         </button>
@@ -492,12 +507,10 @@ function SortablePortfolioNode({
       {/* Children with guide line + subtle group shading */}
       {isExpandable && expanded && hasChildren && (
         <>
-          {/* Vertical guide line — runs from below the row to the last child */}
           <div
             className="absolute w-px bg-slate-200/60 pointer-events-none"
             style={{ left: depth * 20 + 28, top: 14, bottom: 6 }}
           />
-
           <SortableContext
             items={node.children.map(c => c.id)}
             strategy={verticalListSortingStrategy}
@@ -511,7 +524,8 @@ function SortablePortfolioNode({
                     depth={depth + 1}
                     parentId={node.id}
                     activeId={activeId}
-                    hoverFolderId={hoverFolderId}
+                    dropState={dropState}
+                    expandSet={expandSet}
                     ancestorIds={ancestorIds}
                   />
                 ))}
@@ -564,16 +578,24 @@ export default function Sidebar() {
     toggleExpand,
   } = useSidebar()
 
-  const [activeId,        setActiveId]        = useState<number | null>(null)
-  const [hoverFolderId,   setHoverFolderId]   = useState<number | null>(null)
-  const [moving,          setMoving]          = useState(false)
-  const [showCreateMenu,  setShowCreateMenu]  = useState(false)
-  const [createIsFolder,  setCreateIsFolder]  = useState(false)
+  const [activeId,         setActiveId]         = useState<number | null>(null)
+  const [dropState,        setDropState]        = useState<DropState>(EMPTY_DROP)
+  const [forceExpandedIds, setForceExpandedIds] = useState<ReadonlySet<number>>(new Set())
+  const [moving,           setMoving]           = useState(false)
+  const [showCreateMenu,   setShowCreateMenu]   = useState(false)
+  const [createIsFolder,   setCreateIsFolder]   = useState(false)
 
-  // Refs for 500ms folder-hover timer
-  const hoverTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastOverIdRef  = useRef<number | null>(null)
-  const createMenuRef  = useRef<HTMLDivElement>(null)
+  // Refs
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastOverIdRef = useRef<number | null>(null)
+  const lastIntentRef = useRef<DropIntent | null>(null)
+  const pointerYRef   = useRef(0)
+  const createMenuRef = useRef<HTMLDivElement>(null)
+
+  // Stable pointer tracker — used by add/removeEventListener
+  const handlePointerMove = useCallback((e: PointerEvent) => {
+    pointerYRef.current = e.clientY
+  }, [])
 
   const isEn = lang !== 'zh'
 
@@ -663,79 +685,113 @@ export default function Sidebar() {
 
   // ── Drag handlers ────────────────────────────────────────────────────────────
 
-  function clearHoverTimer() {
-    if (hoverTimerRef.current) {
-      clearTimeout(hoverTimerRef.current)
-      hoverTimerRef.current = null
-    }
-  }
-
   const handleDragStart = (e: DragStartEvent) => {
     setActiveId(e.active.id as number)
-    setHoverFolderId(null)
-    clearHoverTimer()
+    setDropState(EMPTY_DROP)
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
     lastOverIdRef.current = null
+    lastIntentRef.current = null
+    document.addEventListener('pointermove', handlePointerMove)
   }
 
   /**
-   * Called continuously as the pointer moves during a drag.
-   * Starts a 500ms timer when first hovering over a folder; clears it
-   * immediately if the pointer leaves or moves to a different target.
+   * Computes drop zone (top 25% = before, middle 50% = inside, bottom 25% = after)
+   * from pointer Y vs target element rect. Manages 600ms auto-expand timer.
    */
   const handleDragOver = useCallback((e: DragOverEvent) => {
     const overId = e.over ? (e.over.id as number) : null
-    if (overId === lastOverIdRef.current) return   // same target — no change
 
+    if (overId === null) {
+      setDropState(EMPTY_DROP)
+      if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
+      lastOverIdRef.current = null
+      lastIntentRef.current = null
+      return
+    }
+
+    const rect      = e.over!.rect
+    const relY      = pointerYRef.current - rect.top
+    const ratio     = rect.height > 0 ? relY / rect.height : 0.5
+    const overNode  = flatMap.get(overId)?.node
+    const activeItemId = e.active.id as number
+
+    // Zone → intent; degrade 'inside' to before/after for non-folders
+    let intent: DropIntent
+    if      (ratio < 0.25) intent = 'before'
+    else if (ratio > 0.75) intent = 'after'
+    else    intent = overNode?.is_folder ? 'inside' : (ratio < 0.5 ? 'before' : 'after')
+
+    // Validation: can't drop onto self, can't move folder into its own subtree
+    const valid = overId !== activeItemId
+      && !(intent === 'inside' && isDescendantOf(overId, activeItemId, flatMap))
+
+    setDropState({ targetId: overId, intent, valid })
+
+    // Restart 600ms auto-expand timer when target or intent changes
+    const targetChanged = overId !== lastOverIdRef.current
+    const intentChanged = intent !== lastIntentRef.current
     lastOverIdRef.current = overId
-    setHoverFolderId(null)
-    clearHoverTimer()
+    lastIntentRef.current = intent
 
-    if (overId === null) return
-    const overNode = flatMap.get(overId)?.node
-    if (!overNode?.is_folder) return
-
-    hoverTimerRef.current = setTimeout(() => setHoverFolderId(overId), 500)
+    if (targetChanged || intentChanged) {
+      if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
+      if (intent === 'inside' && overNode?.is_folder && valid) {
+        hoverTimerRef.current = setTimeout(() => {
+          setForceExpandedIds(prev => new Set([...prev, overId]))
+        }, 600)
+      }
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatMap])
 
   const handleDragEnd = async (e: DragEndEvent) => {
+    document.removeEventListener('pointermove', handlePointerMove)
     setActiveId(null)
-    setHoverFolderId(null)
-    clearHoverTimer()
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
     lastOverIdRef.current = null
+    lastIntentRef.current = null
+
+    // Capture drop state before clearing (avoids stale-closure issues)
+    const { intent, targetId: _overId, valid } = dropState
+    setDropState(EMPTY_DROP)
+    setForceExpandedIds(new Set())
 
     const { active, over } = e
-    if (!over || active.id === over.id || moving) return
+    if (!over || !intent || !valid || active.id === over.id || moving) return
 
     const activeEntry = flatMap.get(active.id as number)
     const overEntry   = flatMap.get(over.id as number)
     if (!activeEntry || !overEntry) return
 
-    const overNode       = overEntry.node
     const activeParentId = activeEntry.parentId
     const overParentId   = overEntry.parentId
 
     setMoving(true)
     try {
-      // Drop onto a folder that is not the active item's current parent → reassign parent
-      if (overNode.is_folder && (over.id as number) !== activeParentId) {
-        // Frontend cycle guard: prevent dragging a folder into its own subtree
-        if (isDescendantOf(over.id as number, active.id as number, flatMap)) return
+      if (intent === 'inside') {
+        // Move active into over (folder); backend handles cycle guard
         await movePortfolio(active.id as number, over.id as number, 0)
         triggerRefresh()
-        return
-      }
 
-      // Same parent → sibling reorder
-      if (activeParentId === overParentId) {
-        const siblings = siblingGroups.get(activeParentId) ?? []
+      } else if (activeParentId === overParentId) {
+        // Same parent → batch sibling reorder
+        const siblings = [...(siblingGroups.get(activeParentId) ?? [])]
         const oldIdx   = siblings.findIndex(p => p.id === active.id)
-        const newIdx   = siblings.findIndex(p => p.id === over.id)
-        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return
-        const reordered = arrayMove(siblings, oldIdx, newIdx)
-        await Promise.all(
-          reordered.map((p, i) => movePortfolio(p.id, activeParentId, i))
-        )
+        if (oldIdx === -1) return
+        const without   = siblings.filter(p => p.id !== active.id)
+        const overIdx   = without.findIndex(p => p.id === over.id)
+        if (overIdx === -1) return
+        const insertAt  = intent === 'after' ? overIdx + 1 : overIdx
+        without.splice(insertAt, 0, siblings[oldIdx])
+        await batchReorderPortfolios(without.map((p, i) => ({ id: p.id, sort_order: i })))
+        triggerRefresh()
+
+      } else {
+        // Cross-parent: move active to over's parent, at the indicated position
+        const targetSiblings = siblingGroups.get(overParentId) ?? []
+        const overIdx  = targetSiblings.findIndex(p => p.id === over.id)
+        const insertAt = intent === 'after' ? overIdx + 1 : overIdx
+        await movePortfolio(active.id as number, overParentId, insertAt)
         triggerRefresh()
       }
     } catch (err) {
@@ -937,7 +993,8 @@ export default function Sidebar() {
                         depth={0}
                         parentId={null}
                         activeId={activeId}
-                        hoverFolderId={hoverFolderId}
+                        dropState={dropState}
+                        expandSet={forceExpandedIds}
                         ancestorIds={ancestorIds}
                       />
                     ))}
