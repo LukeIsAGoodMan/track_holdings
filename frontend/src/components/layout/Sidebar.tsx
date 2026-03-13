@@ -911,7 +911,7 @@ export default function Sidebar() {
   const isCreateMode = mode === 'portfolio_create'
   const isPinnedMode = isTradeMode || isAlertsMode || isCreateMode
 
-  const sidebarWidth = isPinnedMode ? 520 : isExpanded ? 224 : 64
+  const sidebarWidth = isPinnedMode ? 580 : isExpanded ? 340 : 64
 
   const L = {
     newTrade:   lang === 'zh' ? '新建交易' : 'New Trade',
@@ -924,6 +924,7 @@ export default function Sidebar() {
     collapse:   lang === 'zh' ? '折叠'     : 'Collapse',
     expand:     lang === 'zh' ? '展开'     : 'Expand',
     newPf:      lang === 'zh' ? '新建组合' : 'New Portfolio',
+    newPfCard:  lang === 'zh' ? '新建组合 / 账户' : 'New Portfolio / Account',
   }
 
   // ── DnD sensors ─────────────────────────────────────────────────────────────
@@ -1143,49 +1144,11 @@ export default function Sidebar() {
          * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pt-8">
 
-          {/* Header row: label + new portfolio button + collapse toggle */}
-          <div className="flex items-center gap-1 px-3 pb-2.5 shrink-0">
+          {/* Header row: label + collapse toggle */}
+          <div className="flex items-center gap-1 px-4 pb-2.5 shrink-0">
             <span className="flex-1 text-[10.5px] font-bold uppercase tracking-[0.1em] text-slate-400 pl-0.5">
               {L.portfolios}
             </span>
-            <div className="relative" ref={createMenuRef}>
-              <button
-                title={L.newPf}
-                onClick={() => setShowCreateMenu(v => !v)}
-                className={[
-                  'flex items-center justify-center w-6 h-6 rounded-md transition-colors',
-                  showCreateMenu
-                    ? 'text-sky-600 bg-sky-100'
-                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100',
-                ].join(' ')}
-              >
-                <IconPlus />
-              </button>
-              {showCreateMenu && (
-                <div className="absolute right-0 top-full mt-1.5 z-50
-                                bg-white border border-slate-200 rounded-xl shadow-lg py-1
-                                min-w-[164px]">
-                  <button
-                    onClick={() => handleCreateChoice(true)}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2
-                               text-[12.5px] font-medium text-slate-700
-                               hover:bg-slate-50 transition-colors"
-                  >
-                    <IconFolder />
-                    {isEn ? 'New Portfolio' : '新建组合'}
-                  </button>
-                  <button
-                    onClick={() => handleCreateChoice(false)}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2
-                               text-[12.5px] font-medium text-slate-700
-                               hover:bg-slate-50 transition-colors"
-                  >
-                    <IconBriefcase />
-                    {isEn ? 'New Account' : '新建账户'}
-                  </button>
-                </div>
-              )}
-            </div>
             <button
               onClick={toggleExpand}
               title={L.collapse}
@@ -1198,7 +1161,7 @@ export default function Sidebar() {
           </div>
 
           {/* Action cards */}
-          <div className="px-2.5 pb-2 shrink-0 space-y-1.5">
+          <div className="px-4 pb-2 shrink-0 space-y-1.5">
 
             {/* New Trade card */}
             <button
@@ -1215,6 +1178,23 @@ export default function Sidebar() {
                 <IconPlus />
               </span>
               {L.newTrade}
+            </button>
+
+            {/* New Portfolio / Account card */}
+            <button
+              onClick={() => { setCreateParentId(null); setCreateIsFolder(false); openPortfolioCreate() }}
+              className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl
+                         bg-white border border-slate-200 shadow-sm
+                         text-[13px] font-semibold text-slate-700
+                         hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700
+                         hover:shadow-md active:shadow-none
+                         transition-all duration-150 group"
+            >
+              <span className="w-6 h-6 rounded-lg bg-sky-100 flex items-center justify-center
+                               shrink-0 group-hover:bg-sky-200 transition-colors text-sky-500">
+                <IconFolder />
+              </span>
+              {L.newPfCard}
             </button>
 
             {/* Price Alerts card */}
@@ -1236,10 +1216,10 @@ export default function Sidebar() {
           </div>
 
           {/* Thin rule */}
-          <div className="mx-3 h-px bg-slate-100 mb-3 shrink-0" />
+          <div className="mx-4 h-px bg-slate-100 mb-3 shrink-0" />
 
           {/* Portfolio list with drag-and-drop */}
-          <div className="px-2 pb-4 space-y-0.5">
+          <div className="px-3 pb-4 space-y-0.5">
             {loading ? (
               <div className="space-y-1.5 px-1 pt-1">
                 {[75, 60, 70].map(w => (
@@ -1350,6 +1330,46 @@ export default function Sidebar() {
           >
             <IconPlus />
           </button>
+
+          {/* Portfolio create — collapsed: dropdown with New Portfolio / New Account */}
+          <div className="relative" ref={createMenuRef}>
+            <button
+              onClick={() => setShowCreateMenu(v => !v)}
+              title={L.newPfCard}
+              className={[
+                'w-10 h-10 rounded-xl flex items-center justify-center transition-colors shadow-sm',
+                showCreateMenu
+                  ? 'bg-sky-200 text-sky-700'
+                  : 'bg-sky-100 text-sky-600 hover:bg-sky-200 hover:text-sky-700',
+              ].join(' ')}
+            >
+              <IconFolder />
+            </button>
+            {showCreateMenu && (
+              <div className="absolute left-full ml-2 top-0 z-50
+                              bg-white border border-slate-200 rounded-xl shadow-lg py-1
+                              min-w-[172px]">
+                <button
+                  onClick={() => handleCreateChoice(true)}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2
+                             text-[12.5px] font-medium text-slate-700
+                             hover:bg-slate-50 transition-colors"
+                >
+                  <IconFolder />
+                  {isEn ? 'New Portfolio' : '新建组合'}
+                </button>
+                <button
+                  onClick={() => handleCreateChoice(false)}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2
+                             text-[12.5px] font-medium text-slate-700
+                             hover:bg-slate-50 transition-colors"
+                >
+                  <IconBriefcase />
+                  {isEn ? 'New Account' : '新建账户'}
+                </button>
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => openPriceAlerts()}
