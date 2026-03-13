@@ -26,7 +26,6 @@ import {
   SortableContext,
   useSortable,
   verticalListSortingStrategy,
-  arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS }                from '@dnd-kit/utilities'
 import { usePortfolio }       from '@/context/PortfolioContext'
@@ -608,10 +607,12 @@ function SortablePortfolioNode({
         style={{ paddingLeft: depth * 20 }}
       >
         {showBefore && (
-          <div className="absolute inset-x-0 -top-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none" />
+          <div className="absolute -top-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none"
+               style={{ left: depth * 20, right: 0 }} />
         )}
         {showAfter && (
-          <div className="absolute inset-x-0 -bottom-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none" />
+          <div className="absolute -bottom-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none"
+               style={{ left: depth * 20, right: 0 }} />
         )}
 
         {/* Drag handle */}
@@ -689,9 +690,11 @@ function SortablePortfolioNode({
               : <IconBriefcase active={isActive} />
             }
             <span className="flex-1 truncate leading-none">{node.name}</span>
-            <span className={`text-[10.5px] tabular-nums shrink-0 ${isActive ? 'text-sky-500/70' : 'text-slate-400'}`}>
-              {fmtCompact(node.aggregated_cash)}
-            </span>
+            {Number(node.aggregated_cash) !== 0 && (
+              <span className={`text-[10.5px] tabular-nums shrink-0 ${isActive ? 'text-sky-500/70' : 'text-slate-400'}`}>
+                {fmtCompact(node.aggregated_cash)}
+              </span>
+            )}
           </button>
         )}
 
