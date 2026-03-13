@@ -181,14 +181,14 @@ function PanelHeader({
 
 // ── Portfolio Create Panel (State 3c) ─────────────────────────────────────────
 
-function PortfolioCreatePanel({ onBack }: { onBack: () => void }) {
+function PortfolioCreatePanel({ onBack, initialIsFolder = false }: { onBack: () => void; initialIsFolder?: boolean }) {
   const { portfolios, triggerRefresh } = usePortfolio()
   const { lang } = useLanguage()
   const isEn = lang !== 'zh'
 
   const [name,     setName]     = useState('')
   const [parentId, setParentId] = useState<number | null>(null)
-  const [isFolder, setIsFolder] = useState(false)
+  const [isFolder, setIsFolder] = useState(initialIsFolder)
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState<string | null>(null)
 
@@ -217,17 +217,18 @@ function PortfolioCreatePanel({ onBack }: { onBack: () => void }) {
   }, [name, parentId, isFolder, isEn, triggerRefresh, onBack])
 
   const L = {
-
-    hdr:      isEn ? 'New Portfolio'              : '新建组合',
+    hdr:      isFolder
+                ? (isEn ? 'New Portfolio' : '新建组合')
+                : (isEn ? 'New Account'   : '新建账户'),
     back:     isEn ? 'Back'                       : '返回',
     nameLbl:  isEn ? 'Name'                       : '名称',
     namePh:   isEn ? 'e.g. NVDA Wheel'           : '例：NVDA 轮动策略',
     typeLbl:  isEn ? 'Type'                       : '类型',
     account:  isEn ? 'Account'                    : '账户',
-    folder:   isEn ? 'Folder'                     : '文件夹',
-    parentLbl:isEn ? 'Parent Folder'              : '父文件夹',
-    noParent: isEn ? '— Root level —'             : '— 根层级 —',
-    create:   isEn ? 'Create Portfolio'           : '创建',
+    folder:   isEn ? 'Portfolio'                  : '组合',
+    parentLbl:isEn ? 'Parent Portfolio'           : '父组合',
+    noParent: isEn ? '— Root level (none) —'      : '— 根层级（无）—',
+    create:   isEn ? (isFolder ? 'Create Portfolio' : 'Create Account') : '创建',
     creating: isEn ? 'Creating…'                  : '创建中…',
   }
 
@@ -305,8 +306,8 @@ function PortfolioCreatePanel({ onBack }: { onBack: () => void }) {
             </p>
           </div>
 
-          {/* ── Parent folder ─────────────────────────────────────────────── */}
-          {folderOptions.length > 0 && (
+          {/* ── Parent portfolio ──────────────────────────────────────────── */}
+          {(
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider
                                  text-slate-400 mb-1.5">
@@ -539,13 +540,36 @@ export default function Sidebar() {
     toggleExpand,
   } = useSidebar()
 
-  const [activeId,      setActiveId]      = useState<number | null>(null)
-  const [hoverFolderId, setHoverFolderId] = useState<number | null>(null)
-  const [moving,        setMoving]        = useState(false)
+  const [activeId,        setActiveId]        = useState<number | null>(null)
+  const [hoverFolderId,   setHoverFolderId]   = useState<number | null>(null)
+  const [moving,          setMoving]          = useState(false)
+  const [showCreateMenu,  setShowCreateMenu]  = useState(false)
+  const [createIsFolder,  setCreateIsFolder]  = useState(false)
 
   // Refs for 500ms folder-hover timer
   const hoverTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastOverIdRef  = useRef<number | null>(null)
+  const createMenuRef  = useRef<HTMLDivElement>(null)
+
+  const isEn = lang !== 'zh'
+
+  // Close create-type dropdown on outside click
+  useEffect(() => {
+    if (!showCreateMenu) return
+    const handle = (e: MouseEvent) => {
+      if (createMenuRef.current && !createMenuRef.current.contains(e.target as Node)) {
+        setShowCreateMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [showCreateMenu])
+
+  const handleCreateChoice = (isFolder: boolean) => {
+    setCreateIsFolder(isFolder)
+    setShowCreateMenu(false)
+    openPortfolioCreate()
+  }
 
   const handleTradeSuccess = () => {
     exitTradeEntry()
@@ -731,7 +755,7 @@ export default function Sidebar() {
         /* ══════════════════════════════════════════════════════════════════
          * STATE 3c — PORTFOLIO CREATE  (520px)
          * ══════════════════════════════════════════════════════════════════ */
-        <PortfolioCreatePanel onBack={exitPortfolioCreate} />
+        <PortfolioCreatePanel onBack={exitPortfolioCreate} initialIsFolder={createIsFolder} />
 
       ) : isExpanded ? (
         /* ══════════════════════════════════════════════════════════════════
@@ -744,15 +768,44 @@ export default function Sidebar() {
             <span className="flex-1 text-[10.5px] font-bold uppercase tracking-[0.1em] text-slate-400 pl-0.5">
               {L.portfolios}
             </span>
-            <button
-              title={L.newPf}
-              onClick={openPortfolioCreate}
-              className="flex items-center justify-center w-6 h-6 rounded-md
-                         text-slate-400 hover:text-slate-700 hover:bg-slate-100
-                         transition-colors"
-            >
-              <IconPlus />
-            </button>
+            <div className="relative" ref={createMenuRef}>
+              <button
+                title={L.newPf}
+                onClick={() => setShowCreateMenu(v => !v)}
+                className={[
+                  'flex items-center justify-center w-6 h-6 rounded-md transition-colors',
+                  showCreateMenu
+                    ? 'text-sky-600 bg-sky-100'
+                    : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100',
+                ].join(' ')}
+              >
+                <IconPlus />
+              </button>
+              {showCreateMenu && (
+                <div className="absolute right-0 top-full mt-1.5 z-50
+                                bg-white border border-slate-200 rounded-xl shadow-lg py-1
+                                min-w-[164px]">
+                  <button
+                    onClick={() => handleCreateChoice(true)}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2
+                               text-[12.5px] font-medium text-slate-700
+                               hover:bg-slate-50 transition-colors"
+                  >
+                    <IconFolder />
+                    {isEn ? 'New Portfolio' : '新建组合'}
+                  </button>
+                  <button
+                    onClick={() => handleCreateChoice(false)}
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2
+                               text-[12.5px] font-medium text-slate-700
+                               hover:bg-slate-50 transition-colors"
+                  >
+                    <IconBriefcase />
+                    {isEn ? 'New Account' : '新建账户'}
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={toggleExpand}
               title={L.collapse}

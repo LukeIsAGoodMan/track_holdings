@@ -42,7 +42,7 @@ async def run_seed(db: AsyncSession) -> bool:
 
     # ── 1. Root portfolio ─────────────────────────────────────────────────
     main = Portfolio(
-        name="Main Account",
+        name="Main Portfolio",
         description="Root portfolio — all strategies",
     )
     db.add(main)
