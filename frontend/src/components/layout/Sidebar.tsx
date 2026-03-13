@@ -236,8 +236,13 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
       triggerRefresh()
       onBack()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(isEn ? `Failed: ${msg}` : `创建失败：${msg}`)
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if (status === 409) {
+        setError(isEn ? 'Name already taken — choose a different name' : '名称已被占用，请换一个名称')
+      } else {
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(isEn ? `Failed: ${msg}` : `创建失败：${msg}`)
+      }
     } finally {
       setLoading(false)
     }

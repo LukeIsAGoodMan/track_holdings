@@ -202,6 +202,11 @@ async def create_portfolio(
                 detail=f"Parent portfolio {body.parent_id} not found",
             )
 
+    # Name uniqueness guard (model has unique=True; check before commit to return 409 not 500)
+    existing = await db.execute(select(Portfolio.id).where(Portfolio.name == body.name))
+    if existing.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=409, detail="A portfolio with that name already exists")
+
     portfolio = Portfolio(
         name=body.name,
         description=body.description,
