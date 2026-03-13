@@ -9,6 +9,8 @@
  *
  * Phase 16D: @dnd-kit drag-and-drop for sibling reorder + parent reassignment.
  * Phase 16E: Portfolio creation moved from modal into inline sidebar panel.
+ * Phase 16K-N: Node action menu, inline rename, cascade delete, 409 guards.
+ * Phase 16 Final Polish: DnD labeled slots, Wallet/Briefcase icon rebrand.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -68,12 +70,15 @@ const IconBell = ({ active }: { active?: boolean }) => (
   </svg>
 )
 
-const IconFolder = ({ active }: { active?: boolean }) => (
+const IconWallet = ({ active }: { active?: boolean }) => (
   <svg
     className={`w-3.5 h-3.5 shrink-0 transition-colors ${active ? 'text-sky-500' : 'text-slate-400'}`}
-    viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"
+    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
   >
-    <path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" />
+    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+    <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+    <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
   </svg>
 )
 
@@ -326,7 +331,7 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
                     : 'text-slate-500 hover:text-slate-700',
                 ].join(' ')}
               >
-                <IconFolder active={isFolder} />
+                <IconWallet active={isFolder} />
                 {L.folder}
               </button>
             </div>
@@ -612,12 +617,26 @@ function SortablePortfolioNode({
         style={{ paddingLeft: depth * 20 }}
       >
         {showBefore && (
-          <div className="absolute -top-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none"
-               style={{ left: depth * 20, right: 0 }} />
+          <div className="absolute z-20 pointer-events-none flex items-center"
+               style={{ top: -1, left: depth * 20, right: 0 }}>
+            <div className="flex-1 h-0.5 bg-sky-500 rounded-full" />
+            <span className="ml-1 shrink-0 max-w-[130px] overflow-hidden text-ellipsis whitespace-nowrap
+                             bg-sky-500 text-white text-[8.5px] font-bold px-1.5 py-0.5 rounded-full
+                             leading-none shadow-sm">
+              {isEn ? `before "${node.name}"` : `"${node.name}"之前`}
+            </span>
+          </div>
         )}
         {showAfter && (
-          <div className="absolute -bottom-px h-0.5 bg-sky-500 rounded-full z-20 pointer-events-none"
-               style={{ left: depth * 20, right: 0 }} />
+          <div className="absolute z-20 pointer-events-none flex items-center"
+               style={{ bottom: -1, left: depth * 20, right: 0 }}>
+            <div className="flex-1 h-0.5 bg-sky-500 rounded-full" />
+            <span className="ml-1 shrink-0 max-w-[130px] overflow-hidden text-ellipsis whitespace-nowrap
+                             bg-sky-500 text-white text-[8.5px] font-bold px-1.5 py-0.5 rounded-full
+                             leading-none shadow-sm">
+              {isEn ? `after "${node.name}"` : `"${node.name}"之后`}
+            </span>
+          </div>
         )}
 
         {/* Drag handle */}
@@ -691,7 +710,7 @@ function SortablePortfolioNode({
             className={btnClass}
           >
             {node.is_folder
-              ? <IconFolder active={isActive || isInActivePath} />
+              ? <IconWallet active={isActive || isInActivePath} />
               : <IconBriefcase active={isActive} />
             }
             <span className="flex-1 truncate leading-none">{node.name}</span>
@@ -718,6 +737,15 @@ function SortablePortfolioNode({
             <IconDots />
           </button>
         )}
+
+        {/* "Move into" label — shown when dragging over a folder (inside zone) */}
+        {showInside && !isRenaming && (
+          <span className="shrink-0 mr-1 bg-sky-500 text-white text-[8.5px] font-bold
+                           px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap shadow-sm
+                           pointer-events-none">
+            {isEn ? 'Move into' : '移入此处'}
+          </span>
+        )}
       </div>
 
       {/* Fixed-position dropdown menu */}
@@ -743,7 +771,7 @@ function SortablePortfolioNode({
                            text-[12.5px] font-medium text-slate-700
                            hover:bg-slate-50 transition-colors"
               >
-                <IconFolder />
+                <IconWallet />
                 {isEn ? 'Add Child Portfolio' : '添加子组合'}
               </button>
               <button
@@ -1200,7 +1228,7 @@ export default function Sidebar() {
             >
               <span className="w-6 h-6 rounded-lg bg-sky-100 flex items-center justify-center
                                shrink-0 group-hover:bg-sky-200 transition-colors text-sky-500">
-                <IconFolder />
+                <IconWallet />
               </span>
               {L.newPfCard}
             </button>
@@ -1250,8 +1278,11 @@ export default function Sidebar() {
             ) : portfolios.length === 0 ? (
               <div className="py-8 px-3 text-center">
                 <div className="flex justify-center mb-2 text-slate-300">
-                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" />
+                  <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}
+                       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+                    <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+                    <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
                   </svg>
                 </div>
                 <p className="text-[12px] font-medium text-slate-400">{L.noPf}</p>
@@ -1298,7 +1329,7 @@ export default function Sidebar() {
                       style={{ width: 180 }}
                     >
                       {activeNode.is_folder
-                        ? <IconFolder active />
+                        ? <IconWallet active />
                         : <IconBriefcase active />
                       }
                       <span className="truncate">{activeNode.name}</span>
@@ -1351,7 +1382,7 @@ export default function Sidebar() {
                   : 'bg-sky-100 text-sky-600 hover:bg-sky-200 hover:text-sky-700',
               ].join(' ')}
             >
-              <IconFolder />
+              <IconWallet />
             </button>
             {showCreateMenu && (
               <div className="absolute left-full ml-2 top-0 z-50
@@ -1363,7 +1394,7 @@ export default function Sidebar() {
                              text-[12.5px] font-medium text-slate-700
                              hover:bg-slate-50 transition-colors"
                 >
-                  <IconFolder />
+                  <IconWallet />
                   {isEn ? 'New Portfolio' : '新建组合'}
                 </button>
                 <button
