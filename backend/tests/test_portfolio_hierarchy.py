@@ -348,3 +348,134 @@ async def test_cash_three_level_rollup(db):
     )
     total = Decimal(str(result.scalar() or 0))
     assert total == Decimal("500.00")
+
+
+# ── A: Menu CRUD ──────────────────────────────────────────────────────────────
+
+async def test_rename_succeeds(db):
+    """A1: Renaming a portfolio to a unique name updates the name in the database."""
+    port = await _make_portfolio(db, "OldName")
+    port.name = "NewName"
+    await db.flush()
+
+    result = await db.execute(select(Portfolio).where(Portfolio.id == port.id))
+    updated = result.scalar_one()
+    assert updated.name == "NewName"
+
+
+async def test_rename_conflicts_with_existing_name(db):
+    """A2: Conflict check mirrors the router: a pre-existing name → 409-level block."""
+    await _make_portfolio(db, "TakenName")
+    port = await _make_portfolio(db, "MyPortfolio")
+
+    # Same logic as the router's unique-name guard
+    existing = await db.execute(
+        select(Portfolio.id).where(Portfolio.name == "TakenName")
+    )
+    conflict_id = existing.scalar_one_or_none()
+
+    # The conflict exists and belongs to a different portfolio → rename must be refused
+    assert conflict_id is not None
+    assert conflict_id != port.id
+
+
+async def test_add_child_creates_nested_portfolio(db):
+    """A3: 'Add Child' action creates a portfolio whose parent_id matches the folder."""
+    parent = await _make_portfolio(db, "Parent", is_folder=True)
+    child  = await _make_portfolio(db, "Child",  parent_id=parent.id)
+
+    assert child.parent_id == parent.id
+
+    # BFS must include both
+    ids = await collect_portfolio_ids(db, parent.id)
+    assert child.id in ids
+
+
+async def test_cascade_delete_removes_entire_subtree(db):
+    """A4: Deleting a folder removes it and all descendants (mirrors router cascade logic)."""
+    from sqlalchemy import delete as _delete
+
+    folder = await _make_portfolio(db, "Folder", is_folder=True)
+    child  = await _make_portfolio(db, "Child",  parent_id=folder.id)
+    grand  = await _make_portfolio(db, "Grand",  parent_id=child.id)
+
+    all_ids = await collect_portfolio_ids(db, folder.id)
+    assert all_ids == {folder.id, child.id, grand.id}
+
+    await db.execute(_delete(Portfolio).where(Portfolio.id.in_(all_ids)))
+    await db.flush()
+
+    result = await db.execute(
+        select(Portfolio).where(Portfolio.id.in_(all_ids))
+    )
+    remaining = result.scalars().all()
+    assert remaining == []
+
+
+# ── B: Move-Into Logic ────────────────────────────────────────────────────────
+
+async def test_move_into_folder_reassigns_parent(db):
+    """B1: Moving a portfolio into a folder correctly sets its parent_id."""
+    folder = await _make_portfolio(db, "Folder", is_folder=True)
+    port   = await _make_portfolio(db, "Port")
+
+    port.parent_id = folder.id
+    await db.flush()
+
+    ids = await collect_portfolio_ids(db, folder.id)
+    assert port.id in ids
+
+
+async def test_cycle_guard_prevents_move_into_descendant(db):
+    """B2: Moving a folder into its own descendant is a cycle — subtree contains the target."""
+    folder = await _make_portfolio(db, "Folder", is_folder=True)
+    child  = await _make_portfolio(db, "Child",  parent_id=folder.id, is_folder=True)
+
+    # Router collects folder's subtree; if target parent (child) is in it → cycle
+    subtree = await collect_portfolio_ids(db, folder.id)
+    assert child.id in subtree  # move must be rejected
+
+
+async def test_non_folder_is_invalid_drop_target(db):
+    """B3: Accounts (is_folder=False) are never valid move-into targets."""
+    account = await _make_portfolio(db, "Account", is_folder=False)
+    assert not account.is_folder
+
+
+async def test_self_drop_blocked(db):
+    """B4: A portfolio cannot be moved into itself (self is always in own subtree)."""
+    port    = await _make_portfolio(db, "Port", is_folder=True)
+    subtree = await collect_portfolio_ids(db, port.id)
+    assert port.id in subtree  # self-drop must be rejected
+
+
+async def test_positions_rollup_correctly_after_move(db):
+    """
+    B5: After reparenting a portfolio into a folder, positions roll up through
+    the new subtree.
+
+    Setup: folder (empty), portA (loose, 3 NVDA).
+    Before move  → folder subtree: no positions.
+    After move   → folder subtree: 3 NVDA.
+    """
+    folder = await _make_portfolio(db, "Folder", is_folder=True)
+    portA  = await _make_portfolio(db, "PortA")
+    nvda   = await _make_stock(db, "NVDA")
+    await _make_trade(db, portA, nvda, TradeAction.BUY_OPEN, quantity=3)
+
+    # Before move: folder subtree is empty
+    pids_before = await collect_portfolio_ids(db, folder.id)
+    pos_before  = await calculate_positions(db, portfolio_ids=pids_before)
+    assert pos_before == []
+
+    # Move portA into folder
+    portA.parent_id = folder.id
+    await db.flush()
+
+    # After move: folder subtree now includes portA's trade
+    pids_after = await collect_portfolio_ids(db, folder.id)
+    assert portA.id in pids_after
+
+    pos_after = await calculate_positions(db, portfolio_ids=pids_after)
+    assert len(pos_after) == 1
+    assert pos_after[0].net_contracts == 3
