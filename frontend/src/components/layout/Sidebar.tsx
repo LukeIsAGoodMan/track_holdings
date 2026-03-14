@@ -216,7 +216,7 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
   // Flat ordered list of all folder nodes with full path labels (any depth)
   const folderOptions = useMemo(() => flattenFolders(portfolios), [portfolios])
 
-  const handleSubmit = useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = useCallback(async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) return
@@ -1017,9 +1017,9 @@ export default function Sidebar() {
         ? Array.from(treeContainerRef.current.querySelectorAll<HTMLElement>('[data-portfolio-id]'))
         : []
 
-      // ── Top magnet: above tree OR within 10px of tree top ──────────────────
+      // ── Top magnet: above tree OR within 30px of tree top ──────────────────
       const aboveTree    = clientY < treeRect.top
-      const inTopBuffer  = clientY >= treeRect.top && clientY <= treeRect.top + 10
+      const inTopBuffer  = clientY >= treeRect.top && clientY <= treeRect.top + 30
 
       if (inSidebarX && (aboveTree || inTopBuffer)) {
         const firstFolder = allLis.find(li => {
