@@ -494,6 +494,7 @@ function SortablePortfolioNode({
   parentId = null,
   activeId,
   activeNode,
+  isAnyDragging,
   dropState,
   expandSet,
   ancestorIds,
@@ -505,6 +506,7 @@ function SortablePortfolioNode({
   parentId?:       number | null
   activeId:        number | null
   activeNode:      Portfolio | null
+  isAnyDragging:   boolean
   dropState:       DropState
   expandSet:       ReadonlySet<number>
   ancestorIds:     ReadonlySet<number>
@@ -621,7 +623,7 @@ function SortablePortfolioNode({
       <div
         className={[
           'relative flex items-center gap-0.5 rounded-lg transition-all duration-150',
-          isDragging   ? 'opacity-30'                            : '',
+          isDragging   ? 'opacity-0'                             : '',
           showTarget   ? 'bg-sky-100/50 ring-1 ring-sky-300/60' : '',
         ].join(' ')}
         style={{ paddingLeft: depth * 20 }}
@@ -796,7 +798,7 @@ function SortablePortfolioNode({
             items={node.children.map(c => c.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="mt-0.5 rounded-sm bg-slate-50/30">
+            <div className={`mt-0.5 rounded-sm bg-slate-50/30 ${isAnyDragging ? 'pointer-events-none' : ''}`}>
               <ul className="space-y-0.5">
                 {node.children.map(child => (
                   <SortablePortfolioNode
@@ -806,6 +808,7 @@ function SortablePortfolioNode({
                     parentId={node.id}
                     activeId={activeId}
                     activeNode={activeNode}
+                    isAnyDragging={isAnyDragging}
                     dropState={dropState}
                     expandSet={expandSet}
                     ancestorIds={ancestorIds}
@@ -813,18 +816,19 @@ function SortablePortfolioNode({
                     onAddChild={onAddChild}
                   />
                 ))}
-                {/* Virtual ghost child — shown when dragging into this folder */}
+                {/* Virtual ghost child — dashed slot shown when dragging into this folder */}
                 {showTarget && activeNode && (
                   <li
-                    className="pointer-events-none opacity-40"
+                    className="pointer-events-none"
                     style={{ paddingLeft: (depth + 1) * 20 }}
                   >
                     <div className="flex items-center gap-2 rounded-lg px-2 py-1.5
-                                    border-l-[3px] border-l-sky-300 bg-sky-50/60
-                                    text-[12.5px] text-sky-600 font-medium">
+                                    border border-dashed border-slate-300
+                                    bg-transparent opacity-60
+                                    text-[12.5px] text-slate-400 font-medium">
                       {activeNode.is_folder
-                        ? <IconWallet active />
-                        : <IconBriefcase active />
+                        ? <IconWallet />
+                        : <IconBriefcase />
                       }
                       <span className="truncate leading-none">{activeNode.name}</span>
                     </div>
@@ -1061,6 +1065,15 @@ export default function Sidebar() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flatMap])
 
+  const handleDragCancel = () => {
+    document.removeEventListener('pointermove', handlePointerMove)
+    setActiveId(null)
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
+    lastOverIdRef.current = null
+    setDropState(EMPTY_DROP)
+    setForceExpandedIds(new Set())
+  }
+
   const handleDragEnd = async (e: DragEndEvent) => {
     document.removeEventListener('pointermove', handlePointerMove)
     setActiveId(null)
@@ -1262,6 +1275,7 @@ export default function Sidebar() {
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
               >
                 <SortableContext
                   items={portfolios.map(p => p.id)}
@@ -1276,6 +1290,7 @@ export default function Sidebar() {
                         parentId={null}
                         activeId={activeId}
                         activeNode={activeNode}
+                        isAnyDragging={activeId !== null}
                         dropState={dropState}
                         expandSet={forceExpandedIds}
                         ancestorIds={ancestorIds}
