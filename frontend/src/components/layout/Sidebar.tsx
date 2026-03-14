@@ -466,10 +466,11 @@ function SortablePortfolioNode({
 
   return (
     <li ref={setNodeRef} style={dndStyle} className="group relative" data-portfolio-id={node.id}>
-      {/* Row */}
+      {/* Row — before: pseudo-element extends hit-area 8px upward for first-row capture */}
       <div
         className={[
           'relative flex items-center gap-0.5 rounded-lg transition-all duration-150',
+          'before:content-[\'\'] before:absolute before:-top-2 before:inset-x-0 before:h-2',
           isDragging  ? 'opacity-0'                             : '',
           showTarget  ? 'bg-sky-100/50 ring-1 ring-sky-300/60' : '',
         ].join(' ')}
@@ -864,12 +865,13 @@ export default function Sidebar() {
   const [createParentId,   setCreateParentId]   = useState<number | null>(null)
 
   // Refs
-  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastOverIdRef = useRef<number | null>(null)
-  const pointerXRef   = useRef(0)
-  const pointerYRef   = useRef(0)
-  const overlayRef    = useRef<HTMLDivElement>(null)
-  const createMenuRef = useRef<HTMLDivElement>(null)
+  const hoverTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastOverIdRef    = useRef<number | null>(null)
+  const pointerXRef      = useRef(0)
+  const pointerYRef      = useRef(0)
+  const overlayRef       = useRef<HTMLDivElement>(null)
+  const createMenuRef    = useRef<HTMLDivElement>(null)
+  const treeContainerRef = useRef<HTMLDivElement>(null)
 
   // Stable pointer tracker — updates refs and moves the preview overlay via direct DOM
   const handlePointerMove = useCallback((e: PointerEvent) => {
@@ -985,7 +987,19 @@ export default function Sidebar() {
     // Live DOM hit-test — bypasses dnd-kit's stale cached rects
     const element   = document.elementFromPoint(clientX, clientY)
     const liElement = element?.closest<HTMLElement>('[data-portfolio-id]') ?? null
-    const liveId    = liElement ? Number(liElement.getAttribute('data-portfolio-id')) : null
+    let liveId    = liElement ? Number(liElement.getAttribute('data-portfolio-id')) : null
+
+    // Boundary guard: pointer is above the first row (landed in header gap)
+    // If within 20px of the first node's top edge, snap to it
+    if (liveId === null && treeContainerRef.current) {
+      const firstLi = treeContainerRef.current.querySelector<HTMLElement>('[data-portfolio-id]')
+      if (firstLi) {
+        const rect = firstLi.getBoundingClientRect()
+        if (clientY >= rect.top - 20 && clientY <= rect.bottom) {
+          liveId = Number(firstLi.getAttribute('data-portfolio-id'))
+        }
+      }
+    }
 
     // Fall back to dnd-kit collision result if elementFromPoint misses (pointer in gap)
     const overId = liveId ?? (e.over ? (e.over.id as number) : null)
@@ -1200,7 +1214,7 @@ export default function Sidebar() {
           <div className="mx-4 h-px bg-slate-100 mb-3 shrink-0" />
 
           {/* Portfolio list with drag-and-drop */}
-          <div className="px-3 pb-4 space-y-0.5">
+          <div ref={treeContainerRef} className="px-3 pt-4 pb-20 space-y-0.5">
             {loading ? (
               <div className="space-y-1.5 px-1 pt-1">
                 {[75, 60, 70].map(w => (
