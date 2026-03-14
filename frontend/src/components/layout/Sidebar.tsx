@@ -1,35 +1,14 @@
 /**
- * Sidebar — Three-State Action Drawer (+ three pinned-panel sub-states)
+ * Sidebar — Three-State Action Drawer (+ pinned-panel sub-states)
  *
  * State 1 — Collapsed         (64px):   icon-only column
- * State 2 — Expanded          (224px):  nav + portfolio tree with drag-and-drop
+ * State 2 — Expanded          (224px):  nav + static portfolio tree
  * State 3a — Trade Entry      (520px):  TradeEntryForm
  * State 3b — Price Alerts     (520px):  PriceAlertsSidebar
- * State 3c — Portfolio Create (520px):  PortfolioCreatePanel  (Phase 16E)
- *
- * Phase 16D: @dnd-kit drag-and-drop for sibling reorder + parent reassignment.
- * Phase 16E: Portfolio creation moved from modal into inline sidebar panel.
- * Phase 16K-N: Node action menu, inline rename, cascade delete, 409 guards.
- * Phase 16 Final Polish: DnD labeled slots, Wallet/Briefcase icon rebrand.
+ * State 3c — Portfolio Create (520px):  PortfolioCreatePanel
+ * State 3d — Portfolio Edit   (520px):  PortfolioEditPanel (rename + move + delete)
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  closestCenter,
-  type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-} from '@dnd-kit/core'
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable'
-import { CSS }                from '@dnd-kit/utilities'
 import { usePortfolio }       from '@/context/PortfolioContext'
 import { useLanguage }        from '@/context/LanguageContext'
 import { useSidebar }         from '@/context/SidebarContext'
@@ -93,17 +72,6 @@ const IconBriefcase = ({ active }: { active?: boolean }) => (
   </svg>
 )
 
-const IconGrip = () => (
-  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-    <circle cx="9" cy="7" r="1.5" />
-    <circle cx="15" cy="7" r="1.5" />
-    <circle cx="9" cy="12" r="1.5" />
-    <circle cx="15" cy="12" r="1.5" />
-    <circle cx="9" cy="17" r="1.5" />
-    <circle cx="15" cy="17" r="1.5" />
-  </svg>
-)
-
 const IconDots = () => (
   <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
     <circle cx="5" cy="12" r="2" />
@@ -112,35 +80,9 @@ const IconDots = () => (
   </svg>
 )
 
-
-// ── DnD helpers ───────────────────────────────────────────────────────────────
-
-/**
- * Walk up from potentialDescendant via parentId links.
- * Returns true if potentialAncestor appears in that chain,
- * i.e. potentialDescendant IS inside potentialAncestor's subtree.
- */
-function isDescendantOf(
-  potentialDescendant: number,
-  potentialAncestor:   number,
-  map: Map<number, { node: Portfolio; parentId: number | null }>,
-): boolean {
-  let current: number | null = potentialDescendant
-  while (current !== null) {
-    if (current === potentialAncestor) return true
-    current = map.get(current)?.parentId ?? null
-  }
-  return false
-}
-
-// ── Portfolio tree flatten for deep-nest creation ─────────────────────────────
+// ── Portfolio tree helpers ─────────────────────────────────────────────────────
 
 interface FolderOption { id: number; label: string }
-
-// Move-into-only DnD: only folders are valid drop targets
-type RefusalReason = 'not_a_folder' | 'self' | 'descendant' | null
-interface DropState { targetId: number | null; valid: boolean; refusalReason: RefusalReason }
-const EMPTY_DROP: DropState = { targetId: null, valid: false, refusalReason: null }
 
 function flattenFolders(nodes: Portfolio[], prefix = ''): FolderOption[] {
   const result: FolderOption[] = []
@@ -150,11 +92,19 @@ function flattenFolders(nodes: Portfolio[], prefix = ''): FolderOption[] {
       result.push({ id: node.id, label })
       result.push(...flattenFolders(node.children, label))
     } else {
-      // Non-folder: recurse to find any nested folders inside it
       result.push(...flattenFolders(node.children, prefix))
     }
   }
   return result
+}
+
+function collectDescendantIds(node: Portfolio): Set<number> {
+  const ids = new Set<number>([node.id])
+  const walk = (nodes: Portfolio[]) => {
+    for (const n of nodes) { ids.add(n.id); walk(n.children) }
+  }
+  walk(node.children)
+  return ids
 }
 
 // ── Reusable pinned-panel header ──────────────────────────────────────────────
@@ -199,7 +149,15 @@ function PanelHeader({
 
 // ── Portfolio Create Panel (State 3c) ─────────────────────────────────────────
 
-function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId = null }: { onBack: () => void; initialIsFolder?: boolean; initialParentId?: number | null }) {
+function PortfolioCreatePanel({
+  onBack,
+  initialIsFolder = false,
+  initialParentId = null,
+}: {
+  onBack:           () => void
+  initialIsFolder?: boolean
+  initialParentId?: number | null
+}) {
   const { portfolios, triggerRefresh } = usePortfolio()
   const { lang } = useLanguage()
   const isEn = lang !== 'zh'
@@ -213,7 +171,6 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
   const nameRef = useRef<HTMLInputElement>(null)
   useEffect(() => { nameRef.current?.focus() }, [])
 
-  // Flat ordered list of all folder nodes with full path labels (any depth)
   const folderOptions = useMemo(() => flattenFolders(portfolios), [portfolios])
 
   const handleSubmit = useCallback(async (e: React.SyntheticEvent<HTMLFormElement>) => {
@@ -259,10 +216,7 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
     <div className="flex flex-col flex-1 min-h-0">
       <PanelHeader label={L.hdr} onBack={onBack} backTitle={L.back} />
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex-1 overflow-y-auto"
-      >
+      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
         <div className="px-5 py-5 space-y-5">
 
           {/* ── Name ─────────────────────────────────────────────────────── */}
@@ -336,7 +290,6 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
               {L.parentLbl}
             </label>
             {initialParentId !== null ? (
-              /* Locked: pre-set via Add Child action */
               <div className="w-full rounded-xl border border-slate-200 bg-slate-100
                               px-3.5 py-2.5 text-[13px] text-slate-500 flex items-center gap-2">
                 <IconWallet />
@@ -362,7 +315,6 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
                     <option key={f.id} value={f.id}>{f.label}</option>
                   ))}
                 </select>
-                {/* Chevron decoration */}
                 <svg
                   className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2
                              w-3.5 h-3.5 text-slate-400"
@@ -402,25 +354,15 @@ function PortfolioCreatePanel({ onBack, initialIsFolder = false, initialParentId
   )
 }
 
-// ── Sortable portfolio tree node ───────────────────────────────────────────────
+// ── Portfolio Tree Node (static, no DnD) ──────────────────────────────────────
 
-function SortablePortfolioNode({
+function PortfolioTreeNode({
   node,
   depth = 0,
-  parentId = null,
-  activeId,
-  activeNode,
-  dropState,
-  expandSet,
   ancestorIds,
 }: {
   node:        Portfolio
   depth?:      number
-  parentId?:   number | null
-  activeId:    number | null
-  activeNode:  Portfolio | null
-  dropState:   DropState
-  expandSet:   ReadonlySet<number>
   ancestorIds: ReadonlySet<number>
 }) {
   const { selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
@@ -435,24 +377,8 @@ function SortablePortfolioNode({
 
   const [expanded, setExpanded] = useState(true)
 
-  // Auto-expand: selection trail
+  // Auto-expand when this node is on the active selection trail
   useEffect(() => { if (isInActivePath) setExpanded(true) }, [isInActivePath])
-  // Auto-expand: drag-hover timer
-  useEffect(() => { if (expandSet.has(node.id)) setExpanded(true) }, [expandSet, node.id])
-
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id:   node.id,
-    data: { type: 'portfolio', node, parentId },
-  })
-
-  const dndStyle: React.CSSProperties = {
-    transform:  CSS.Transform.toString(transform),
-    transition: transition ?? undefined,
-  }
-
-  const isTarget      = dropState.targetId === node.id
-  const showTarget    = isTarget && dropState.valid
-  const showRefusal   = isTarget && !dropState.valid && dropState.refusalReason === 'not_a_folder'
 
   const btnClass = [
     'flex-1 min-w-0 text-left flex items-center gap-2 rounded-lg px-2 py-1.5',
@@ -467,36 +393,12 @@ function SortablePortfolioNode({
   ].join(' ')
 
   return (
-    <li ref={setNodeRef} style={dndStyle} className="group relative" data-portfolio-id={node.id}>
-      {/* Row — before: pseudo-element extends hit-area upward (deeper for root nodes) */}
+    <li className="group relative">
       <div
-        className={[
-          'relative flex items-center gap-0.5 rounded-lg transition-all duration-150',
-          'before:content-[\'\'] before:absolute before:-top-3 before:inset-x-0 before:h-3',
-          'after:content-[\'\'] after:absolute after:-bottom-3 after:inset-x-0 after:h-3',
-          isDragging   ? 'opacity-0'                              : '',
-          showTarget   ? 'ring-2 ring-sky-300 bg-sky-100/50'      : '',
-          showRefusal  ? 'ring-1 ring-rose-200/80 bg-rose-50/30'  : '',
-        ].join(' ')}
+        className="relative flex items-center gap-0.5 rounded-lg transition-all duration-150"
         style={{ paddingLeft: depth * 20 }}
       >
-        {/* Drag handle */}
-        <button
-          {...attributes}
-          {...listeners}
-          tabIndex={-1}
-          title="Drag to reorder"
-          className={[
-            'flex items-center justify-center w-4 h-5 rounded shrink-0',
-            'text-slate-300 hover:text-slate-500',
-            'cursor-grab active:cursor-grabbing',
-            'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
-          ].join(' ')}
-        >
-          <IconGrip />
-        </button>
-
-        {/* Chevron */}
+        {/* Expand / collapse chevron */}
         <button
           onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
           tabIndex={isExpandable ? 0 : -1}
@@ -534,7 +436,7 @@ function SortablePortfolioNode({
           )}
         </button>
 
-        {/* ... button — opens edit panel */}
+        {/* ⋯ actions button */}
         <button
           onClick={e => { e.stopPropagation(); openPortfolioEdit(node) }}
           title={isEn ? 'Actions' : '操作'}
@@ -546,69 +448,27 @@ function SortablePortfolioNode({
         >
           <IconDots />
         </button>
-
-        {/* "Move into" label */}
-        {showTarget && (
-          <span className="shrink-0 mr-1 bg-sky-500 text-white text-[8.5px] font-bold
-                           px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap shadow-sm
-                           pointer-events-none">
-            {isEn ? 'Move into' : '移入此处'}
-          </span>
-        )}
-        {/* "Folders only" refusal hint */}
-        {showRefusal && (
-          <span className="shrink-0 mr-1 bg-rose-100 text-rose-400 text-[8.5px] font-bold
-                           px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap
-                           pointer-events-none">
-            {isEn ? 'Folders only' : '仅限移入组合'}
-          </span>
-        )}
       </div>
 
-      {/* Children with guide line + subtle group shading */}
-      {isExpandable && expanded && (hasChildren || showTarget) && (
+      {/* Children with indent guide line */}
+      {isExpandable && expanded && hasChildren && (
         <>
           <div
             className="absolute w-px bg-slate-200/60 pointer-events-none"
-            style={{ left: depth * 20 + 28, top: 14, bottom: 6 }}
+            style={{ left: depth * 20 + 24, top: 14, bottom: 6 }}
           />
-          <SortableContext
-            items={node.children.map(c => c.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            <div className="mt-0.5 rounded-sm bg-slate-50/30">
-              <ul className="space-y-0.5">
-                {node.children.map(child => (
-                  <SortablePortfolioNode
-                    key={child.id}
-                    node={child}
-                    depth={depth + 1}
-                    parentId={node.id}
-                    activeId={activeId}
-                    activeNode={activeNode}
-                    dropState={dropState}
-                    expandSet={expandSet}
-                    ancestorIds={ancestorIds}
-                  />
-                ))}
-                {/* Virtual ghost child — dashed slot shown when dragging into this folder */}
-                {showTarget && activeNode && (
-                  <li
-                    className="pointer-events-none"
-                    style={{ paddingLeft: (depth + 1) * 20 }}
-                  >
-                    <div className="flex items-center gap-2 rounded-lg px-2 py-1.5
-                                    border border-dashed border-slate-300
-                                    bg-transparent opacity-60
-                                    text-[12.5px] text-slate-400 font-medium">
-                      {activeNode.is_folder ? <IconWallet /> : <IconBriefcase />}
-                      <span className="truncate leading-none">{activeNode.name}</span>
-                    </div>
-                  </li>
-                )}
-              </ul>
-            </div>
-          </SortableContext>
+          <div className="mt-0.5 rounded-sm bg-slate-50/30">
+            <ul className="space-y-0.5">
+              {node.children.map(child => (
+                <PortfolioTreeNode
+                  key={child.id}
+                  node={child}
+                  depth={depth + 1}
+                  ancestorIds={ancestorIds}
+                />
+              ))}
+            </ul>
+          </div>
         </>
       )}
     </li>
@@ -626,19 +486,43 @@ function PortfolioEditPanel({
   onBack:     () => void
   onAddChild: (parentId: number, isFolder: boolean) => void
 }) {
-  const { selectedPortfolioId, setSelectedPortfolioId, triggerRefresh } = usePortfolio()
+  const { portfolios, selectedPortfolioId, setSelectedPortfolioId, triggerRefresh } = usePortfolio()
   const { lang } = useLanguage()
   const isEn = lang !== 'zh'
 
-  const [name,          setName]          = useState(target.name)
-  const [renameError,   setRenameError]   = useState<string | null>(null)
-  const [renameSaving,  setRenameSaving]  = useState(false)
-  const [renamed,       setRenamed]       = useState(false)
+  // ── Rename state ──────────────────────────────────────────────────────────
+  const [name,         setName]         = useState(target.name)
+  const [renameError,  setRenameError]  = useState<string | null>(null)
+  const [renameSaving, setRenameSaving] = useState(false)
+  const [renamed,      setRenamed]      = useState(false)
+
+  // ── Move state ────────────────────────────────────────────────────────────
+  const [moveParentId, setMoveParentId] = useState<number | null>(target.parent_id)
+  const [moveSaving,   setMoveSaving]   = useState(false)
+  const [moveError,    setMoveError]    = useState<string | null>(null)
+  const [moveSaved,    setMoveSaved]    = useState(false)
+
+  // ── Delete state ──────────────────────────────────────────────────────────
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   // Sync if the same panel is reused for a different target
-  useEffect(() => { setName(target.name); setRenamed(false); setRenameError(null) }, [target.id, target.name])
+  useEffect(() => {
+    setName(target.name)
+    setRenamed(false)
+    setRenameError(null)
+    setMoveParentId(target.parent_id)
+    setMoveSaved(false)
+    setMoveError(null)
+  }, [target.id, target.name, target.parent_id])
+
+  // Folder options for "Move to" — exclude the target itself and all its descendants
+  const descendantIds = useMemo(() => collectDescendantIds(target), [target])
+
+  const folderOptions = useMemo(
+    () => flattenFolders(portfolios).filter(f => !descendantIds.has(f.id)),
+    [portfolios, descendantIds],
+  )
 
   const submitRename = async () => {
     const trimmed = name.trim()
@@ -661,6 +545,26 @@ function PortfolioEditPanel({
     }
   }
 
+  const submitMove = async () => {
+    if (moveParentId === target.parent_id) return
+    setMoveSaving(true)
+    setMoveError(null)
+    try {
+      await movePortfolio(target.id, moveParentId, 0)
+      triggerRefresh()
+      setMoveSaved(true)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setMoveError(
+        msg.includes('400') || msg.includes('cycle')
+          ? (isEn ? 'Cannot move into a descendant' : '无法移入子节点')
+          : (isEn ? `Move failed: ${msg}` : `移动失败：${msg}`),
+      )
+    } finally {
+      setMoveSaving(false)
+    }
+  }
+
   const handleDelete = async () => {
     setDeleteLoading(true)
     try {
@@ -678,19 +582,26 @@ function PortfolioEditPanel({
   const isFolder    = target.is_folder
   const hasChildren = target.children.length > 0
 
+  const moveChanged = moveParentId !== target.parent_id
+
   const L = {
     hdr:        isEn ? (isFolder ? 'Edit Portfolio' : 'Edit Account') : (isFolder ? '编辑组合' : '编辑账户'),
-    back:       isEn ? 'Back' : '返回',
-    nameLbl:    isEn ? 'Name' : '名称',
-    save:       isEn ? 'Save' : '保存',
-    saving:     isEn ? 'Saving…' : '保存中…',
-    saved:      isEn ? 'Saved!' : '已保存！',
-    addChild:   isEn ? 'Add Child' : '添加子项',
-    addPf:      isEn ? 'Portfolio' : '组合',
-    addAcct:    isEn ? 'Account' : '账户',
-    danger:     isEn ? 'Danger Zone' : '危险操作',
+    back:       isEn ? 'Back'         : '返回',
+    nameLbl:    isEn ? 'Name'         : '名称',
+    save:       isEn ? 'Save'         : '保存',
+    saving:     isEn ? 'Saving…'      : '保存中…',
+    saved:      isEn ? 'Saved!'       : '已保存！',
+    locationLbl:isEn ? 'Location'     : '位置',
+    noParent:   isEn ? '— Root level (no parent) —' : '— 根层级（无父组合）—',
+    move:       isEn ? 'Move'         : '移动',
+    moving:     isEn ? 'Moving…'      : '移动中…',
+    moved:      isEn ? 'Moved!'       : '已移动！',
+    addChild:   isEn ? 'Add Child'    : '添加子项',
+    addPf:      isEn ? 'Portfolio'    : '组合',
+    addAcct:    isEn ? 'Account'      : '账户',
+    danger:     isEn ? 'Danger Zone'  : '危险操作',
     deleteBtn:  isEn ? (isFolder ? 'Delete Portfolio' : 'Delete Account') : '删除',
-    deleting:   isEn ? 'Deleting…' : '删除中…',
+    deleting:   isEn ? 'Deleting…'   : '删除中…',
     confirmMsg: isFolder && hasChildren
       ? isEn
         ? `"${target.name}" contains sub-portfolios. All nested items, trades, and cash will be permanently deleted.`
@@ -699,7 +610,7 @@ function PortfolioEditPanel({
         ? `Permanently delete "${target.name}" and all its trades and cash? Cannot be undone.`
         : `永久删除"${target.name}"及其所有交易和资金？此操作无法撤销。`,
     confirmYes: isEn ? 'Confirm Delete' : '确认删除',
-    confirmNo:  isEn ? 'Cancel' : '取消',
+    confirmNo:  isEn ? 'Cancel'         : '取消',
   }
 
   return (
@@ -742,6 +653,56 @@ function PortfolioEditPanel({
             </div>
             {renameError && (
               <p className="mt-1.5 text-[11.5px] text-rose-500">{renameError}</p>
+            )}
+          </div>
+
+          {/* ── Location / Move ───────────────────────────────────────────── */}
+          <div>
+            <label className="block text-[11px] font-bold uppercase tracking-wider
+                               text-slate-400 mb-1.5">
+              {L.locationLbl}
+            </label>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <select
+                  value={moveParentId ?? ''}
+                  onChange={e => {
+                    setMoveParentId(e.target.value === '' ? null : Number(e.target.value))
+                    setMoveSaved(false)
+                    setMoveError(null)
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50
+                             px-3.5 py-2.5 text-[13px] text-slate-900
+                             focus:outline-none focus:ring-2 focus:ring-sky-400/50 focus:border-sky-400
+                             transition appearance-none cursor-pointer pr-8"
+                >
+                  <option value="">{L.noParent}</option>
+                  {folderOptions.map(f => (
+                    <option key={f.id} value={f.id}>{f.label}</option>
+                  ))}
+                </select>
+                <svg
+                  className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2
+                             w-3.5 h-3.5 text-slate-400"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
+              <button
+                onClick={submitMove}
+                disabled={moveSaving || !moveChanged}
+                className="shrink-0 rounded-xl bg-sky-500 px-4 py-2.5
+                           text-[13px] font-semibold text-white
+                           hover:bg-sky-600 active:bg-sky-700
+                           disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                {moveSaving ? L.moving : moveSaved ? L.moved : L.move}
+              </button>
+            </div>
+            {moveError && (
+              <p className="mt-1.5 text-[11.5px] text-rose-500">{moveError}</p>
             )}
           </div>
 
@@ -868,33 +829,11 @@ export default function Sidebar() {
     toggleExpand,
   } = useSidebar()
 
-  const [activeId,         setActiveId]         = useState<number | null>(null)
-  const [dropState,        setDropState]        = useState<DropState>(EMPTY_DROP)
-  const [forceExpandedIds, setForceExpandedIds] = useState<ReadonlySet<number>>(new Set())
-  const [moving,           setMoving]           = useState(false)
-  const [showCreateMenu,   setShowCreateMenu]   = useState(false)
-  const [createIsFolder,   setCreateIsFolder]   = useState(false)
-  const [createParentId,   setCreateParentId]   = useState<number | null>(null)
+  const [showCreateMenu, setShowCreateMenu] = useState(false)
+  const [createIsFolder, setCreateIsFolder] = useState(false)
+  const [createParentId, setCreateParentId] = useState<number | null>(null)
 
-  // Refs
-  const hoverTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastOverIdRef    = useRef<number | null>(null)
-  const pointerXRef      = useRef(0)
-  const pointerYRef      = useRef(0)
-  const overlayRef       = useRef<HTMLDivElement>(null)
-  const createMenuRef    = useRef<HTMLDivElement>(null)
-  const treeContainerRef = useRef<HTMLDivElement>(null)
-  // Last pointer position where a concrete liveId was found (for sticky-target logic)
-  const lastHitPosRef    = useRef<{ x: number; y: number } | null>(null)
-
-  // Stable pointer tracker — updates refs and moves the preview overlay via direct DOM
-  const handlePointerMove = useCallback((e: PointerEvent) => {
-    pointerXRef.current = e.clientX
-    pointerYRef.current = e.clientY
-    if (overlayRef.current) {
-      overlayRef.current.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`
-    }
-  }, [])
+  const createMenuRef = useRef<HTMLDivElement>(null)
 
   const isEn = lang !== 'zh'
 
@@ -928,47 +867,16 @@ export default function Sidebar() {
     openPortfolioCreate()
   }
 
-  const isTradeMode  = mode === 'trade_entry'
-  const isAlertsMode = mode === 'price_alerts'
-  const isCreateMode = mode === 'portfolio_create'
-  const isEditMode   = mode === 'portfolio_edit'
-  const isPinnedMode = isTradeMode || isAlertsMode || isCreateMode || isEditMode
-
-  const sidebarWidth = isPinnedMode ? 580 : isExpanded ? 340 : 64
-
-  const L = {
-    newTrade:   lang === 'zh' ? '新建交易' : 'New Trade',
-    priceAlerts:lang === 'zh' ? '价格警报' : 'Price Alerts',
-    portfolios: lang === 'zh' ? '投资组合' : 'Portfolios',
-    noPf:       lang === 'zh' ? '暂无组合' : 'No portfolios',
-    back:       lang === 'zh' ? '返回'     : 'Back',
-    close:      lang === 'zh' ? '平仓交易' : 'Close Position',
-    alertsHdr:  lang === 'zh' ? '价格警报' : 'Price Alerts',
-    collapse:   lang === 'zh' ? '折叠'     : 'Collapse',
-    expand:     lang === 'zh' ? '展开'     : 'Expand',
-    newPf:      lang === 'zh' ? '新建组合' : 'New Portfolio',
-    newPfCard:  lang === 'zh' ? '新建组合 / 账户' : 'New Portfolio / Account',
-  }
-
-  // ── DnD sensors ─────────────────────────────────────────────────────────────
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  )
-
-  // ── id → { node, parentId } flat index ──────────────────────────────────────
+  // Ancestor IDs of the selected portfolio (for trail highlighting + auto-expand)
   const flatMap = useMemo(() => {
     const map = new Map<number, { node: Portfolio; parentId: number | null }>()
     const walk = (nodes: Portfolio[], pId: number | null) => {
-      nodes.forEach(n => {
-        map.set(n.id, { node: n, parentId: pId })
-        walk(n.children, n.id)
-      })
+      nodes.forEach(n => { map.set(n.id, { node: n, parentId: pId }); walk(n.children, n.id) })
     }
     walk(portfolios, null)
     return map
   }, [portfolios])
 
-  // ── Ancestor IDs of the selected portfolio (for trail highlighting + auto-expand)
   const ancestorIds = useMemo<ReadonlySet<number>>(() => {
     const ids = new Set<number>()
     if (!selectedPortfolioId) return ids
@@ -980,154 +888,26 @@ export default function Sidebar() {
     return ids
   }, [selectedPortfolioId, flatMap])
 
-  // ── Drag handlers ────────────────────────────────────────────────────────────
+  const isTradeMode  = mode === 'trade_entry'
+  const isAlertsMode = mode === 'price_alerts'
+  const isCreateMode = mode === 'portfolio_create'
+  const isEditMode   = mode === 'portfolio_edit'
+  const isPinnedMode = isTradeMode || isAlertsMode || isCreateMode || isEditMode
 
-  const handleDragStart = (e: DragStartEvent) => {
-    setActiveId(e.active.id as number)
-    setDropState(EMPTY_DROP)
-    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
-    lastOverIdRef.current  = null
-    lastHitPosRef.current  = null
-    document.addEventListener('pointermove', handlePointerMove)
+  const sidebarWidth = isPinnedMode ? 580 : isExpanded ? 340 : 64
+
+  const L = {
+    newTrade:   lang === 'zh' ? '新建交易'       : 'New Trade',
+    priceAlerts:lang === 'zh' ? '价格警报'       : 'Price Alerts',
+    portfolios: lang === 'zh' ? '投资组合'       : 'Portfolios',
+    noPf:       lang === 'zh' ? '暂无组合'       : 'No portfolios',
+    back:       lang === 'zh' ? '返回'           : 'Back',
+    close:      lang === 'zh' ? '平仓交易'       : 'Close Position',
+    alertsHdr:  lang === 'zh' ? '价格警报'       : 'Price Alerts',
+    collapse:   lang === 'zh' ? '折叠'           : 'Collapse',
+    expand:     lang === 'zh' ? '展开'           : 'Expand',
+    newPfCard:  lang === 'zh' ? '新建组合 / 账户' : 'New Portfolio / Account',
   }
-
-  /**
-   * Live hit-test: uses elementFromPoint to find the row under the pointer.
-   * Only folder nodes are valid drop targets (move-into-folder only).
-   */
-  const handleDragOver = useCallback((e: DragOverEvent) => {
-    const clientX = pointerXRef.current
-    const clientY = pointerYRef.current
-
-    // Live DOM hit-test — bypasses dnd-kit's stale cached rects
-    const element   = document.elementFromPoint(clientX, clientY)
-    const liElement = element?.closest<HTMLElement>('[data-portfolio-id]') ?? null
-    let liveId = liElement ? Number(liElement.getAttribute('data-portfolio-id')) : null
-
-    // Boundary guards: top + bottom magnets (absolute snap when in dead zones)
-    if (liveId === null && treeContainerRef.current) {
-      const treeRect    = treeContainerRef.current.getBoundingClientRect()
-      const sidebarEl   = treeContainerRef.current.closest<HTMLElement>('aside')
-      const sidebarRect = sidebarEl?.getBoundingClientRect()
-      const inSidebarX  = sidebarRect
-        ? clientX >= sidebarRect.left && clientX <= sidebarRect.right
-        : clientX >= treeRect.left && clientX <= treeRect.right
-
-      const allLis = inSidebarX
-        ? Array.from(treeContainerRef.current.querySelectorAll<HTMLElement>('[data-portfolio-id]'))
-        : []
-
-      // ── Top magnet: above tree OR within 30px of tree top ──────────────────
-      const aboveTree    = clientY < treeRect.top
-      const inTopBuffer  = clientY >= treeRect.top && clientY <= treeRect.top + 30
-
-      if (inSidebarX && (aboveTree || inTopBuffer)) {
-        const firstFolder = allLis.find(li => {
-          const id = Number(li.getAttribute('data-portfolio-id'))
-          return flatMap.get(id)?.node.is_folder
-        })
-        const targetLi = firstFolder ?? allLis[0] ?? null
-        if (targetLi) liveId = Number(targetLi.getAttribute('data-portfolio-id'))
-      }
-
-      // ── Bottom magnet: in pb-20 whitespace (bottom 80px of tree container) ─
-      if (liveId === null && inSidebarX && clientY > treeRect.bottom - 80) {
-        let lastFolderLi: HTMLElement | null = null
-        for (const li of allLis) {
-          const id = Number(li.getAttribute('data-portfolio-id'))
-          if (flatMap.get(id)?.node.is_folder) lastFolderLi = li
-        }
-        const targetLi = lastFolderLi ?? (allLis.length > 0 ? allLis[allLis.length - 1] : null)
-        if (targetLi) liveId = Number(targetLi.getAttribute('data-portfolio-id'))
-      }
-    }
-
-    // ── Sticky target: pointer barely moved → keep last hit to avoid flicker ──
-    if (liveId !== null) {
-      lastHitPosRef.current = { x: clientX, y: clientY }
-    } else if (lastHitPosRef.current !== null && lastOverIdRef.current !== null) {
-      const dx = clientX - lastHitPosRef.current.x
-      const dy = clientY - lastHitPosRef.current.y
-      if (dx * dx + dy * dy < 36) {   // threshold: 6px radius
-        liveId = lastOverIdRef.current
-      }
-    }
-
-    // Fall back to dnd-kit collision result if elementFromPoint misses (pointer in gap)
-    const overId = liveId ?? (e.over ? (e.over.id as number) : null)
-
-    if (overId === null) {
-      setDropState(EMPTY_DROP)
-      if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
-      lastOverIdRef.current = null
-      return
-    }
-
-    const overNode     = flatMap.get(overId)?.node
-    const activeItemId = e.active.id as number
-
-    // Determine why a drop would be refused (for UI transparency)
-    const refusalReason: RefusalReason = !overNode?.is_folder     ? 'not_a_folder'
-      : overId === activeItemId                                    ? 'self'
-      : isDescendantOf(overId, activeItemId, flatMap)             ? 'descendant'
-      : null
-
-    const valid = refusalReason === null
-
-    setDropState({ targetId: overId, valid, refusalReason })
-
-    // Auto-expand timer when hovering a valid folder target
-    const targetChanged = overId !== lastOverIdRef.current
-    lastOverIdRef.current = overId
-
-    if (targetChanged) {
-      if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
-      if (valid && overNode?.is_folder) {
-        hoverTimerRef.current = setTimeout(() => {
-          setForceExpandedIds(prev => new Set([...prev, overId!]))
-        }, 500)
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flatMap])
-
-  const handleDragCancel = () => {
-    document.removeEventListener('pointermove', handlePointerMove)
-    setActiveId(null)
-    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
-    lastOverIdRef.current  = null
-    lastHitPosRef.current  = null
-    setDropState(EMPTY_DROP)
-    setForceExpandedIds(new Set())
-  }
-
-  const handleDragEnd = async (e: DragEndEvent) => {
-    document.removeEventListener('pointermove', handlePointerMove)
-    setActiveId(null)
-    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
-    lastOverIdRef.current = null
-
-    // Capture drop state before clearing
-    const { targetId: folderId, valid } = dropState
-    setDropState(EMPTY_DROP)
-    setForceExpandedIds(new Set())
-
-    const { active } = e
-    if (!folderId || !valid || moving) return
-
-    setMoving(true)
-    try {
-      // Move active into the target folder; backend handles cycle guard
-      await movePortfolio(active.id as number, folderId, 0)
-      triggerRefresh()
-    } catch (err) {
-      console.error('Portfolio move failed:', err)
-    } finally {
-      setMoving(false)
-    }
-  }
-
-  const activeNode = activeId ? (flatMap.get(activeId)?.node ?? null) : null
 
   return (
     <aside
@@ -1140,7 +920,7 @@ export default function Sidebar() {
 
       {isTradeMode ? (
         /* ══════════════════════════════════════════════════════════════════
-         * STATE 3a — TRADE ENTRY  (520px)
+         * STATE 3a — TRADE ENTRY  (580px)
          * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
           <PanelHeader
@@ -1157,7 +937,7 @@ export default function Sidebar() {
 
       ) : isAlertsMode ? (
         /* ══════════════════════════════════════════════════════════════════
-         * STATE 3b — PRICE ALERTS  (520px)
+         * STATE 3b — PRICE ALERTS  (580px)
          * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col flex-1 min-h-0">
           <PanelHeader
@@ -1171,7 +951,7 @@ export default function Sidebar() {
 
       ) : isCreateMode ? (
         /* ══════════════════════════════════════════════════════════════════
-         * STATE 3c — PORTFOLIO CREATE  (520px)
+         * STATE 3c — PORTFOLIO CREATE  (580px)
          * ══════════════════════════════════════════════════════════════════ */
         <PortfolioCreatePanel
           onBack={() => { setCreateParentId(null); exitPortfolioCreate() }}
@@ -1181,7 +961,7 @@ export default function Sidebar() {
 
       ) : isEditMode && editTarget ? (
         /* ══════════════════════════════════════════════════════════════════
-         * STATE 3d — PORTFOLIO EDIT  (520px)
+         * STATE 3d — PORTFOLIO EDIT  (580px)
          * ══════════════════════════════════════════════════════════════════ */
         <PortfolioEditPanel
           target={editTarget}
@@ -1191,7 +971,7 @@ export default function Sidebar() {
 
       ) : isExpanded ? (
         /* ══════════════════════════════════════════════════════════════════
-         * STATE 2 — EXPANDED NAV  (224px)
+         * STATE 2 — EXPANDED NAV  (340px)
          * ══════════════════════════════════════════════════════════════════ */
         <div className="flex flex-col flex-1 min-h-0 overflow-y-auto pt-8">
 
@@ -1269,8 +1049,8 @@ export default function Sidebar() {
           {/* Thin rule */}
           <div className="mx-4 h-px bg-slate-100 mb-3 shrink-0" />
 
-          {/* Portfolio list with drag-and-drop */}
-          <div ref={treeContainerRef} className="px-3 pt-4 pb-20 space-y-0.5">
+          {/* Portfolio tree */}
+          <div className="px-3 pt-2 pb-8 space-y-0.5">
             {loading ? (
               <div className="space-y-1.5 px-1 pt-1">
                 {[75, 60, 70].map(w => (
@@ -1302,41 +1082,22 @@ export default function Sidebar() {
                 </div>
                 <p className="text-[12px] font-medium text-slate-400">{L.noPf}</p>
                 <p className="mt-1 text-[11px] text-slate-300 leading-snug">
-                  {isEn ? 'Create your first portfolio to organize accounts and strategies' : '创建第一个组合来组织账户和策略'}
+                  {isEn
+                    ? 'Create your first portfolio to organize accounts and strategies'
+                    : '创建第一个组合来组织账户和策略'}
                 </p>
               </div>
             ) : (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDragEnd={handleDragEnd}
-                onDragCancel={handleDragCancel}
-              >
-                <SortableContext
-                  items={portfolios.map(p => p.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <ul className="space-y-0.5">
-                    {portfolios.map(p => (
-                      <SortablePortfolioNode
-                        key={p.id}
-                        node={p}
-                        depth={0}
-                        parentId={null}
-                        activeId={activeId}
-                        activeNode={activeNode}
-                        dropState={dropState}
-                        expandSet={forceExpandedIds}
-                        ancestorIds={ancestorIds}
-                      />
-                    ))}
-                  </ul>
-                </SortableContext>
-
-                {/* DragOverlay removed — preview rendered via portal below */}
-              </DndContext>
+              <ul className="space-y-0.5">
+                {portfolios.map(p => (
+                  <PortfolioTreeNode
+                    key={p.id}
+                    node={p}
+                    depth={0}
+                    ancestorIds={ancestorIds}
+                  />
+                ))}
+              </ul>
             )}
           </div>
         </div>
@@ -1427,30 +1188,6 @@ export default function Sidebar() {
         </div>
       )}
 
-      {/* Pointer-anchored drag preview — mounts at document.body, position updated
-          via direct DOM in handlePointerMove (no React re-renders for position). */}
-      {activeNode && createPortal(
-        <div
-          ref={overlayRef}
-          style={{
-            position:       'fixed',
-            top:            0,
-            left:           0,
-            transform:      `translate(${pointerXRef.current + 12}px, ${pointerYRef.current + 12}px)`,
-            width:          196,
-            zIndex:         9999,
-            pointerEvents:  'none',
-            willChange:     'transform',
-          }}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-                     bg-white/95 border border-sky-300 shadow-xl backdrop-blur-sm
-                     text-[12.5px] font-semibold text-sky-700"
-        >
-          {activeNode.is_folder ? <IconWallet active /> : <IconBriefcase active />}
-          <span className="truncate">{activeNode.name}</span>
-        </div>,
-        document.body,
-      )}
     </aside>
   )
 }
