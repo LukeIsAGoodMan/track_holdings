@@ -1,18 +1,19 @@
 """
-PriceFeedService — background asyncio task that polls yfinance and
-broadcasts price updates + holdings changes via WebSocket.
+PriceFeedService — Dirty-Flag + Dual-Loop architecture for real-time
+portfolio updates via WebSocket.
+
+Architecture:
+  FeedStateManager    — Memory index: portfolio <-> symbols, dirty flags
+  Spot Loop  (30s)    — Fetch prices, broadcast spot_update, flag dirty portfolios
+  Recompute Loop (120s) — Consume dirty set atomically, recompute holdings/risk
 
 Lifecycle:
   start() — called in FastAPI lifespan (startup)
   stop()  — called in FastAPI lifespan (shutdown)
 
-Poll cycle:
-  1. Collect all symbols subscribed by active WS connections
-  2. Batch-fetch spot prices via yf.download() (or generate mock jitter)
-  3. Diff against PriceCache → identify changed symbols
-  4. Broadcast spot_update to subscribers
-  4.5 Check price alerts against changed prices
-  5. For each affected user/portfolio, recompute HoldingGroups and push holdings_update
+External triggers:
+  mark_portfolio_dirty(pid)      — trades, cash adjustments, macro events
+  sync_portfolio_index(pid, syms) — WS subscribe/unsubscribe
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import logging
 import os
 import random
 import time
+from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP
 
 from app.config import settings
@@ -43,15 +45,158 @@ _MOCK_SEED_PRICES: dict[str, Decimal] = {
     "META": Decimal("630.50"), "GOOGL": Decimal("180.70"),
 }
 
-
 # ── Shared vol cache (refreshes less often than spots) ────────────────────
 _vol_cache: dict[str, Decimal] = {}
 _vol_cache_ts: float = 0.0
 _VOL_CACHE_TTL = 300.0  # 5 minutes
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# PortfolioContext — single DB fetch shared by holdings + risk recompute
+# ═══════════════════════════════════════════════════════════════════════════
+
+@dataclass
+class PortfolioContext:
+    """
+    Immutable snapshot of a portfolio's state for one recompute cycle.
+
+    Fetched once from the DB, then passed to both holdings and risk
+    computation — eliminates the duplicate DB round-trip.
+    """
+    portfolio_id: int
+    user_id: int
+    positions: list  # list[PositionRow] from position_engine
+    symbols: list[str] = field(default_factory=list)
+    spot_map: dict[str, Decimal | None] = field(default_factory=dict)
+    vol_map: dict[str, Decimal] = field(default_factory=dict)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FeedStateManager — async-safe portfolio <-> symbol memory index
+# ═══════════════════════════════════════════════════════════════════════════
+
+class FeedStateManager:
+    """
+    In-memory index mapping portfolios to their constituent symbols and
+    tracking which portfolios need recomputation (dirty flags).
+
+    All index and dirty-set mutations are protected by a single asyncio.Lock
+    so the spot loop and recompute loop never race on shared state.
+    """
+
+    def __init__(self) -> None:
+        # portfolio_id -> set of symbols held in that portfolio
+        self._portfolio_symbols: dict[int, set[str]] = {}
+        # symbol -> set of portfolio_ids that hold it (inverse index)
+        self._symbol_portfolios: dict[str, set[int]] = {}
+        # portfolio_ids that need recomputation
+        self._dirty: set[int] = set()
+        # portfolio_id -> user_id (for broadcast routing)
+        self._portfolio_owner: dict[int, int] = {}
+        # Unified lock for ALL index + dirty-set operations
+        self._lock = asyncio.Lock()
+
+    # ── Portfolio <-> Symbol indexing (all async, lock-protected) ────────
+
+    async def sync_portfolio_index(
+        self, portfolio_id: int, user_id: int, current_symbols: set[str]
+    ) -> None:
+        """
+        Idempotent rebuild: replace the symbol set for a portfolio.
+
+        Called when a WS client subscribes or when positions change.
+        Rebuilds from scratch rather than incremental diff to guarantee
+        the memory mirror stays consistent with the DB.
+
+        If current_symbols is empty, clears the mapping (ghost cleanup).
+        """
+        async with self._lock:
+            # Remove old inverse entries
+            old_symbols = self._portfolio_symbols.get(portfolio_id, set())
+            for sym in old_symbols:
+                pids = self._symbol_portfolios.get(sym)
+                if pids:
+                    pids.discard(portfolio_id)
+                    if not pids:
+                        del self._symbol_portfolios[sym]
+
+            # Write new forward + inverse entries
+            if current_symbols:
+                self._portfolio_symbols[portfolio_id] = set(current_symbols)
+                self._portfolio_owner[portfolio_id] = user_id
+                for sym in current_symbols:
+                    self._symbol_portfolios.setdefault(sym, set()).add(portfolio_id)
+            else:
+                # Empty positions: clean up entirely (ghost prevention)
+                self._portfolio_symbols.pop(portfolio_id, None)
+                self._portfolio_owner.pop(portfolio_id, None)
+
+    async def remove_portfolio(self, portfolio_id: int) -> None:
+        """Clean up when a portfolio is unsubscribed or deleted."""
+        async with self._lock:
+            old_symbols = self._portfolio_symbols.pop(portfolio_id, set())
+            self._portfolio_owner.pop(portfolio_id, None)
+            for sym in old_symbols:
+                pids = self._symbol_portfolios.get(sym)
+                if pids:
+                    pids.discard(portfolio_id)
+                    if not pids:
+                        del self._symbol_portfolios[sym]
+
+    async def portfolios_for_symbols(self, symbols: set[str]) -> set[int]:
+        """Return all portfolio_ids that hold ANY of the given symbols."""
+        async with self._lock:
+            result: set[int] = set()
+            for sym in symbols:
+                pids = self._symbol_portfolios.get(sym)
+                if pids:
+                    result.update(pids)
+            return result
+
+    async def all_indexed_symbols(self) -> set[str]:
+        """All symbols across all indexed portfolios."""
+        async with self._lock:
+            return set(self._symbol_portfolios.keys())
+
+    async def get_owner(self, portfolio_id: int) -> int | None:
+        """Return the user_id that owns a portfolio, or None."""
+        async with self._lock:
+            return self._portfolio_owner.get(portfolio_id)
+
+    # ── Dirty flagging ────────────────────────────────────────────────────
+
+    async def mark_dirty(self, portfolio_ids: set[int]) -> None:
+        """Mark portfolios for recomputation (price-triggered or external)."""
+        async with self._lock:
+            self._dirty.update(portfolio_ids)
+
+    async def mark_dirty_one(self, portfolio_id: int) -> None:
+        """Convenience: mark a single portfolio dirty."""
+        async with self._lock:
+            self._dirty.add(portfolio_id)
+
+    async def consume_dirty(self) -> set[int]:
+        """
+        Atomically snapshot and clear the dirty set.
+
+        Returns the set of portfolio_ids that need recomputation.
+        """
+        async with self._lock:
+            snapshot = set(self._dirty)
+            self._dirty.clear()
+            return snapshot
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PriceFeedService — Dual-Loop orchestrator
+# ═══════════════════════════════════════════════════════════════════════════
+
 class PriceFeedService:
-    """Background price poller + WebSocket broadcaster."""
+    """
+    Dual-loop background service:
+      - Spot Loop  (30s): fetch prices -> broadcast spot_update -> flag dirty
+      - Recompute Loop (120s): consume dirty -> fresh DB fetch -> broadcast holdings/risk
+    """
 
     def __init__(
         self,
@@ -65,29 +210,71 @@ class PriceFeedService:
         self.manager = manager
         self.cache = cache
         self.poll_interval = poll_interval or settings.ws_price_poll_interval
+        self.recompute_interval: float = 120.0
         self.alert_engine: AlertEngine | None = alert_engine
-        self._task: asyncio.Task | None = None
+        self.state = FeedStateManager()
+
+        self._spot_task: asyncio.Task | None = None
+        self._recompute_task: asyncio.Task | None = None
         self._running = False
         self._mock_mode = os.environ.get("USE_MOCK_DATA", "").strip() in ("1", "true", "yes")
+
+    # ── Public API for external triggers ──────────────────────────────────
+
+    async def mark_portfolio_dirty(self, portfolio_id: int) -> None:
+        """
+        External trigger: mark a portfolio for recomputation.
+
+        Call this after trades, cash adjustments, manual refreshes, or
+        macro events that should update the holdings view even when
+        prices haven't changed.
+        """
+        await self.state.mark_dirty_one(portfolio_id)
+        logger.debug("Portfolio %d marked dirty (external trigger)", portfolio_id)
+
+    async def sync_portfolio_index(
+        self, portfolio_id: int, user_id: int, symbols: set[str]
+    ) -> None:
+        """
+        Update the portfolio <-> symbol index when a WS client subscribes.
+
+        Called from the WS subscribe handler. Idempotent — safe to call
+        on every reconnect.
+        """
+        await self.state.sync_portfolio_index(portfolio_id, user_id, symbols)
+
+    async def remove_portfolio_index(self, portfolio_id: int) -> None:
+        """Clean up index when a WS client unsubscribes."""
+        await self.state.remove_portfolio(portfolio_id)
 
     # ── Lifecycle ─────────────────────────────────────────────────────────
 
     def start(self) -> None:
-        if self._task is not None:
+        if self._spot_task is not None:
             return
         self._running = True
-        self._task = asyncio.create_task(self._poll_loop(), name="price_feed")
-        logger.info("PriceFeedService started (interval=%ss)", self.poll_interval)
+        self._spot_task = asyncio.create_task(
+            self._spot_loop(), name="price_feed_spot"
+        )
+        self._recompute_task = asyncio.create_task(
+            self._recompute_loop(), name="price_feed_recompute"
+        )
+        logger.info(
+            "PriceFeedService started (spot=%ss, recompute=%ss)",
+            self.poll_interval, self.recompute_interval,
+        )
 
     async def stop(self) -> None:
         self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-            self._task = None
+        for task in (self._spot_task, self._recompute_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self._spot_task = None
+        self._recompute_task = None
         logger.info("PriceFeedService stopped")
 
     def invalidate_alert_cache(self) -> None:
@@ -95,25 +282,31 @@ class PriceFeedService:
         if self.alert_engine:
             self.alert_engine.invalidate_cache()
 
-    # ── Main poll loop ────────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════════
+    # SPOT LOOP (30s) — fetch prices, broadcast, flag dirty
+    # ══════════════════════════════════════════════════════════════════════
 
-    async def _poll_loop(self) -> None:
+    async def _spot_loop(self) -> None:
         while self._running:
+            deadline = time.monotonic() + self.poll_interval
             try:
-                await self._poll_once()
+                await self._spot_tick()
             except asyncio.CancelledError:
                 break
             except Exception:
-                logger.exception("PriceFeed poll error")
-            await asyncio.sleep(self.poll_interval)
+                logger.exception("Spot loop error")
+            # Deadline-based sleep: constant cycle time regardless of tick duration
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                await asyncio.sleep(remaining)
 
-    async def _poll_once(self) -> None:
-        # 1. Collect symbols (WS subscribers + alert symbols + macro)
+    async def _spot_tick(self) -> None:
+        # 1. Collect symbols: WS subscribers + indexed portfolios + alerts + macro
         symbols = self.manager.all_subscribed_symbols()
+        symbols |= await self.state.all_indexed_symbols()
         if self.alert_engine:
-            symbols = symbols | self.alert_engine.all_alert_symbols()
-        # Phase 12a: always include macro index symbols for MacroService
-        symbols = symbols | {"^GSPC", "^VIX"}
+            symbols |= self.alert_engine.all_alert_symbols()
+        symbols |= {"^GSPC", "^VIX"}  # macro indices always tracked
         if not symbols:
             return
 
@@ -130,12 +323,12 @@ class PriceFeedService:
 
         fetch_ms = (time.monotonic() - t0) * 1000
         logger.debug(
-            "Price fetch: %d symbols in %.0fms  (got %d prices)%s",
+            "Spot fetch: %d syms in %.0fms (got %d)%s",
             len(symbol_list), fetch_ms, len(new_prices),
             " [MOCK]" if self._mock_mode else "",
         )
 
-        # 3. Diff against cache
+        # 3. Diff against cache (Decimal comparison)
         changed = self.cache.update_and_diff(new_prices)
         if not changed:
             return
@@ -146,8 +339,7 @@ class PriceFeedService:
             self.cache.stats(),
         )
 
-        # 4. Broadcast spot_update to affected subscribers
-        # Enrich with intraday change / changesPercentage from FMP quote cache
+        # 4. Broadcast spot_update to WS subscribers (read-only snapshot)
         change_map: dict[str, str] = {}
         changepct_map: dict[str, str] = {}
         for sym in changed:
@@ -164,122 +356,203 @@ class PriceFeedService:
             "change": change_map,
             "changepct": changepct_map,
         }
-        # Send to all connections that have at least one changed symbol
-        for conn in list(self.manager._connections.values()):
-            if conn.subscribed_symbols & set(changed.keys()):
-                await self.manager.send_json(conn.ws, spot_msg)
+        changed_syms = set(changed.keys())
+        conns_snapshot = self.manager.snapshot_connections()
+        spot_tasks = []
+        for conn in conns_snapshot:
+            if conn.subscribed_symbols & changed_syms:
+                spot_tasks.append(self.manager.send_json(conn.ws, spot_msg))
+        if spot_tasks:
+            await asyncio.gather(*spot_tasks, return_exceptions=True)
 
-        # 4.5 Check price alerts
-        if self.alert_engine and changed:
+        # 5. Check price alerts
+        if self.alert_engine:
             try:
                 await self.alert_engine.check_alerts(changed)
             except Exception:
                 logger.exception("Alert check error")
 
-        # 5. Recompute holdings for affected users/portfolios
-        await self._broadcast_holdings_updates(changed)
+        # 6. Mark affected portfolios dirty via inverse index
+        affected_pids = await self.state.portfolios_for_symbols(changed_syms)
 
-    # ── Holdings recomputation & broadcast ────────────────────────────────
+        # Also mark portfolios from WS connections (backward compat — covers
+        # portfolios that haven't been indexed via sync_portfolio_index yet)
+        for conn in conns_snapshot:
+            if conn.subscribed_symbols & changed_syms:
+                for pid in conn.subscribed_portfolio_ids:
+                    affected_pids.add(pid)
+                    # Ensure owner mapping exists for broadcast routing
+                    if await self.state.get_owner(pid) is None:
+                        await self.state.sync_portfolio_index(
+                            pid, conn.user_id, conn.subscribed_symbols
+                        )
 
-    async def _broadcast_holdings_updates(
-        self, changed_prices: dict[str, Decimal]
-    ) -> None:
-        """
-        For each active subscription affected by price changes,
-        recompute HoldingGroups and push holdings_update.
-        """
-        global _vol_cache, _vol_cache_ts
+        if affected_pids:
+            await self.state.mark_dirty(affected_pids)
+            logger.debug("Marked %d portfolios dirty", len(affected_pids))
+
+    # ══════════════════════════════════════════════════════════════════════
+    # RECOMPUTE LOOP (120s) — consume dirty set, fresh DB fetch, broadcast
+    # ══════════════════════════════════════════════════════════════════════
+
+    async def _recompute_loop(self) -> None:
+        # Initial delay: let spot loop warm up the cache first
+        await asyncio.sleep(min(self.poll_interval * 2, 10.0))
+
+        while self._running:
+            deadline = time.monotonic() + self.recompute_interval
+            try:
+                await self._recompute_tick()
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Recompute loop error")
+            # Deadline-based sleep: constant cycle time
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+
+    async def _recompute_tick(self) -> None:
+        # Atomic consumption: snapshot and clear dirty set
+        dirty_pids = await self.state.consume_dirty()
+        if not dirty_pids:
+            return
+
+        logger.info("Recomputing %d dirty portfolios", len(dirty_pids))
+        t0 = time.monotonic()
 
         # Refresh vol cache if stale
-        now = time.monotonic()
-        if now - _vol_cache_ts > _VOL_CACHE_TTL:
-            all_syms = list(self.manager.all_subscribed_symbols())
-            if all_syms:
-                vols = await asyncio.gather(
-                    *[yfinance_client.get_hist_vol(s) for s in all_syms]
-                )
-                _vol_cache = dict(zip(all_syms, vols))
-                _vol_cache_ts = now
-                logger.debug("Vol cache refreshed: %d symbols", len(all_syms))
+        await self._maybe_refresh_vol_cache()
 
         # Build full spot map from cache
         all_spots = self.cache.all_prices()
 
-        # Deduplicate: {(user_id, portfolio_id)} that need updates
-        seen: set[tuple[int, int]] = set()
-
-        for conn in list(self.manager._connections.values()):
-            # Check if this connection cares about any changed symbol
-            if not (conn.subscribed_symbols & set(changed_prices.keys())):
+        # Build PortfolioContexts — single DB fetch per portfolio
+        contexts: list[PortfolioContext] = []
+        for pid in dirty_pids:
+            user_id = await self._resolve_user_for_portfolio(pid)
+            if user_id is None:
+                logger.debug("Skipping portfolio %d: no known user", pid)
                 continue
 
-            for pid in conn.subscribed_portfolio_ids:
-                key = (conn.user_id, pid)
-                if key in seen:
-                    continue
-                seen.add(key)
+            try:
+                ctx = await self._build_portfolio_context(pid, user_id, all_spots)
+                contexts.append(ctx)
+            except Exception:
+                logger.exception(
+                    "Context build failed: user=%d pid=%d", user_id, pid
+                )
 
-                try:
-                    await self._compute_and_send_holdings(
-                        conn.user_id, pid, all_spots
-                    )
-                except Exception:
+        # Process all portfolios — parallel broadcasts via gather
+        tasks = []
+        for ctx in contexts:
+            tasks.append(self._recompute_portfolio(ctx))
+        if tasks:
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for ctx, result in zip(contexts, results):
+                if isinstance(result, Exception):
                     logger.exception(
-                        "Holdings update failed: user=%d pid=%d",
-                        conn.user_id, pid,
+                        "Recompute failed: user=%d pid=%d: %s",
+                        ctx.user_id, ctx.portfolio_id, result,
                     )
 
-    async def _compute_and_send_holdings(
-        self,
-        user_id: int,
-        portfolio_id: int,
-        spot_map: dict[str, Decimal],
-    ) -> None:
-        """Compute HoldingGroups for one user/portfolio and broadcast."""
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        logger.info(
+            "Recompute cycle done: %d portfolios in %.0fms",
+            len(dirty_pids), elapsed_ms,
+        )
+
+    async def _build_portfolio_context(
+        self, portfolio_id: int, user_id: int, all_spots: dict[str, Decimal]
+    ) -> PortfolioContext:
+        """Single DB fetch -> PortfolioContext shared by holdings + risk."""
         async with AsyncSessionLocal() as db:
             pids = await resolve_portfolio_ids(db, user_id, portfolio_id)
             positions = await position_engine.calculate_positions(
                 db, portfolio_ids=pids
             )
 
-        if not positions:
+        symbols = list({pos.instrument.symbol for pos in positions})
+        spot_map = {s: all_spots.get(s) for s in symbols}
+        vol_map = {s: _vol_cache.get(s, Decimal("0.30")) for s in symbols}
+
+        # Update index with current symbol set — empty positions clear the mapping
+        await self.state.sync_portfolio_index(
+            portfolio_id, user_id, set(symbols)
+        )
+
+        return PortfolioContext(
+            portfolio_id=portfolio_id,
+            user_id=user_id,
+            positions=positions,
+            symbols=symbols,
+            spot_map=spot_map,
+            vol_map=vol_map,
+        )
+
+    async def _recompute_portfolio(self, ctx: PortfolioContext) -> None:
+        """Compute holdings + risk from a shared PortfolioContext and broadcast."""
+        if not ctx.positions:
             return
 
-        # Build spot/vol maps for this portfolio's symbols
-        symbols = list({pos.instrument.symbol for pos in positions})
-        port_spot = {s: spot_map.get(s) for s in symbols}
-        port_vol  = {s: _vol_cache.get(s, Decimal("0.30")) for s in symbols}
+        # Holdings
+        await self._compute_and_send_holdings(ctx)
+        # Risk
+        await self._compute_and_send_risk(ctx)
 
-        # ── Underlying-only perf — identical source to REST /holdings ─────────
-        # get_perf_cached reads from pre-warmed _last_known cache (zero API calls
-        # when warm).  Returns the underlying's daily/weekly/monthly % move —
-        # consistent across stocks and option underlyings alike.
-        # NO manual BS calculation here — the heatmap always tracks the
-        # underlying's price move, not the leveraged option contract change.
+    async def _resolve_user_for_portfolio(self, portfolio_id: int) -> int | None:
+        """
+        Find the user_id for a portfolio — check state index first,
+        then fall back to scanning WS connections.
+        """
+        owner = await self.state.get_owner(portfolio_id)
+        if owner is not None:
+            return owner
+        # Fallback: scan WS connections (read-only snapshot)
+        for conn in self.manager.snapshot_connections():
+            if portfolio_id in conn.subscribed_portfolio_ids:
+                return conn.user_id
+        return None
+
+    # ── Holdings computation & broadcast ──────────────────────────────────
+
+    async def _compute_and_send_holdings(self, ctx: PortfolioContext) -> None:
+        """
+        Compute HoldingGroups from PortfolioContext -> broadcast holdings_update.
+
+        Uses the shared context (single DB fetch) rather than re-querying.
+        """
+        # Underlying-only perf — identical source to REST /holdings
         perf_results = await asyncio.gather(
-            *[yfinance_client.get_perf_cached(s) for s in symbols],
+            *[yfinance_client.get_perf_cached(s) for s in ctx.symbols],
             return_exceptions=True,
         )
         port_perf: dict[str, dict] = {}
-        for sym, result in zip(symbols, perf_results):
+        for sym, result in zip(ctx.symbols, perf_results):
             if isinstance(result, dict):
                 port_perf[sym] = result
 
-        groups = compute_holding_groups(positions, port_spot, port_vol, perf_map=port_perf or None)
+        groups = compute_holding_groups(
+            ctx.positions, ctx.spot_map, ctx.vol_map, perf_map=port_perf or None
+        )
 
-        # Serialize via Pydantic
         holdings_msg = {
             "type": "holdings_update",
-            "portfolio_id": portfolio_id,
+            "portfolio_id": ctx.portfolio_id,
             "data": [g.model_dump(mode="json") for g in groups],
         }
-        await self.manager.broadcast_to_user(user_id, holdings_msg)
+        await self.manager.broadcast_to_user(ctx.user_id, holdings_msg)
 
-        # ── Also compute and broadcast risk_update ───────────────────
-        risk_summary = compute_risk_summary(positions, port_spot, port_vol)
+    async def _compute_and_send_risk(self, ctx: PortfolioContext) -> None:
+        """
+        Compute risk summary from PortfolioContext -> broadcast risk_update.
+
+        Uses the shared context (single DB fetch) rather than re-querying.
+        """
+        risk_summary = compute_risk_summary(ctx.positions, ctx.spot_map, ctx.vol_map)
         risk_msg = {
             "type": "risk_update",
-            "portfolio_id": portfolio_id,
+            "portfolio_id": ctx.portfolio_id,
             "data": {
                 "total_net_delta": str(risk_summary["total_net_delta"]),
                 "total_gamma": str(risk_summary["total_gamma"]),
@@ -291,7 +564,33 @@ class PriceFeedService:
                 "risk_alerts": risk_summary["risk_alerts"],
             },
         }
-        await self.manager.broadcast_to_user(user_id, risk_msg)
+        await self.manager.broadcast_to_user(ctx.user_id, risk_msg)
+
+    # ── Vol cache management ──────────────────────────────────────────────
+
+    async def _maybe_refresh_vol_cache(self) -> None:
+        """Refresh the shared vol cache if TTL has expired."""
+        global _vol_cache, _vol_cache_ts
+
+        now = time.monotonic()
+        if now - _vol_cache_ts <= _VOL_CACHE_TTL:
+            return
+
+        # Cover all symbols: WS subscriptions + indexed portfolios + alerts
+        all_syms_set = self.manager.all_subscribed_symbols()
+        all_syms_set |= await self.state.all_indexed_symbols()
+        if self.alert_engine:
+            all_syms_set |= self.alert_engine.all_alert_symbols()
+        all_syms = list(all_syms_set)
+        if not all_syms:
+            return
+
+        vols = await asyncio.gather(
+            *[yfinance_client.get_hist_vol(s) for s in all_syms]
+        )
+        _vol_cache = dict(zip(all_syms, vols))
+        _vol_cache_ts = now
+        logger.debug("Vol cache refreshed: %d symbols", len(all_syms))
 
     # ── Mock-mode helpers ──────────────────────────────────────────────────
 

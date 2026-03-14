@@ -94,6 +94,10 @@ class ConnectionManager:
             if conn.user_id == user_id
         ]
 
+    def snapshot_connections(self) -> list[WSConnection]:
+        """Return a read-only snapshot of all connections (safe to iterate)."""
+        return list(self._connections.values())
+
     @property
     def active_count(self) -> int:
         return len(self._connections)
