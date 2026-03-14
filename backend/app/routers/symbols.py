@@ -65,12 +65,26 @@ _TYPE_MAP: dict[str, str] = {
     "option": "OPTION",
 }
 
+# Well-known index symbols absent from master_symbols.json (exchanges don't list
+# tradeable instruments for these).  Stored without the leading '^' so that both
+# "VIX" and "^VIX" match after normalisation.
+_KNOWN_INDEX_SYMBOLS: frozenset[str] = frozenset({
+    "VIX", "SPX", "NDX", "RUT", "DJI", "GSPC", "TNX", "TYX",
+    "VXN", "OVX", "GVZ", "VVIX", "MOVE",
+})
+
 
 def get_asset_class(symbol: str) -> str:
     """Return the asset class string for a symbol: 'stock' | 'etf' | 'index' | 'crypto'.
     Falls back to 'stock' if symbol is not in the master list.
+
+    Leading '^' is stripped before lookup so that both 'VIX' and '^VIX'
+    resolve to 'index' rather than the 'stock' fallback.
     """
-    entry = _symbol_map.get(symbol.upper().strip())
+    bare = symbol.upper().strip().lstrip("^")
+    if bare in _KNOWN_INDEX_SYMBOLS:
+        return "index"
+    entry = _symbol_map.get(bare)
     if entry is None:
         return "stock"
     return entry.get("t") or "stock"

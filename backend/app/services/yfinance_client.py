@@ -35,8 +35,33 @@ _SYMBOL_MAP: dict[str, str] = {
     "^VIX":  "VIX",
 }
 
+# Known index symbols that may be stored with or without a leading caret.
+# Normalising to bare form keeps FMP calls consistent (FMP uses VIX, not ^VIX).
+_INDEX_BARE: frozenset[str] = frozenset({
+    "VIX", "SPX", "NDX", "RUT", "DJI", "GSPC", "TNX", "TYX", "VXN",
+})
+
+
+def normalize_ticker(symbol: str) -> str:
+    """
+    Return the canonical bare-symbol form used by FMP.
+
+    - Strips a leading '^' so that ^VIX, ^SPX, ^NDX etc. are normalised to
+      their FMP equivalents (VIX, SPX, NDX).
+    - Uppercases the result.
+
+    The inverse (adding '^') is intentionally NOT done here because FMP does
+    not require it; the _SYMBOL_MAP below handles any residual caret variants.
+    """
+    sym = symbol.upper().strip()
+    if sym.startswith("^"):
+        sym = sym[1:]
+    return sym
+
+
 def _fmp_sym(sym: str) -> str:
-    return _SYMBOL_MAP.get(sym.upper(), sym.upper())
+    bare = normalize_ticker(sym)
+    return _SYMBOL_MAP.get(f"^{bare}", _SYMBOL_MAP.get(bare, bare))
 
 # ── Token-bucket rate limiter (2 req/s, burst 4) ──────────────────────────────
 
@@ -389,8 +414,85 @@ async def prewarm(symbols: list[str]):
 # ── Company Screener — bulk cache pre-fill + business-layer metadata ──────────
 
 _MIN_SCREENER_VOLUME = 500_000
-_screener_meta: dict[str, dict] = {}   # sym → {"isFund": bool, "volume": int}
+_screener_meta: dict[str, dict] = {}   # sym → {"isFund": bool, "volume": int, "sector": str}
 _screener_meta_lock = threading.Lock()
+
+# Normalise sector labels that vary between FMP endpoints / historical data.
+_SECTOR_NORMALIZE: dict[str, str] = {
+    "information technology":   "Technology",
+    "tech":                     "Technology",
+    "financial services":       "Financials",
+    "financial":                "Financials",
+    "finance":                  "Financials",
+    "banking":                  "Financials",
+    "health care":              "Healthcare",
+    "healthcare":               "Healthcare",
+    "consumer cyclical":        "Consumer Discretionary",
+    "consumer defensive":       "Consumer Staples",
+    "basic materials":          "Materials",
+    "communication services":   "Communication Services",
+    "real estate":              "Real Estate",
+    "utilities":                "Utilities",
+    "industrials":              "Industrials",
+    "energy":                   "Energy",
+}
+
+# Hardcoded fallback for very common tickers in case screener data is absent.
+_TICKER_SECTOR_FALLBACK: dict[str, str] = {
+    "NVDA":  "Technology",
+    "AAPL":  "Technology",
+    "MSFT":  "Technology",
+    "GOOGL": "Technology",
+    "GOOG":  "Technology",
+    "META":  "Technology",
+    "AMD":   "Technology",
+    "INTC":  "Technology",
+    "CRM":   "Technology",
+    "ORCL":  "Technology",
+    "TSLA":  "Consumer Discretionary",
+    "AMZN":  "Consumer Discretionary",
+    "HD":    "Consumer Discretionary",
+    "NKE":   "Consumer Discretionary",
+    "COST":  "Consumer Staples",
+    "WMT":   "Consumer Staples",
+    "PG":    "Consumer Staples",
+    "KO":    "Consumer Staples",
+    "JPM":   "Financials",
+    "BAC":   "Financials",
+    "GS":    "Financials",
+    "MS":    "Financials",
+    "BRK.B": "Financials",
+    "V":     "Financials",
+    "MA":    "Financials",
+    "JNJ":   "Healthcare",
+    "UNH":   "Healthcare",
+    "PFE":   "Healthcare",
+    "ABBV":  "Healthcare",
+    "LLY":   "Healthcare",
+    "MRK":   "Healthcare",
+    "XOM":   "Energy",
+    "CVX":   "Energy",
+    "COP":   "Energy",
+    "BA":    "Industrials",
+    "CAT":   "Industrials",
+    "GE":    "Industrials",
+    "UPS":   "Industrials",
+    "T":     "Communication Services",
+    "VZ":    "Communication Services",
+    "NFLX":  "Communication Services",
+    "DIS":   "Communication Services",
+    "AMT":   "Real Estate",
+    "NEE":   "Utilities",
+    "SO":    "Utilities",
+}
+
+
+def _normalise_sector(raw: str) -> str:
+    """Return a canonical sector label, or empty string if unrecognised."""
+    if not raw:
+        return ""
+    key = raw.lower().strip()
+    return _SECTOR_NORMALIZE.get(key, raw.strip())
 
 
 def _do_sync_screener() -> None:
@@ -423,9 +525,11 @@ def _do_sync_screener() -> None:
                 cached_count += 1
             except Exception:
                 pass
+        raw_sector = str(item.get("sector") or "").strip()
         meta[sym] = {
-            "isFund": bool(item.get("isFund")),
-            "volume": int(item.get("volume") or 0),
+            "isFund":  bool(item.get("isFund")),
+            "volume":  int(item.get("volume") or 0),
+            "sector":  _normalise_sector(raw_sector),
         }
         # Yield CPU every 50 items — prevents event-loop starvation on Render
         if idx % 50 == 49:
@@ -463,6 +567,24 @@ def is_screener_excluded(sym: str) -> bool:
     if info is None:
         return False   # not seen in screener → allow by default
     return info["isFund"] or info["volume"] < _MIN_SCREENER_VOLUME
+
+def get_cached_sector(symbol: str) -> str:
+    """
+    Return the sector label for *symbol* from the screener cache, falling back
+    to the hardcoded _TICKER_SECTOR_FALLBACK table.
+
+    Returns an empty string if the sector is genuinely unknown.  Callers should
+    treat an empty return value as "no sector data" and use a generic label.
+    """
+    sym = normalize_ticker(symbol)
+    with _screener_meta_lock:
+        info = _screener_meta.get(sym)
+    if info:
+        sector = info.get("sector", "")
+        if sector:
+            return sector
+    return _TICKER_SECTOR_FALLBACK.get(sym, "")
+
 
 async def get_ytd_return(ticker: str) -> Decimal | None:
     closes = await get_1y_closes(ticker)

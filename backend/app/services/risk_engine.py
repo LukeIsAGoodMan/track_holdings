@@ -17,6 +17,7 @@ from decimal import Decimal
 from app.config import settings
 from app.models import InstrumentType
 from app.routers.symbols import get_asset_class
+from app.services.yfinance_client import get_cached_sector
 from app.services.black_scholes import (
     DEFAULT_SIGMA,
     MULTIPLIER,
@@ -116,7 +117,10 @@ def compute_risk_summary(
                     for tag in tags:
                         sector_exp[tag] = sector_exp.get(tag, Decimal("0")) + stock_delta
                 else:
-                    sector_exp["Stock"] = sector_exp.get("Stock", Decimal("0")) + stock_delta
+                    # Try screener-cached sector first; hardcoded fallback next;
+                    # generic "Stock" label only when completely unknown.
+                    sector = get_cached_sector(inst.symbol) or "Stock"
+                    sector_exp[sector] = sector_exp.get(sector, Decimal("0")) + stock_delta
             continue
 
         # ── Option position ──────────────────────────────────────────
