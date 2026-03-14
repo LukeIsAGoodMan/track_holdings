@@ -164,7 +164,7 @@ async def _stream_diagnosis(
     }
 
     url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"https://generativelanguage.googleapis.com/v1/models/"
         f"{_GEMINI_MODEL}:streamGenerateContent"
     )
 

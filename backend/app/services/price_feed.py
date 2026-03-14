@@ -21,13 +21,11 @@ import logging
 import os
 import random
 import time
-from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 
 from app.config import settings
 from app.database import AsyncSessionLocal
 from app.services import position_engine, yfinance_client
-from app.services.black_scholes import calculate_option_price
 from app.services.holdings_engine import compute_holding_groups
 from app.services.portfolio_resolver import resolve_portfolio_ids
 from app.services.price_cache import PriceCache
@@ -252,10 +250,12 @@ class PriceFeedService:
         port_spot = {s: spot_map.get(s) for s in symbols}
         port_vol  = {s: _vol_cache.get(s, Decimal("0.30")) for s in symbols}
 
-        # ── Track 1: Heatmap % — underlying's price performance ──────────────
+        # ── Underlying-only perf — identical source to REST /holdings ─────────
         # get_perf_cached reads from pre-warmed _last_known cache (zero API calls
         # when warm).  Returns the underlying's daily/weekly/monthly % move —
-        # consistent across stocks and option underlyings.
+        # consistent across stocks and option underlyings alike.
+        # NO manual BS calculation here — the heatmap always tracks the
+        # underlying's price move, not the leveraged option contract change.
         perf_results = await asyncio.gather(
             *[yfinance_client.get_perf_cached(s) for s in symbols],
             return_exceptions=True,
@@ -265,49 +265,7 @@ class PriceFeedService:
             if isinstance(result, dict):
                 port_perf[sym] = result
 
-        # ── Track 2: BS $ P&L — mark-to-market precision per group ───────────
-        # For options: Σ (BS(spot_now) - BS(prev_close)) × net_contracts × 100
-        # For stocks:  Σ net_shares × (spot_now - prev_close)
-        # This drives the hero "Daily Unrealized P&L" card.
-        _today = date.today()
-        _r_f = Decimal(str(settings.risk_free_rate))
-        bs_pnl_map: dict[str, Decimal] = {}
-
-        for sym in symbols:
-            spot = port_spot.get(sym)
-            prev_close = yfinance_client.get_prev_close_cached_only(sym)
-            if spot is None or prev_close is None:
-                continue
-
-            group_pnl = Decimal("0")
-            for pos in positions:
-                if pos.instrument.symbol != sym:
-                    continue
-                inst = pos.instrument
-                if inst.instrument_type.value == "OPTION":
-                    if not (inst.option_type and inst.strike and inst.expiry):
-                        continue
-                    dte = (inst.expiry - _today).days
-                    T = Decimal(str(max(dte, 0) / 365.0))
-                    if T <= 0:
-                        continue
-                    vol = port_vol.get(sym, Decimal("0.30"))
-                    otype = inst.option_type.value
-                    mark_now  = calculate_option_price(spot,       inst.strike, T, otype, vol, _r_f)
-                    mark_prev = calculate_option_price(prev_close, inst.strike, T, otype, vol, _r_f)
-                    multiplier = inst.multiplier or 100
-                    group_pnl += (mark_now - mark_prev) * Decimal(str(pos.net_contracts)) * Decimal(str(multiplier))
-                else:
-                    # Stock / ETF: simple (spot - prev_close) × shares
-                    group_pnl += (spot - prev_close) * Decimal(str(pos.net_contracts))
-
-            bs_pnl_map[sym] = group_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-
-        groups = compute_holding_groups(
-            positions, port_spot, port_vol,
-            perf_map=port_perf or None,
-            bs_pnl_map=bs_pnl_map or None,
-        )
+        groups = compute_holding_groups(positions, port_spot, port_vol, perf_map=port_perf or None)
 
         # Serialize via Pydantic
         holdings_msg = {

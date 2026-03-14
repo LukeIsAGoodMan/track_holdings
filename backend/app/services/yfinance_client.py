@@ -338,8 +338,14 @@ async def get_perf_cached(ticker: str) -> dict[str, float]:
         try:
             closes = await asyncio.wait_for(asyncio.shield(fut), timeout=3.0)
         except asyncio.TimeoutError:
-            # Background fetch still running — return None so UI shows "—" not 0%
-            return {"1d": None, "5d": None, "1m": None, "3m": None}
+            # Background fetch still running — check if _last_known was populated
+            # by a concurrent fetch (race-safe: _do_fetch_1y_closes calls
+            # _set_cached which writes to _last_known).
+            stale = _last_known.get(key)
+            if isinstance(stale, list) and len(stale) >= 2:
+                closes = stale
+            else:
+                return {"1d": None, "5d": None, "1m": None, "3m": None}
         if not isinstance(closes, list) or len(closes) < 2:
             return {"1d": None, "5d": None, "1m": None, "3m": None}
 
