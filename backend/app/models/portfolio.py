@@ -23,7 +23,7 @@ class Portfolio(Base):
     is_folder   = Column(Boolean, nullable=False, default=False, server_default="0")
     sort_order  = Column(SmallInteger, nullable=False, default=0, server_default="0")
     parent_id   = Column(
-        Integer, ForeignKey("portfolios.id"), nullable=True, index=True
+        Integer, ForeignKey("portfolios.id", ondelete="CASCADE"), nullable=True, index=True
     )
     user_id     = Column(
         Integer, ForeignKey("users.id"), nullable=True, index=True
