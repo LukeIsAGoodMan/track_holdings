@@ -63,11 +63,13 @@ async def collect_portfolio_ids(db: AsyncSession, root_id: int) -> set[int]:
         if ppid is not None:
             children_map.setdefault(ppid, []).append(pid)
 
-    # BFS from root
+    # BFS from root — visited-set guards against DB cycles (e.g. A→B→A)
     ids: set[int] = set()
     queue: list[int] = [root_id]
     while queue:
         current = queue.pop()
+        if current in ids:   # already visited: skip to prevent infinite loop
+            continue
         ids.add(current)
         queue.extend(children_map.get(current, []))
 

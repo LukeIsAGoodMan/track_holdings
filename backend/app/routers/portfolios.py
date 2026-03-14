@@ -168,15 +168,22 @@ async def list_portfolios(
                 parent.children.append(node)
 
     # ── 6. Post-order rollup: aggregate cash, delta, margin across subtree ────
-    def _rollup_stats(node: PortfolioNode) -> tuple[Decimal, Decimal, Decimal]:
+    def _rollup_stats(
+        node: PortfolioNode,
+        _depth: int = 0,
+        _MAX_DEPTH: int = 50,
+    ) -> tuple[Decimal, Decimal, Decimal]:
+        """Post-order accumulator. Hard depth limit prevents stack overflow on
+        malformed DB data (cycle or pathological nesting)."""
         cash   = Decimal(str(node.total_cash))
         delta  = Decimal(str(node.total_delta_exposure))
         margin = Decimal(str(node.total_margin))
-        for child in node.children:
-            c, d, m = _rollup_stats(child)
-            cash   += c
-            delta  += d
-            margin += m
+        if _depth < _MAX_DEPTH:
+            for child in node.children:
+                c, d, m = _rollup_stats(child, _depth + 1)
+                cash   += c
+                delta  += d
+                margin += m
         node.aggregated_cash   = cash
         node.aggregated_delta  = delta
         node.aggregated_margin = margin

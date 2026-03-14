@@ -129,9 +129,84 @@ async def _migrate_db():
                 text("ALTER TABLE alerts ADD COLUMN trigger_count INTEGER DEFAULT 0")
             )
 
+    # ── Cycle-breaker: fix any portfolio self-references or deeper cycles ──
+    # A self-reference (parent_id == id) is impossible to represent as a valid
+    # tree and will cause _rollup_stats to stack-overflow.  Deeper cycles
+    # (A→B→A) are also severed.  Runs on every startup; no-ops when clean.
+    await _break_portfolio_cycles()
+
     # ── Seed instrument tags (data migration) ─────────────────────────────
     # Idempotent: only sets tags where tags IS NULL and symbol is known.
     await _seed_instrument_tags()
+
+
+async def _break_portfolio_cycles() -> None:
+    """
+    Detect and sever portfolio parent_id cycles so the tree is a valid DAG.
+
+    Phase 1: direct self-references  (parent_id == id)
+    Phase 2: deeper cycles           (A→B→A or longer chains)
+
+    Any node whose ancestry chain includes itself has its parent_id set to NULL
+    and the event is logged as an error.  Safe to run on every startup; no-ops
+    when the data is clean.
+    """
+    import logging as _logging
+    _log = _logging.getLogger(__name__)
+
+    async with engine.begin() as conn:
+        # ── Phase 1: direct self-references ──────────────────────────────
+        result = await conn.execute(
+            text("SELECT id FROM portfolios WHERE parent_id = id")
+        )
+        self_refs = [row[0] for row in result.fetchall()]
+        if self_refs:
+            _log.error(
+                "Portfolio cycle-breaker: severing %d self-reference(s): ids=%s",
+                len(self_refs), self_refs,
+            )
+            await conn.execute(
+                text(
+                    "UPDATE portfolios SET parent_id = NULL "
+                    "WHERE id IN :ids"
+                ).bindparams(ids=tuple(self_refs))
+                if len(self_refs) > 1 else
+                text(
+                    "UPDATE portfolios SET parent_id = NULL "
+                    "WHERE id = :id"
+                ).bindparams(id=self_refs[0])
+            )
+
+        # ── Phase 2: deeper cycles — walk all (id, parent_id) pairs ──────
+        result = await conn.execute(
+            text("SELECT id, parent_id FROM portfolios WHERE parent_id IS NOT NULL")
+        )
+        rows = result.fetchall()
+        # Build child→parent map
+        parent_of: dict[int, int] = {row[0]: row[1] for row in rows}
+
+        cycle_roots: list[int] = []
+        for start in list(parent_of.keys()):
+            visited: set[int] = set()
+            node: int | None = start
+            while node is not None:
+                if node in visited:
+                    # cycle detected — sever the edge at `start`
+                    cycle_roots.append(start)
+                    break
+                visited.add(node)
+                node = parent_of.get(node)  # type: ignore[assignment]
+
+        if cycle_roots:
+            _log.error(
+                "Portfolio cycle-breaker: severing %d deeper cycle node(s): ids=%s",
+                len(cycle_roots), cycle_roots,
+            )
+            for cid in cycle_roots:
+                await conn.execute(
+                    text("UPDATE portfolios SET parent_id = NULL WHERE id = :id")
+                    .bindparams(id=cid)
+                )
 
 
 # Known sector/factor tags per underlying symbol.

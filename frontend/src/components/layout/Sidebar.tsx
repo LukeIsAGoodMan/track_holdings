@@ -635,7 +635,7 @@ function SortablePortfolioNode({
           className={[
             'flex items-center justify-center w-4 h-5 rounded shrink-0',
             'text-slate-300 hover:text-slate-500',
-            showInvalid ? 'cursor-not-allowed' : 'cursor-grab active:cursor-grabbing',
+            'cursor-grab active:cursor-grabbing',
             'opacity-0 group-hover:opacity-100 transition-opacity duration-150',
           ].join(' ')}
         >

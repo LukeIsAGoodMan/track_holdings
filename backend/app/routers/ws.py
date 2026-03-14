@@ -249,8 +249,9 @@ async def _send_initial_holdings(
         logger.exception("Initial snapshot failed: user=%d pid=%d", user_id, portfolio_id)
 
 
-async def _heartbeat(ws: WebSocket, interval: float = 30.0) -> None:
-    """Send periodic ping to keep the connection alive."""
+async def _heartbeat(ws: WebSocket, interval: float = 20.0) -> None:
+    """Send periodic ping to keep the connection alive.
+    Interval is 20s (< Render's 30s proxy idle timeout) to prevent WS drops."""
     try:
         while True:
             await asyncio.sleep(interval)
