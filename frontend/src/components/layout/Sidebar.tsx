@@ -472,9 +472,8 @@ function SortablePortfolioNode({
       <div
         className={[
           'relative flex items-center gap-0.5 rounded-lg transition-all duration-150',
-          depth === 0
-            ? 'before:content-[\'\'] before:absolute before:-top-4 before:inset-x-0 before:h-4'
-            : 'before:content-[\'\'] before:absolute before:-top-2 before:inset-x-0 before:h-2',
+          'before:content-[\'\'] before:absolute before:-top-3 before:inset-x-0 before:h-3',
+          'after:content-[\'\'] after:absolute after:-bottom-3 after:inset-x-0 after:h-3',
           isDragging   ? 'opacity-0'                              : '',
           showTarget   ? 'ring-2 ring-sky-300 bg-sky-100/50'      : '',
           showRefusal  ? 'ring-1 ring-rose-200/80 bg-rose-50/30'  : '',
@@ -885,6 +884,8 @@ export default function Sidebar() {
   const overlayRef       = useRef<HTMLDivElement>(null)
   const createMenuRef    = useRef<HTMLDivElement>(null)
   const treeContainerRef = useRef<HTMLDivElement>(null)
+  // Last pointer position where a concrete liveId was found (for sticky-target logic)
+  const lastHitPosRef    = useRef<{ x: number; y: number } | null>(null)
 
   // Stable pointer tracker — updates refs and moves the preview overlay via direct DOM
   const handlePointerMove = useCallback((e: PointerEvent) => {
@@ -985,7 +986,8 @@ export default function Sidebar() {
     setActiveId(e.active.id as number)
     setDropState(EMPTY_DROP)
     if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
-    lastOverIdRef.current = null
+    lastOverIdRef.current  = null
+    lastHitPosRef.current  = null
     document.addEventListener('pointermove', handlePointerMove)
   }
 
@@ -1002,8 +1004,7 @@ export default function Sidebar() {
     const liElement = element?.closest<HTMLElement>('[data-portfolio-id]') ?? null
     let liveId = liElement ? Number(liElement.getAttribute('data-portfolio-id')) : null
 
-    // Boundary guard: pointer above tree container (header gap) OR within top padding
-    // → snap to first folder (giving it "infinite upward" magnetic area inside sidebar)
+    // Boundary guards: top + bottom magnets (absolute snap when in dead zones)
     if (liveId === null && treeContainerRef.current) {
       const treeRect    = treeContainerRef.current.getBoundingClientRect()
       const sidebarEl   = treeContainerRef.current.closest<HTMLElement>('aside')
@@ -1012,21 +1013,43 @@ export default function Sidebar() {
         ? clientX >= sidebarRect.left && clientX <= sidebarRect.right
         : clientX >= treeRect.left && clientX <= treeRect.right
 
-      // Cover: above tree, or in pt-4 buffer (top 40px of tree container)
-      const aboveTree = clientY < treeRect.top
-      const inTopBuffer = clientY >= treeRect.top && clientY <= treeRect.top + 40
+      const allLis = inSidebarX
+        ? Array.from(treeContainerRef.current.querySelectorAll<HTMLElement>('[data-portfolio-id]'))
+        : []
+
+      // ── Top magnet: above tree OR within 10px of tree top ──────────────────
+      const aboveTree    = clientY < treeRect.top
+      const inTopBuffer  = clientY >= treeRect.top && clientY <= treeRect.top + 10
 
       if (inSidebarX && (aboveTree || inTopBuffer)) {
-        const allLis = Array.from(
-          treeContainerRef.current.querySelectorAll<HTMLElement>('[data-portfolio-id]')
-        )
-        // Prefer first folder; fall back to first node if no folder exists at root
         const firstFolder = allLis.find(li => {
           const id = Number(li.getAttribute('data-portfolio-id'))
           return flatMap.get(id)?.node.is_folder
         })
         const targetLi = firstFolder ?? allLis[0] ?? null
         if (targetLi) liveId = Number(targetLi.getAttribute('data-portfolio-id'))
+      }
+
+      // ── Bottom magnet: in pb-20 whitespace (bottom 80px of tree container) ─
+      if (liveId === null && inSidebarX && clientY > treeRect.bottom - 80) {
+        let lastFolderLi: HTMLElement | null = null
+        for (const li of allLis) {
+          const id = Number(li.getAttribute('data-portfolio-id'))
+          if (flatMap.get(id)?.node.is_folder) lastFolderLi = li
+        }
+        const targetLi = lastFolderLi ?? (allLis.length > 0 ? allLis[allLis.length - 1] : null)
+        if (targetLi) liveId = Number(targetLi.getAttribute('data-portfolio-id'))
+      }
+    }
+
+    // ── Sticky target: pointer barely moved → keep last hit to avoid flicker ──
+    if (liveId !== null) {
+      lastHitPosRef.current = { x: clientX, y: clientY }
+    } else if (lastHitPosRef.current !== null && lastOverIdRef.current !== null) {
+      const dx = clientX - lastHitPosRef.current.x
+      const dy = clientY - lastHitPosRef.current.y
+      if (dx * dx + dy * dy < 36) {   // threshold: 6px radius
+        liveId = lastOverIdRef.current
       }
     }
 
@@ -1072,7 +1095,8 @@ export default function Sidebar() {
     document.removeEventListener('pointermove', handlePointerMove)
     setActiveId(null)
     if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
-    lastOverIdRef.current = null
+    lastOverIdRef.current  = null
+    lastHitPosRef.current  = null
     setDropState(EMPTY_DROP)
     setForceExpandedIds(new Set())
   }
