@@ -250,68 +250,64 @@ class PriceFeedService:
         # Build spot/vol maps for this portfolio's symbols
         symbols = list({pos.instrument.symbol for pos in positions})
         port_spot = {s: spot_map.get(s) for s in symbols}
-        port_vol = {s: _vol_cache.get(s, Decimal("0.30")) for s in symbols}
+        port_vol  = {s: _vol_cache.get(s, Decimal("0.30")) for s in symbols}
 
-        # Build perf_map — options via live BS mark-price delta; stocks via FMP changepct
-        port_perf: dict[str, dict[str, float]] = {}
+        # ── Track 1: Heatmap % — underlying's price performance ──────────────
+        # get_perf_cached reads from pre-warmed _last_known cache (zero API calls
+        # when warm).  Returns the underlying's daily/weekly/monthly % move —
+        # consistent across stocks and option underlyings.
+        perf_results = await asyncio.gather(
+            *[yfinance_client.get_perf_cached(s) for s in symbols],
+            return_exceptions=True,
+        )
+        port_perf: dict[str, dict] = {}
+        for sym, result in zip(symbols, perf_results):
+            if isinstance(result, dict):
+                port_perf[sym] = result
+
+        # ── Track 2: BS $ P&L — mark-to-market precision per group ───────────
+        # For options: Σ (BS(spot_now) - BS(prev_close)) × net_contracts × 100
+        # For stocks:  Σ net_shares × (spot_now - prev_close)
+        # This drives the hero "Daily Unrealized P&L" card.
         _today = date.today()
         _r_f = Decimal(str(settings.risk_free_rate))
+        bs_pnl_map: dict[str, Decimal] = {}
 
-        # Aggregate option P&L per underlying symbol
-        _opt: dict[str, dict] = {}  # sym → {pnl, basis, ds (net delta sign)}
-        for pos in positions:
-            inst = pos.instrument
-            if inst.instrument_type.value != "OPTION":
-                continue
-            if not (inst.option_type and inst.strike and inst.expiry):
-                continue
-            sym = inst.symbol
+        for sym in symbols:
             spot = port_spot.get(sym)
-            if spot is None:
+            prev_close = yfinance_client.get_prev_close_cached_only(sym)
+            if spot is None or prev_close is None:
                 continue
-            prev_spot = yfinance_client.get_prev_close_cached_only(sym)
-            if prev_spot is None:
-                continue
-            dte = (inst.expiry - _today).days
-            T = Decimal(str(max(dte, 0) / 365.0))
-            if T <= 0:
-                continue
-            vol   = port_vol.get(sym, Decimal("0.30"))
-            otype = inst.option_type.value  # "CALL" or "PUT"
-            mark_now  = calculate_option_price(spot,      inst.strike, T, otype, vol, _r_f)
-            mark_prev = calculate_option_price(prev_spot, inst.strike, T, otype, vol, _r_f)
-            if mark_prev <= 0:
-                continue
-            multiplier = inst.multiplier or 100
-            n          = float(pos.net_contracts)       # signed: negative = short
-            pnl_delta  = float(mark_now - mark_prev) * n * multiplier
-            basis      = float(mark_prev) * abs(n) * multiplier
-            # Net-delta contribution: calls add +n, puts add -n (mirrors BS convention)
-            dc = n if otype == "CALL" else -n
-            if sym not in _opt:
-                _opt[sym] = {"pnl": 0.0, "basis": 0.0, "ds": 0.0}
-            _opt[sym]["pnl"]   += pnl_delta
-            _opt[sym]["basis"] += basis
-            _opt[sym]["ds"]    += dc
 
-        for sym, d in _opt.items():
-            if d["basis"] > 0:
-                raw_pct      = round(d["pnl"] / d["basis"] * 100, 2)
-                # Pre-multiply by local dir_sign so after holdings_engine's dir_sign
-                # multiplication, effective_perf = actual position P&L %.
-                # (dir_sign_local² = 1 cancels the double-sign for shorts & long puts)
-                dir_sign_loc = 1 if d["ds"] >= 0 else -1
-                port_perf[sym] = {"1d": raw_pct * dir_sign_loc, "5d": 0.0, "1m": 0.0, "3m": 0.0}
+            group_pnl = Decimal("0")
+            for pos in positions:
+                if pos.instrument.symbol != sym:
+                    continue
+                inst = pos.instrument
+                if inst.instrument_type.value == "OPTION":
+                    if not (inst.option_type and inst.strike and inst.expiry):
+                        continue
+                    dte = (inst.expiry - _today).days
+                    T = Decimal(str(max(dte, 0) / 365.0))
+                    if T <= 0:
+                        continue
+                    vol = port_vol.get(sym, Decimal("0.30"))
+                    otype = inst.option_type.value
+                    mark_now  = calculate_option_price(spot,       inst.strike, T, otype, vol, _r_f)
+                    mark_prev = calculate_option_price(prev_close, inst.strike, T, otype, vol, _r_f)
+                    multiplier = inst.multiplier or 100
+                    group_pnl += (mark_now - mark_prev) * Decimal(str(pos.net_contracts)) * Decimal(str(multiplier))
+                else:
+                    # Stock / ETF: simple (spot - prev_close) × shares
+                    group_pnl += (spot - prev_close) * Decimal(str(pos.net_contracts))
 
-        # Stock/ETF symbols: FMP live changepct (skip symbols covered by BS option calc)
-        for s in symbols:
-            if s in port_perf:
-                continue
-            cp = yfinance_client.get_changepct_cached(s)
-            if cp is not None:
-                port_perf[s] = {"1d": float(cp), "5d": 0.0, "1m": 0.0, "3m": 0.0}
+            bs_pnl_map[sym] = group_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
-        groups = compute_holding_groups(positions, port_spot, port_vol, perf_map=port_perf or None)
+        groups = compute_holding_groups(
+            positions, port_spot, port_vol,
+            perf_map=port_perf or None,
+            bs_pnl_map=bs_pnl_map or None,
+        )
 
         # Serialize via Pydantic
         holdings_msg = {

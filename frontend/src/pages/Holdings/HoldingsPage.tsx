@@ -1621,18 +1621,43 @@ export default function HoldingsPage() {
   }, [selectedPortfolioId, refreshKey])
 
   // ── Real-time WS holdings push ─────────────────────────────────────────────
-  // Anti-flicker: skip updates where every group has perf=0 (backend price
-  // cache not yet warm) unless we have no holdings at all to show.
+  // Anti-flicker guard + historical-perf preservation:
+  //
+  // 1. "Cold" detection: if every group's 1d perf is null/0 the backend cache
+  //    isn't warm yet — skip the update entirely (keep last REST data on screen).
+  //
+  // 2. Smart merge: even when the update is "warm" for 1d, the 5d/1m/3m fields
+  //    may still be null (get_perf_cached timed out on those periods).
+  //    For each null field, graft the last valid value from lastValidHoldings so
+  //    the period-selector never flickers back to "—" mid-session.
   useEffect(() => {
     if (!lastHoldingsUpdate) return
     if (lastHoldingsUpdate.portfolioId !== selectedPortfolioId) return
     const newData = lastHoldingsUpdate.data
+
+    // Cold-cache guard — all 1d perfs absent means prewarm hasn't completed
     const isCold = newData.length > 0 &&
-      newData.every(g => (safeFloat(g.effective_perf_1d) ?? 0) === 0)
-    if (!isCold || lastValidHoldings.current.length === 0) {
-      setHoldings(newData)
-      lastValidHoldings.current = newData
-    }
+      newData.every(g => (safeFloat(g.effective_perf_1d) ?? 0) === 0 && g.effective_perf_1d == null)
+    if (isCold && lastValidHoldings.current.length > 0) return
+
+    // Merge: preserve last-valid history perfs for any null fields in this update
+    const prev = lastValidHoldings.current
+    const merged: typeof newData = newData.map(ng => {
+      const old = prev.find(o => o.symbol === ng.symbol)
+      if (!old) return ng
+      return {
+        ...ng,
+        perf_5d:           ng.perf_5d           ?? old.perf_5d,
+        perf_1m:           ng.perf_1m           ?? old.perf_1m,
+        perf_3m:           ng.perf_3m           ?? old.perf_3m,
+        effective_perf_5d: ng.effective_perf_5d ?? old.effective_perf_5d,
+        effective_perf_1m: ng.effective_perf_1m ?? old.effective_perf_1m,
+        effective_perf_3m: ng.effective_perf_3m ?? old.effective_perf_3m,
+      }
+    })
+
+    setHoldings(merged)
+    lastValidHoldings.current = merged
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
   // ── Stale-While-Revalidate on language change ─────────────────────────────
@@ -1695,11 +1720,11 @@ export default function HoldingsPage() {
   }, [selectedPortfolioId])
 
   // ── Hero metrics ──────────────────────────────────────────────────────────
-  // Daily Unrealized P&L = Σ delta_adjusted_exposure × spot_change_pct / 100
-  //   delta_adjusted_exposure is already signed (positive = bullish delta,
-  //   negative = bearish delta), so no is_short correction is needed.
-  //   A brand-new position bought at today's price contributes near-zero P&L
-  //   because it only participates in intraday movement from prev_close onwards.
+  // Daily Unrealized P&L (dual-track):
+  //   Track 1 (preferred): bs_pnl_1d — BS mark-to-market $ P&L per group
+  //     (computed server-side with full gamma/convexity precision)
+  //   Track 2 (fallback):  delta_adjusted_exposure × spot_change_pct / 100
+  //     (delta-linear approximation, used when BS P&L not yet available)
   // Net Exposure = Σ delta_adjusted_exposure (signed sum of all delta bets)
   const heroMetrics = useMemo(() => {
     let dailyUnrealizedPnl = 0
@@ -1710,11 +1735,17 @@ export default function HoldingsPage() {
       const exposure = safeFloat(g.delta_adjusted_exposure) ?? 0
       netExposure += exposure
 
-      // Daily Unrealized P&L: live WS pct preferred; fallback to cached 1d perf
-      const pctStr = lastSpotChangePct?.[g.symbol]
-      const pct    = pctStr != null ? parseFloat(pctStr) : (safeFloat(g.effective_perf_1d) ?? 0)
-      if (isFinite(pct) && isFinite(exposure)) {
-        dailyUnrealizedPnl += exposure * pct / 100
+      // Daily Unrealized P&L: prefer BS mark-to-market ($ precision)
+      const bsPnl = safeFloat(g.bs_pnl_1d)
+      if (bsPnl != null && isFinite(bsPnl)) {
+        dailyUnrealizedPnl += bsPnl
+      } else {
+        // Fallback: delta approximation from live WS pct or cached perf
+        const pctStr = lastSpotChangePct?.[g.symbol]
+        const pct    = pctStr != null ? parseFloat(pctStr) : (safeFloat(g.effective_perf_1d) ?? 0)
+        if (isFinite(pct) && isFinite(exposure)) {
+          dailyUnrealizedPnl += exposure * pct / 100
+        }
       }
 
       // Portfolio Value: stock legs → real-time MtM; option legs → premium × qty × 100

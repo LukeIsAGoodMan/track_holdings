@@ -78,6 +78,9 @@ export interface HoldingGroup {
   effective_perf_1m:  string | null
   effective_perf_3m:  string | null
 
+  // BS mark-to-market P&L (1-day, $ precision) — drives hero Daily Unrealized P&L
+  bs_pnl_1d: string | null
+
   // Phase 15.3 — asset class: 'stock' | 'etf' | 'index' | 'crypto' | 'option'
   asset_class: string
 }

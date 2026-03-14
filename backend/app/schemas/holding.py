@@ -94,6 +94,13 @@ class HoldingGroup(BaseModel):
     effective_perf_1m:  str | None = None
     effective_perf_3m:  str | None = None
 
+    # ── BS mark-to-market P&L (1-day) ──────────────────────────────────────────
+    # For options: Σ (BS(spot_now) − BS(prev_close)) × net_contracts × 100
+    # For stocks:  Σ net_shares × (spot_now − prev_close)
+    # Drives the hero "Daily Unrealized P&L" ($ precision).
+    # None when prev_close is unavailable.
+    bs_pnl_1d: DecStr | None = None
+
     # ── Phase 15.3 — asset class classification ──────────────────────────────
     # 'stock' | 'etf' | 'index' | 'crypto' | 'option'
     asset_class: str = "stock"

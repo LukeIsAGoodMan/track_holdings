@@ -32,6 +32,7 @@ def compute_holding_groups(
     spot_map: dict[str, Decimal | None],
     vol_map: dict[str, Decimal],
     perf_map: dict[str, dict[str, float]] | None = None,
+    bs_pnl_map: dict[str, Decimal] | None = None,
 ) -> list[HoldingGroup]:
     """
     Build HoldingGroup list from positions + market data.
@@ -193,6 +194,9 @@ def compute_holding_groups(
             else:
                 asset_class = "option"
 
+            # BS mark-to-market P&L (precomputed by caller)
+            bs_pnl = (bs_pnl_map or {}).get(sym)
+
             holding_groups.append(
                 HoldingGroup(
                     symbol=sym,
@@ -216,6 +220,7 @@ def compute_holding_groups(
                     effective_perf_5d=_eff(perf.get("5d")),
                     effective_perf_1m=_eff(perf.get("1m")),
                     effective_perf_3m=_eff(perf.get("3m")),
+                    bs_pnl_1d=bs_pnl,
                     asset_class=asset_class,
                 )
             )
