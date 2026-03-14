@@ -138,8 +138,9 @@ function isDescendantOf(
 interface FolderOption { id: number; label: string }
 
 // Move-into-only DnD: only folders are valid drop targets
-interface DropState { targetId: number | null; valid: boolean }
-const EMPTY_DROP: DropState = { targetId: null, valid: false }
+type RefusalReason = 'not_a_folder' | 'self' | 'descendant' | null
+interface DropState { targetId: number | null; valid: boolean; refusalReason: RefusalReason }
+const EMPTY_DROP: DropState = { targetId: null, valid: false, refusalReason: null }
 
 function flattenFolders(nodes: Portfolio[], prefix = ''): FolderOption[] {
   const result: FolderOption[] = []
@@ -449,8 +450,9 @@ function SortablePortfolioNode({
     transition: transition ?? undefined,
   }
 
-  const isTarget   = dropState.targetId === node.id
-  const showTarget = isTarget && dropState.valid
+  const isTarget      = dropState.targetId === node.id
+  const showTarget    = isTarget && dropState.valid
+  const showRefusal   = isTarget && !dropState.valid && dropState.refusalReason === 'not_a_folder'
 
   const btnClass = [
     'flex-1 min-w-0 text-left flex items-center gap-2 rounded-lg px-2 py-1.5',
@@ -466,13 +468,16 @@ function SortablePortfolioNode({
 
   return (
     <li ref={setNodeRef} style={dndStyle} className="group relative" data-portfolio-id={node.id}>
-      {/* Row — before: pseudo-element extends hit-area 8px upward for first-row capture */}
+      {/* Row — before: pseudo-element extends hit-area upward (deeper for root nodes) */}
       <div
         className={[
           'relative flex items-center gap-0.5 rounded-lg transition-all duration-150',
-          'before:content-[\'\'] before:absolute before:-top-2 before:inset-x-0 before:h-2',
-          isDragging  ? 'opacity-0'                             : '',
-          showTarget  ? 'bg-sky-100/50 ring-1 ring-sky-300/60' : '',
+          depth === 0
+            ? 'before:content-[\'\'] before:absolute before:-top-4 before:inset-x-0 before:h-4'
+            : 'before:content-[\'\'] before:absolute before:-top-2 before:inset-x-0 before:h-2',
+          isDragging   ? 'opacity-0'                              : '',
+          showTarget   ? 'ring-2 ring-sky-300 bg-sky-100/50'      : '',
+          showRefusal  ? 'ring-1 ring-rose-200/80 bg-rose-50/30'  : '',
         ].join(' ')}
         style={{ paddingLeft: depth * 20 }}
       >
@@ -549,6 +554,14 @@ function SortablePortfolioNode({
                            px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap shadow-sm
                            pointer-events-none">
             {isEn ? 'Move into' : '移入此处'}
+          </span>
+        )}
+        {/* "Folders only" refusal hint */}
+        {showRefusal && (
+          <span className="shrink-0 mr-1 bg-rose-100 text-rose-400 text-[8.5px] font-bold
+                           px-1.5 py-0.5 rounded-full leading-none whitespace-nowrap
+                           pointer-events-none">
+            {isEn ? 'Folders only' : '仅限移入组合'}
           </span>
         )}
       </div>
@@ -987,17 +1000,33 @@ export default function Sidebar() {
     // Live DOM hit-test — bypasses dnd-kit's stale cached rects
     const element   = document.elementFromPoint(clientX, clientY)
     const liElement = element?.closest<HTMLElement>('[data-portfolio-id]') ?? null
-    let liveId    = liElement ? Number(liElement.getAttribute('data-portfolio-id')) : null
+    let liveId = liElement ? Number(liElement.getAttribute('data-portfolio-id')) : null
 
-    // Boundary guard: pointer is above the first row (landed in header gap)
-    // If within 20px of the first node's top edge, snap to it
+    // Boundary guard: pointer above tree container (header gap) OR within top padding
+    // → snap to first folder (giving it "infinite upward" magnetic area inside sidebar)
     if (liveId === null && treeContainerRef.current) {
-      const firstLi = treeContainerRef.current.querySelector<HTMLElement>('[data-portfolio-id]')
-      if (firstLi) {
-        const rect = firstLi.getBoundingClientRect()
-        if (clientY >= rect.top - 20 && clientY <= rect.bottom) {
-          liveId = Number(firstLi.getAttribute('data-portfolio-id'))
-        }
+      const treeRect    = treeContainerRef.current.getBoundingClientRect()
+      const sidebarEl   = treeContainerRef.current.closest<HTMLElement>('aside')
+      const sidebarRect = sidebarEl?.getBoundingClientRect()
+      const inSidebarX  = sidebarRect
+        ? clientX >= sidebarRect.left && clientX <= sidebarRect.right
+        : clientX >= treeRect.left && clientX <= treeRect.right
+
+      // Cover: above tree, or in pt-4 buffer (top 40px of tree container)
+      const aboveTree = clientY < treeRect.top
+      const inTopBuffer = clientY >= treeRect.top && clientY <= treeRect.top + 40
+
+      if (inSidebarX && (aboveTree || inTopBuffer)) {
+        const allLis = Array.from(
+          treeContainerRef.current.querySelectorAll<HTMLElement>('[data-portfolio-id]')
+        )
+        // Prefer first folder; fall back to first node if no folder exists at root
+        const firstFolder = allLis.find(li => {
+          const id = Number(li.getAttribute('data-portfolio-id'))
+          return flatMap.get(id)?.node.is_folder
+        })
+        const targetLi = firstFolder ?? allLis[0] ?? null
+        if (targetLi) liveId = Number(targetLi.getAttribute('data-portfolio-id'))
       }
     }
 
@@ -1014,12 +1043,15 @@ export default function Sidebar() {
     const overNode     = flatMap.get(overId)?.node
     const activeItemId = e.active.id as number
 
-    // Only folders are valid; can't drop onto self or into own subtree
-    const valid = !!(overNode?.is_folder)
-      && overId !== activeItemId
-      && !isDescendantOf(overId, activeItemId, flatMap)
+    // Determine why a drop would be refused (for UI transparency)
+    const refusalReason: RefusalReason = !overNode?.is_folder     ? 'not_a_folder'
+      : overId === activeItemId                                    ? 'self'
+      : isDescendantOf(overId, activeItemId, flatMap)             ? 'descendant'
+      : null
 
-    setDropState({ targetId: overId, valid })
+    const valid = refusalReason === null
+
+    setDropState({ targetId: overId, valid, refusalReason })
 
     // Auto-expand timer when hovering a valid folder target
     const targetChanged = overId !== lastOverIdRef.current
