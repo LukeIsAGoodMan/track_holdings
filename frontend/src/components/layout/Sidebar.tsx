@@ -13,9 +13,9 @@
  * Phase 16 Final Polish: DnD labeled slots, Wallet/Briefcase icon rebrand.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   DndContext,
-  DragOverlay,
   PointerSensor,
   useSensor,
   useSensors,
@@ -605,7 +605,7 @@ function SortablePortfolioNode({
   ].join(' ')
 
   return (
-    <li ref={setNodeRef} style={dndStyle} className="group relative">
+    <li ref={setNodeRef} style={dndStyle} className="group relative" data-portfolio-id={node.id}>
       {/* Row */}
       <div
         className={[
@@ -618,7 +618,7 @@ function SortablePortfolioNode({
       >
         {showBefore && (
           <div className="absolute z-20 pointer-events-none flex items-center"
-               style={{ top: -1, left: depth * 20, right: 0 }}>
+               style={{ top: 0, left: depth * 20, right: 0 }}>
             <div className="flex-1 h-0.5 bg-sky-500 rounded-full" />
             <span className="ml-1 shrink-0 max-w-[130px] overflow-hidden text-ellipsis whitespace-nowrap
                              bg-sky-500 text-white text-[8.5px] font-bold px-1.5 py-0.5 rounded-full
@@ -629,7 +629,7 @@ function SortablePortfolioNode({
         )}
         {showAfter && (
           <div className="absolute z-20 pointer-events-none flex items-center"
-               style={{ bottom: -1, left: depth * 20, right: 0 }}>
+               style={{ bottom: 0, left: depth * 20, right: 0 }}>
             <div className="flex-1 h-0.5 bg-sky-500 rounded-full" />
             <span className="ml-1 shrink-0 max-w-[130px] overflow-hidden text-ellipsis whitespace-nowrap
                              bg-sky-500 text-white text-[8.5px] font-bold px-1.5 py-0.5 rounded-full
@@ -888,12 +888,18 @@ export default function Sidebar() {
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastOverIdRef = useRef<number | null>(null)
   const lastIntentRef = useRef<DropIntent | null>(null)
+  const pointerXRef   = useRef(0)
   const pointerYRef   = useRef(0)
+  const overlayRef    = useRef<HTMLDivElement>(null)
   const createMenuRef = useRef<HTMLDivElement>(null)
 
-  // Stable pointer tracker — used by add/removeEventListener
+  // Stable pointer tracker — updates refs and moves the preview overlay via direct DOM
   const handlePointerMove = useCallback((e: PointerEvent) => {
+    pointerXRef.current = e.clientX
     pointerYRef.current = e.clientY
+    if (overlayRef.current) {
+      overlayRef.current.style.transform = `translate(${e.clientX + 12}px, ${e.clientY + 12}px)`
+    }
   }, [])
 
   const isEn = lang !== 'zh'
@@ -1016,13 +1022,28 @@ export default function Sidebar() {
   }
 
   /**
-   * Computes drop zone (top 25% = before, middle 50% = inside, bottom 25% = after)
-   * from pointer Y vs target element rect. Manages 600ms auto-expand timer.
+   * Live hit-test: uses elementFromPoint(clientX, clientY) to find the portfolio
+   * row the pointer is actually over, then reads its live getBoundingClientRect()
+   * for zone detection. Falls back to dnd-kit's cached data only if needed.
+   *
+   * Zones (top 25% = before, middle 50% = inside, bottom 25% = after).
    */
   const handleDragOver = useCallback((e: DragOverEvent) => {
-    const overId = e.over ? (e.over.id as number) : null
+    const clientX = pointerXRef.current
+    const clientY = pointerYRef.current
 
-    if (overId === null) {
+    // Live DOM hit-test — bypasses dnd-kit's stale cached rects
+    const element   = document.elementFromPoint(clientX, clientY)
+    const liElement = element?.closest<HTMLElement>('[data-portfolio-id]') ?? null
+    const liveRect  = liElement?.getBoundingClientRect() ?? null
+    const liveId    = liElement ? Number(liElement.getAttribute('data-portfolio-id')) : null
+
+    // Fall back to dnd-kit collision result if elementFromPoint misses (pointer in gap)
+    const overId     = liveId     ?? (e.over ? (e.over.id as number) : null)
+    const rectTop    = liveRect?.top    ?? e.over?.rect.top    ?? null
+    const rectHeight = liveRect?.height ?? e.over?.rect.height ?? null
+
+    if (overId === null || rectTop === null || rectHeight === null) {
       setDropState(EMPTY_DROP)
       if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
       lastOverIdRef.current = null
@@ -1030,19 +1051,18 @@ export default function Sidebar() {
       return
     }
 
-    const rect      = e.over!.rect
-    const relY      = pointerYRef.current - rect.top
-    const ratio     = rect.height > 0 ? relY / rect.height : 0.5
-    const overNode  = flatMap.get(overId)?.node
+    const relY  = clientY - rectTop
+    const ratio = rectHeight > 0 ? relY / rectHeight : 0.5
+    const overNode     = flatMap.get(overId)?.node
     const activeItemId = e.active.id as number
 
-    // Zone → intent; degrade 'inside' to before/after for non-folders
+    // Zone → intent; degrade 'inside' to before/after for Account nodes
     let intent: DropIntent
     if      (ratio < 0.25) intent = 'before'
     else if (ratio > 0.75) intent = 'after'
     else    intent = overNode?.is_folder ? 'inside' : (ratio < 0.5 ? 'before' : 'after')
 
-    // Validation: can't drop onto self, can't move folder into its own subtree
+    // Validation: can't drop onto self; can't move folder into its own subtree
     const valid = overId !== activeItemId
       && !(intent === 'inside' && isDescendantOf(overId, activeItemId, flatMap))
 
@@ -1058,7 +1078,7 @@ export default function Sidebar() {
       if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null }
       if (intent === 'inside' && overNode?.is_folder && valid) {
         hoverTimerRef.current = setTimeout(() => {
-          setForceExpandedIds(prev => new Set([...prev, overId]))
+          setForceExpandedIds(prev => new Set([...prev, overId!]))
         }, 600)
       }
     }
@@ -1320,22 +1340,7 @@ export default function Sidebar() {
                   </ul>
                 </SortableContext>
 
-                <DragOverlay dropAnimation={null}>
-                  {activeNode ? (
-                    <div
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-                                 bg-white/95 border border-sky-300 shadow-xl backdrop-blur-sm
-                                 text-[12.5px] font-semibold text-sky-700"
-                      style={{ width: 180 }}
-                    >
-                      {activeNode.is_folder
-                        ? <IconWallet active />
-                        : <IconBriefcase active />
-                      }
-                      <span className="truncate">{activeNode.name}</span>
-                    </div>
-                  ) : null}
-                </DragOverlay>
+                {/* DragOverlay removed — preview rendered via portal below */}
               </DndContext>
             )}
           </div>
@@ -1435,6 +1440,31 @@ export default function Sidebar() {
           onConfirm={handleConfirmDelete}
           onCancel={() => setPendingDelete(null)}
         />
+      )}
+
+      {/* Pointer-anchored drag preview — mounts at document.body, position updated
+          via direct DOM in handlePointerMove (no React re-renders for position). */}
+      {activeNode && createPortal(
+        <div
+          ref={overlayRef}
+          style={{
+            position:       'fixed',
+            top:            0,
+            left:           0,
+            transform:      `translate(${pointerXRef.current + 12}px, ${pointerYRef.current + 12}px)`,
+            width:          196,
+            zIndex:         9999,
+            pointerEvents:  'none',
+            willChange:     'transform',
+          }}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg
+                     bg-white/95 border border-sky-300 shadow-xl backdrop-blur-sm
+                     text-[12.5px] font-semibold text-sky-700"
+        >
+          {activeNode.is_folder ? <IconWallet active /> : <IconBriefcase active />}
+          <span className="truncate">{activeNode.name}</span>
+        </div>,
+        document.body,
       )}
     </aside>
   )
