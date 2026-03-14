@@ -315,33 +315,96 @@ def _do_fetch_1y_closes(ticker: str) -> list[float]:
     return closes
 
 
-async def get_perf_cached(ticker: str) -> dict[str, float]:
+# ── /stock-price-change — single-call multi-period performance ─────────────
+
+def _do_fetch_stock_price_change(ticker: str) -> dict[str, float | None] | None:
     """
-    Return multi-period performance from cached 1-year close history.
+    Fetch pre-computed price changes from FMP /stock-price-change.
 
-    Periods: 1d (1 close back), 5d (5 trading days), 1m (~22 td), 3m (~66 td).
-
-    Strategy (in order):
-      1. Warm cache hit  → instant, zero I/O.
-      2. Cold miss       → blocking fetch with 3-second timeout.
-      3. Timeout / fail  → return None placeholders so callers can distinguish
-                           "genuinely zero" from "data not yet available".
-
-    Never raises; always returns a dict with keys 1d / 5d / 1m / 3m.
-    Values are float percentages or None when data is unavailable.
+    Returns {1d, 5d, 1m, 3m} as float percentages, or None on failure.
+    FMP response: [{symbol, 1D, 5D, 1M, 3M, 6M, ytd, 1Y, ...}]
     """
-    key = f"1y:{ticker.upper()}"
-    closes = _last_known.get(key)
-    if not isinstance(closes, list) or len(closes) < 2:
-        loop = asyncio.get_running_loop()
-        fut = loop.run_in_executor(_refresh_pool, _do_fetch_1y_closes, ticker.upper())
+    fmp_s = _fmp_sym(ticker)
+    data = _fmp_get("/stock-price-change", {"symbol": fmp_s})
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+    item = data[0]
+
+    def _safe_float(key: str) -> float | None:
+        v = item.get(key)
+        if v is None:
+            return None
         try:
-            closes = await asyncio.wait_for(asyncio.shield(fut), timeout=3.0)
+            return round(float(v), 2)
+        except (ValueError, TypeError):
+            return None
+
+    result = {
+        "1d": _safe_float("1D"),
+        "5d": _safe_float("5D"),
+        "1m": _safe_float("1M"),
+        "3m": _safe_float("3M"),
+    }
+    ticker_upper = ticker.upper()
+    _set_cached(f"perf:{ticker_upper}", result)
+    return result
+
+
+async def get_perf_cached(ticker: str) -> dict[str, float | None]:
+    """
+    Return multi-period performance: {1d, 5d, 1m, 3m} as float percentages.
+
+    Strategy (fastest first):
+      1. Warm cache hit (perf: key)  → instant, zero I/O.
+      2. /stock-price-change API     → single FMP call returns all periods.
+      3. Fallback: 1-year closes     → compute from daily close history.
+      4. Timeout / fail              → return None placeholders.
+
+    1d is always overridden with live FMP changesPercentage when available.
+    Never raises; always returns a dict.
+    """
+    ticker_upper = ticker.upper()
+
+    # ── 1. Warm cache hit — instant ──────────────────────────────────
+    perf_key = f"perf:{ticker_upper}"
+    cached = _get_cached(perf_key, 300.0)  # 5-min TTL
+    if isinstance(cached, dict) and any(v is not None for v in cached.values()):
+        # Schedule SWR background refresh if stale
+        if not _is_cache_fresh(perf_key, 300.0):
+            _schedule_bg_refresh(perf_key, _do_fetch_stock_price_change, ticker_upper)
+        result = dict(cached)
+        live_1d = get_changepct_cached(ticker_upper)
+        if live_1d is not None:
+            result["1d"] = float(live_1d)
+        return result
+
+    # ── 2. Try /stock-price-change (single API call) ─────────────────
+    loop = asyncio.get_running_loop()
+    try:
+        spc = await asyncio.wait_for(
+            loop.run_in_executor(_refresh_pool, _do_fetch_stock_price_change, ticker_upper),
+            timeout=3.0,
+        )
+    except asyncio.TimeoutError:
+        spc = None
+
+    if isinstance(spc, dict) and any(v is not None for v in spc.values()):
+        live_1d = get_changepct_cached(ticker_upper)
+        if live_1d is not None:
+            spc["1d"] = float(live_1d)
+        return spc
+
+    # ── 3. Fallback: compute from 1-year close history ───────────────
+    key_1y = f"1y:{ticker_upper}"
+    closes = _last_known.get(key_1y)
+    if not isinstance(closes, list) or len(closes) < 2:
+        try:
+            closes = await asyncio.wait_for(
+                loop.run_in_executor(_refresh_pool, _do_fetch_1y_closes, ticker_upper),
+                timeout=3.0,
+            )
         except asyncio.TimeoutError:
-            # Background fetch still running — check if _last_known was populated
-            # by a concurrent fetch (race-safe: _do_fetch_1y_closes calls
-            # _set_cached which writes to _last_known).
-            stale = _last_known.get(key)
+            stale = _last_known.get(key_1y)
             if isinstance(stale, list) and len(stale) >= 2:
                 closes = stale
             else:
@@ -350,30 +413,272 @@ async def get_perf_cached(ticker: str) -> dict[str, float]:
             return {"1d": None, "5d": None, "1m": None, "3m": None}
 
     def _pct(n: int) -> float | None:
-        """
-        Percentage return over the last n trading-day closes.
-        Requires at least n+1 data points (base + current).
-        Nearest-business-day alignment is implicit: FMP only returns
-        trading-day closes, so closes[-1-n] is always n trading days back.
-        """
         if len(closes) <= n:
-            return None     # insufficient history — not the same as 0%
+            return None
         base = closes[-1 - n]
         if not base:
             return None
         return round((closes[-1] / base - 1) * 100, 2)
 
-    result: dict[str, float | None] = {
-        "1d": _pct(1),
-        "5d": _pct(5),
-        "1m": _pct(22),
-        "3m": _pct(66),
-    }
-    # Override 1d with live FMP changesPercentage (authoritative intraday figure)
-    live_1d = get_changepct_cached(ticker.upper())
+    result = {"1d": _pct(1), "5d": _pct(5), "1m": _pct(22), "3m": _pct(66)}
+    live_1d = get_changepct_cached(ticker_upper)
     if live_1d is not None:
         result["1d"] = float(live_1d)
+    # Warm the perf cache so next call is instant
+    _set_cached(perf_key, result)
     return result
+
+
+# ── /analyst-estimates — forward EPS & revenue estimates ───────────────────
+
+def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
+    """
+    Fetch analyst consensus estimates from FMP /analyst-estimates.
+
+    Returns structured dict with current/next year EPS + revenue estimates.
+    FMP response: [{symbol, date, estimatedRevenueLow, estimatedRevenueHigh,
+                     estimatedRevenueAvg, estimatedEpsAvg, estimatedEpsHigh,
+                     estimatedEpsLow, ...}, ...]  (sorted by date desc)
+    """
+    fmp_s = _fmp_sym(ticker)
+    data = _fmp_get("/analyst-estimates", {"symbol": fmp_s, "limit": 4})
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+
+    # FMP returns future fiscal years first (desc by date).
+    # Take the first two entries as next_year and current_year.
+    estimates: list[dict] = []
+    for item in data[:2]:
+        entry = {
+            "date":                  item.get("date"),
+            "estimated_revenue_low":  _safe_decimal(item.get("estimatedRevenueLow")),
+            "estimated_revenue_high": _safe_decimal(item.get("estimatedRevenueHigh")),
+            "estimated_revenue_avg":  _safe_decimal(item.get("estimatedRevenueAvg")),
+            "estimated_eps_avg":      _safe_float_val(item.get("estimatedEpsAvg")),
+            "estimated_eps_high":     _safe_float_val(item.get("estimatedEpsHigh")),
+            "estimated_eps_low":      _safe_float_val(item.get("estimatedEpsLow")),
+            "number_analysts_estimated_revenue": int(item.get("numberAnalystsEstimatedRevenue") or 0),
+            "number_analysts_estimated_eps":     int(item.get("numberAnalystsEstimatedEps") or 0),
+        }
+        estimates.append(entry)
+
+    result = {"estimates": estimates}
+    _set_cached(f"estimates:{ticker.upper()}", result)
+    return result
+
+
+async def get_analyst_estimates(ticker: str) -> dict | None:
+    """
+    Return analyst estimates for a ticker (24h TTL, SWR).
+
+    Returns: {estimates: [{date, estimated_eps_avg, estimated_revenue_avg, ...}, ...]}
+    """
+    ticker = ticker.upper()
+    cache_key = f"estimates:{ticker}"
+    cached = _get_cached(cache_key, 86400.0)  # 24h TTL
+    if isinstance(cached, dict):
+        if not _is_cache_fresh(cache_key, 86400.0):
+            _schedule_bg_refresh(cache_key, _do_fetch_analyst_estimates, ticker)
+        return cached
+    return await asyncio.get_running_loop().run_in_executor(
+        _refresh_pool, _do_fetch_analyst_estimates, ticker
+    )
+
+
+# ── /profile — company profile (sector, mktCap, description, image) ───────
+
+def _do_fetch_company_profile(ticker: str) -> dict | None:
+    """
+    Fetch company profile from FMP /profile.
+
+    FMP response: [{symbol, mktCap, industry, sector, description, image,
+                     companyName, exchange, currency, country, ...}]
+    """
+    fmp_s = _fmp_sym(ticker)
+    data = _fmp_get("/profile", {"symbol": fmp_s})
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+
+    item = data[0]
+    profile = {
+        "symbol":       item.get("symbol", ""),
+        "company_name": item.get("companyName", ""),
+        "mkt_cap":      _safe_decimal(item.get("mktCap")),
+        "industry":     item.get("industry", ""),
+        "sector":       _normalise_sector(item.get("sector", "")),
+        "description":  item.get("description", ""),
+        "image":        item.get("image", ""),
+        "exchange":     item.get("exchange", ""),
+        "currency":     item.get("currency", ""),
+        "country":      item.get("country", ""),
+        "ipo_date":     item.get("ipoDate", ""),
+        "full_time_employees": int(item.get("fullTimeEmployees") or 0),
+    }
+    _set_cached(f"profile:{ticker.upper()}", profile)
+
+    # Side-effect: update screener sector cache for improved sector exposure
+    sector = profile["sector"]
+    if sector:
+        with _screener_meta_lock:
+            existing = _screener_meta.get(ticker.upper(), {})
+            existing["sector"] = sector
+            _screener_meta[ticker.upper()] = existing
+
+    return profile
+
+
+async def get_company_profile(ticker: str) -> dict | None:
+    """
+    Return company profile for a ticker (24h TTL, SWR).
+
+    Returns: {symbol, company_name, mkt_cap, industry, sector, description,
+              image, exchange, currency, country, ipo_date, full_time_employees}
+    """
+    ticker = ticker.upper()
+    cache_key = f"profile:{ticker}"
+    cached = _get_cached(cache_key, 86400.0)  # 24h TTL
+    if isinstance(cached, dict):
+        if not _is_cache_fresh(cache_key, 86400.0):
+            _schedule_bg_refresh(cache_key, _do_fetch_company_profile, ticker)
+        return cached
+    return await asyncio.get_running_loop().run_in_executor(
+        _refresh_pool, _do_fetch_company_profile, ticker
+    )
+
+
+# ── /historical-chart/5min — intraday 5-minute OHLCV bars ─────────────────
+
+def _do_fetch_intraday_5min(ticker: str) -> list[dict] | None:
+    """
+    Fetch intraday 5-minute chart data from FMP /historical-chart/5min.
+
+    FMP response: [{date, open, high, low, close, volume}, ...]
+    Returns list of dicts with Decimal prices, sorted chronologically.
+    """
+    fmp_s = _fmp_sym(ticker)
+    data = _fmp_get("/historical-chart/5min", {"symbol": fmp_s})
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+
+    # FMP returns newest-first; reverse to chronological order
+    bars: list[dict] = []
+    for item in reversed(data):
+        bar = {
+            "date":   item.get("date", ""),
+            "open":   _safe_decimal(item.get("open")),
+            "high":   _safe_decimal(item.get("high")),
+            "low":    _safe_decimal(item.get("low")),
+            "close":  _safe_decimal(item.get("close")),
+            "volume": int(item.get("volume") or 0),
+        }
+        bars.append(bar)
+
+    _set_cached(f"intraday5m:{ticker.upper()}", bars)
+    return bars
+
+
+async def get_intraday_5min(ticker: str) -> list[dict] | None:
+    """
+    Return intraday 5-minute bars for a ticker (60s TTL, SWR).
+
+    Returns list of {date, open, high, low, close, volume} in chronological order.
+    Prices are Decimal; volume is int.
+    """
+    ticker = ticker.upper()
+    cache_key = f"intraday5m:{ticker}"
+    cached = _get_cached(cache_key, 60.0)  # 1-min TTL for high-frequency rendering
+    if isinstance(cached, list):
+        if not _is_cache_fresh(cache_key, 60.0):
+            _schedule_bg_refresh(cache_key, _do_fetch_intraday_5min, ticker)
+        return cached
+    return await asyncio.get_running_loop().run_in_executor(
+        _refresh_pool, _do_fetch_intraday_5min, ticker
+    )
+
+
+# ── /technical-indicators/sma — SMA(200) for risk modeling ─────────────────
+
+def _do_fetch_sma(ticker: str, period: int = 200) -> list[dict] | None:
+    """
+    Fetch SMA technical indicator from FMP /technical-indicators/sma.
+
+    FMP response: [{date, sma, open, high, low, close, volume}, ...]
+    Returns list of {date, sma, close} in chronological order.
+    """
+    fmp_s = _fmp_sym(ticker)
+    data = _fmp_get("/technical-indicators/sma", {
+        "symbol": fmp_s,
+        "periodLength": period,
+        "timeframe": "daily",
+    })
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+
+    # FMP returns newest-first; reverse for chronological
+    points: list[dict] = []
+    for item in reversed(data):
+        sma_val = item.get("sma")
+        if sma_val is None:
+            continue
+        points.append({
+            "date":  item.get("date", ""),
+            "sma":   round(float(sma_val), 4),
+            "close": round(float(item.get("close", 0)), 4),
+        })
+
+    cache_key = f"sma{period}:{ticker.upper()}"
+    _set_cached(cache_key, points)
+
+    # Side-effect: cache the latest SMA value for quick lookups
+    if points:
+        _set_cached(f"sma{period}_latest:{ticker.upper()}", points[-1]["sma"])
+
+    return points
+
+
+async def get_sma(ticker: str, period: int = 200) -> list[dict] | None:
+    """
+    Return SMA data points for a ticker (1h TTL, SWR).
+
+    Returns list of {date, sma, close} in chronological order.
+    """
+    ticker = ticker.upper()
+    cache_key = f"sma{period}:{ticker}"
+    cached = _get_cached(cache_key, 3600.0)  # 1h TTL
+    if isinstance(cached, list):
+        if not _is_cache_fresh(cache_key, 3600.0):
+            _schedule_bg_refresh(cache_key, _do_fetch_sma, ticker, period)
+        return cached
+    return await asyncio.get_running_loop().run_in_executor(
+        _refresh_pool, _do_fetch_sma, ticker, period
+    )
+
+
+def get_sma_latest_cached(ticker: str, period: int = 200) -> float | None:
+    """Return the most recent SMA value from cache — zero network I/O."""
+    return _last_known.get(f"sma{period}_latest:{ticker.upper()}")
+
+
+# ── Shared type-conversion helpers ─────────────────────────────────────────
+
+def _safe_decimal(val: object) -> Decimal | None:
+    """Convert a value to Decimal, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return Decimal(str(val)).quantize(Decimal("0.0001"))
+    except Exception:
+        return None
+
+
+def _safe_float_val(val: object) -> float | None:
+    """Convert a value to float, returning None on failure."""
+    if val is None:
+        return None
+    try:
+        return round(float(val), 4)
+    except (ValueError, TypeError):
+        return None
 
 
 async def get_hist_vol(ticker: str) -> Decimal:
