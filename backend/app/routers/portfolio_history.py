@@ -5,7 +5,7 @@ Returns a daily NLV time series for the current portfolio holdings
 over the past N days, using historical EOD prices from FMP.
 
 Logic:
-  1. Fetch current active positions from DB
+  1. Fetch current active positions from DB.
   2. Stock positions: use historical EOD closes directly.
      Option positions: fetch the underlying symbol's historical EOD closes
      and compute simplified intrinsic value =
@@ -14,9 +14,12 @@ Logic:
      (multiplied by net_contracts sign so shorts are negative)
   3. Align on the UNION of all available trading dates, take last `days`.
      Missing prices are forward-filled (ffill) from the last known value.
-  4. NLV[date] = cash_balance + Σ(historical_value per position)
-  5. If no positions at all, return a flat cash-balance line.
+  4. Resilient summation: if a symbol's full history is unavailable, use
+     the current cached spot price as a flat-line proxy rather than 0.
+     This prevents a single API failure from zeroing the entire portfolio.
+  5. NLV[date] = cash_balance + Σ(historical_value per position)
   6. Return series sorted ascending, plus start/end NLV and return_pct.
+  7. debug_info lists which tickers succeeded and which fell back to proxy.
 """
 from __future__ import annotations
 
@@ -35,7 +38,11 @@ from app.models.cash_ledger import CashLedger
 from app.models.user import User
 from app.services import position_engine
 from app.services.portfolio_resolver import resolve_portfolio_ids
-from app.services.yfinance_client import get_price_history
+from app.services.yfinance_client import (
+    get_price_history,
+    get_spot_cached_only,
+    nearest_business_day_back,
+)
 
 router = APIRouter(tags=["portfolio"])
 
@@ -66,6 +73,7 @@ def _flat_cash_response(cash_balance: Decimal, days: int) -> dict:
         "end_nlv": nlv_str,
         "return_pct": "0.00",
         "days": days,
+        "debug_info": {"tickers_ok": [], "tickers_failed": [], "tickers_proxy": []},
     }
 
 
@@ -81,11 +89,12 @@ async def get_portfolio_history(
     applied to historical EOD prices.
 
     Returns:
-      series:     [{date, nlv}] ascending
-      start_nlv:  first point NLV
-      end_nlv:    last point NLV
-      return_pct: percentage gain/loss over the period
-      days:       actual days returned
+      series:      [{date, nlv}] ascending
+      start_nlv:   first point NLV
+      end_nlv:     last point NLV
+      return_pct:  percentage gain/loss over the period
+      days:        actual days returned
+      debug_info:  {tickers_ok, tickers_failed, tickers_proxy} for diagnostics
     """
     # 1. Resolve portfolio hierarchy + get positions + cash
     pids = await resolve_portfolio_ids(db, user.id, portfolio_id)
@@ -101,9 +110,8 @@ async def get_portfolio_history(
     if not positions:
         return _flat_cash_response(cash_balance, days)
 
-    # 2. Separate stock and option positions; gather all underlying symbols to fetch
-    #    All symbol keys are normalised to UPPER CASE throughout.
-    stock_sym_qty: dict[str, int] = {}   # sym -> net_contracts
+    # 2. Separate stock and option positions; collect all underlying symbols.
+    stock_sym_qty: dict[str, int] = {}   # sym → net_contracts
     # (underlying_sym, strike, option_type, net_contracts, multiplier)
     option_legs: list[tuple[str, Decimal, OptionType, int, int]] = []
     all_syms: set[str] = set()
@@ -119,7 +127,6 @@ async def get_portfolio_history(
             stock_sym_qty[sym] = stock_sym_qty.get(sym, 0) + pos.net_contracts
             all_syms.add(sym)
         else:
-            # Option — fetch the underlying's price history for intrinsic value
             all_syms.add(sym)
             option_legs.append((
                 sym,
@@ -129,39 +136,64 @@ async def get_portfolio_history(
                 pos.instrument.multiplier,
             ))
 
-    # 3. Fetch historical EOD closes (buffer +15 days for weekends/holidays)
-    start_date = (date.today() - timedelta(days=days + 15)).isoformat()
+    # 3. Fetch historical EOD closes.
+    #    start_date is anchored to the nearest preceding business day so that
+    #    weekend starts don't produce an empty leading segment from FMP.
+    buffer_days = max(days + 20, 30)   # extra buffer for weekends + holidays
+    raw_start = date.today() - timedelta(days=buffer_days)
+    start_date = nearest_business_day_back(raw_start).isoformat()
+
     sym_list = sorted(all_syms)
 
-    histories = await asyncio.gather(
+    histories_raw = await asyncio.gather(
         *[get_price_history(sym, start_date) for sym in sym_list],
         return_exceptions=True,
     )
 
-    # Build price_histories with UPPER-CASE keys (fix symbol mismatch)
+    # ── Resilient summation: classify each symbol ─────────────────────────────
+    # tickers_ok     — full history from FMP
+    # tickers_proxy  — FMP returned empty; using current spot as flat-line proxy
+    # tickers_failed — neither history nor cached spot available
+    tickers_ok:     list[str] = []
+    tickers_proxy:  list[str] = []
+    tickers_failed: list[str] = []
+
     price_histories: dict[str, dict[str, float]] = {}
-    for sym, hist in zip(sym_list, histories):
+
+    for sym, hist in zip(sym_list, histories_raw):
         key = sym.upper()
         if isinstance(hist, Exception) or not hist:
-            price_histories[key] = {}
+            # FMP returned nothing — try current cached spot as fallback proxy
+            spot_fallback = get_spot_cached_only(key)
+            if spot_fallback is not None:
+                # Inject the current spot as a single anchor point.
+                # _ffill will propagate it backward across all union dates,
+                # producing a flat line rather than a zero contribution.
+                today_str = date.today().isoformat()
+                price_histories[key] = {today_str: float(spot_fallback)}
+                tickers_proxy.append(key)
+            else:
+                price_histories[key] = {}
+                tickers_failed.append(key)
         else:
-            price_histories[key] = hist   # date keys already strings
+            price_histories[key] = hist
+            tickers_ok.append(key)
 
-    # 4. UNION of available trading dates (not intersection) → take last `days`
+    # 4. Build union of trading dates from all symbols that have ANY data.
     date_sets = [set(h.keys()) for h in price_histories.values() if h]
-    if date_sets:
-        all_dates = sorted(set().union(*date_sets))[-days:]
-    else:
-        # No price data at all — fall back to cash flat line
+    if not date_sets:
         return _flat_cash_response(cash_balance, days)
 
-    # 5. Forward-fill each symbol over the full union timeline
+    all_dates = sorted(set().union(*date_sets))[-days:]
+
+    # 5. Forward-fill each symbol over the full union timeline.
     filled: dict[str, dict[str, float]] = {
-        sym: _ffill(all_dates, price_histories.get(sym, {}))
+        sym: _ffill(all_dates, price_histories.get(sym.upper(), {}))
         for sym in all_syms
     }
 
-    # 6. Compute daily NLV
+    # 6. Compute daily NLV — each instrument is treated independently.
+    #    A missing price for one instrument never zeros another's contribution.
     series = []
     for d_str in all_dates:
         nlv = cash_balance
@@ -172,10 +204,14 @@ async def get_portfolio_history(
             if price is not None:
                 nlv += Decimal(str(price)) * qty
 
-        # Option intrinsic-value contributions (simplified — no time value)
+        # Option intrinsic-value contributions (simplified — no time value).
+        # Uses underlying price; if underlying data was proxied from current spot,
+        # this becomes a flat-line estimate rather than zeroing the position out.
         for (underlying_sym, strike, opt_type, net_contracts, multiplier) in option_legs:
             price = filled.get(underlying_sym.upper(), {}).get(d_str)
             if price is None:
+                # No data at all for this underlying — use 0 for this leg only.
+                # Other legs continue contributing their correct values.
                 continue
             spot = Decimal(str(price))
             if str(opt_type).upper() in ("CALL", "OPTIONTYPE.CALL"):
@@ -193,9 +229,10 @@ async def get_portfolio_history(
         return _flat_cash_response(cash_balance, days)
 
     start_nlv = Decimal(series[0]["nlv"])
-    end_nlv = Decimal(series[-1]["nlv"])
+    end_nlv   = Decimal(series[-1]["nlv"])
 
-    if start_nlv != 0:
+    # Divide-by-zero guard: if start_nlv is 0 or missing, return_pct = 0.
+    if start_nlv and start_nlv != 0:
         return_pct = ((end_nlv - start_nlv) / abs(start_nlv) * 100).quantize(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
@@ -203,9 +240,14 @@ async def get_portfolio_history(
         return_pct = Decimal("0.00")
 
     return {
-        "series": series,
+        "series":    series,
         "start_nlv": str(start_nlv),
-        "end_nlv": str(end_nlv),
+        "end_nlv":   str(end_nlv),
         "return_pct": str(return_pct),
-        "days": len(series),
+        "days":      len(series),
+        "debug_info": {
+            "tickers_ok":     tickers_ok,
+            "tickers_proxy":  tickers_proxy,   # flat-line proxy used
+            "tickers_failed": tickers_failed,  # completely absent
+        },
     }
