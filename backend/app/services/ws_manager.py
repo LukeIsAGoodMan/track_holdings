@@ -1,8 +1,16 @@
 """
 WebSocket Connection Manager.
 
-Tracks active WebSocket connections per user, manages symbol subscriptions,
-and provides broadcast helpers for the PriceFeedService.
+Tracks active WebSocket connections per user, manages hierarchical
+portfolio -> symbol subscriptions, and provides broadcast helpers
+for the PriceFeedService.
+
+Subscription model:
+    Connection
+        └── Portfolio
+                └── Symbols
+
+Symbols remain active as long as at least one portfolio references them.
 """
 from __future__ import annotations
 
@@ -13,24 +21,54 @@ from dataclasses import dataclass, field
 
 from fastapi import WebSocket
 
+from app.services.yfinance_client import normalize_ticker
+
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class WSConnection:
-    """One authenticated WebSocket connection."""
+    """One authenticated WebSocket connection with hierarchical subscriptions."""
     ws: WebSocket
     user_id: int
-    subscribed_portfolio_ids: set[int] = field(default_factory=set)
-    subscribed_symbols: set[str] = field(default_factory=set)
     language: str = "en"  # Phase 11: user's preferred language for AI diagnostics
+
+    # Hierarchical subscription map: portfolio_id -> set of symbols
+    _portfolio_map: dict[int, set[str]] = field(default_factory=dict)
+
+    # ── Derived authority properties ───────────────────────────────────────
+
+    @property
+    def all_symbols(self) -> set[str]:
+        """
+        Union of all symbol sets across all subscribed portfolios.
+
+        Always returns a NEW set instance — never exposes internal
+        references.  Safe for concurrent iteration by the Spot Loop.
+        """
+        result: set[str] = set()
+        for syms in self._portfolio_map.values():
+            result |= syms
+        return result
+
+    # ── Backward-compatibility aliases ─────────────────────────────────────
+
+    @property
+    def subscribed_symbols(self) -> set[str]:
+        """Compatibility alias — delegates to all_symbols."""
+        return self.all_symbols
+
+    @property
+    def subscribed_portfolio_ids(self) -> set[int]:
+        """Compatibility alias — derived from _portfolio_map keys."""
+        return set(self._portfolio_map.keys())
 
 
 class ConnectionManager:
     """Manages all active WebSocket connections and broadcasts."""
 
     def __init__(self) -> None:
-        # conn_id (id(ws)) → WSConnection
+        # conn_id (id(ws)) -> WSConnection
         self._connections: dict[int, WSConnection] = {}
 
     # ── Connect / Disconnect ──────────────────────────────────────────────
@@ -53,21 +91,31 @@ class ConnectionManager:
     # ── Subscription ──────────────────────────────────────────────────────
 
     def subscribe(self, ws: WebSocket, portfolio_id: int, symbols: set[str]) -> None:
+        """
+        Subscribe a connection to a portfolio's symbol set.
+
+        Idempotent replacement: if portfolio_id already exists, the entire
+        symbol set is replaced.  Symbols are normalized via normalize_ticker().
+        """
         conn = self._connections.get(id(ws))
         if conn:
-            conn.subscribed_portfolio_ids.add(portfolio_id)
-            conn.subscribed_symbols.update(symbols)
+            normalized = {normalize_ticker(s) for s in symbols}
+            conn._portfolio_map[portfolio_id] = normalized
             logger.info(
                 "WS subscribe: user=%d portfolio=%d symbols=%s",
-                conn.user_id, portfolio_id, symbols,
+                conn.user_id, portfolio_id, normalized,
             )
 
     def unsubscribe(self, ws: WebSocket, portfolio_id: int) -> None:
+        """
+        Unsubscribe a connection from a portfolio.
+
+        Symbols disappear naturally through the derived all_symbols property
+        when no remaining portfolio references them.
+        """
         conn = self._connections.get(id(ws))
         if conn:
-            conn.subscribed_portfolio_ids.discard(portfolio_id)
-            # Rebuild symbol set from remaining subscriptions
-            # (symbols are refreshed on next poll cycle anyway)
+            conn._portfolio_map.pop(portfolio_id, None)
             logger.info(
                 "WS unsubscribe: user=%d portfolio=%d", conn.user_id, portfolio_id,
             )
@@ -78,14 +126,14 @@ class ConnectionManager:
         """Return the union of all symbols across all connections."""
         symbols: set[str] = set()
         for conn in self._connections.values():
-            symbols.update(conn.subscribed_symbols)
+            symbols.update(conn.all_symbols)
         return symbols
 
     def connections_for_symbol(self, symbol: str) -> list[WSConnection]:
         """Return all connections subscribed to a given symbol."""
         return [
             conn for conn in self._connections.values()
-            if symbol in conn.subscribed_symbols
+            if symbol in conn.all_symbols
         ]
 
     def connections_for_user(self, user_id: int) -> list[WSConnection]:
