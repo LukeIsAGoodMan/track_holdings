@@ -1720,18 +1720,20 @@ export default function HoldingsPage() {
   }, [selectedPortfolioId])
 
   // ── Hero metrics ──────────────────────────────────────────────────────────
-  // Daily Unrealized P&L (dual-track):
-  //   Track 1 (preferred): bs_pnl_1d — BS mark-to-market $ P&L per group
-  //     (computed server-side with full gamma/convexity precision)
-  //   Track 2 (fallback):  delta_adjusted_exposure × spot_change_pct / 100
-  //     (delta-linear approximation, used when BS P&L not yet available)
+  // Daily Unrealized P&L:
+  //   Primary: backend authoritative bs_pnl_1d (BS mark-to-market, full convexity)
+  //   Fallback: exposure × changepct approximation (only when bs_pnl_1d is null)
+  //   A true zero is valid and must display as $0.00, not '—'.
   // Net Exposure = Σ delta_adjusted_exposure (signed sum of all delta bets)
   const heroMetrics = useMemo(() => {
     let dailyUnrealizedPnl = 0
     let netExposure        = 0
     let portfolioValue     = 0
+    // Track whether we have any holdings to distinguish "no data" from "computed zero"
+    let hasAnyHolding      = false
 
     for (const g of holdings) {
+      hasAnyHolding = true
       const exposure = safeFloat(g.delta_adjusted_exposure) ?? 0
       netExposure += exposure
 
@@ -1764,10 +1766,14 @@ export default function HoldingsPage() {
     const dailyUnrealizedPnlPct = portfolioValue > 0 ? (dailyUnrealizedPnl / portfolioValue) * 100 : 0
     const realizedPnlPct        = portfolioValue > 0 ? (realizedPnl        / portfolioValue) * 100 : 0
 
-    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl, dailyUnrealizedPnlPct, realizedPnlPct }
+    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl, dailyUnrealizedPnlPct, realizedPnlPct, hasAnyHolding }
   }, [holdings, cash, lastSpotChangePct])
 
   // ── Treemap data ──────────────────────────────────────────────────────────
+  // Source policy:
+  //   1D:        WS quote-driven changepct (primary) → backend effective_perf_1d (fallback)
+  //   5D/1M/3M:  backend perf (primary) → WS changepct (last resort)
+  // Zero is a valid value — only null/undefined trigger fallback.
   const treemapData = useMemo(() => {
     return holdings
       .filter((g) => {
@@ -1778,8 +1784,6 @@ export default function HoldingsPage() {
       .map((g) => {
         const isShort = g.is_short === true
 
-        // 1D period: quote-driven changepct (primary) → effective_perf_1d (fallback)
-        // Other periods: backend effective_perf (primary) → WS changepct (fallback)
         let perf: number
         let rawPerf: number
 
@@ -1797,13 +1801,16 @@ export default function HoldingsPage() {
           perf    = wsEffective ?? backendPerf ?? 0
           rawPerf = wsChangePct ?? backendRaw ?? 0
         } else {
-          // 5D/1M/3M: backend perf is authoritative, WS changepct only as last resort
+          // 5D/1M/3M: backend perf is authoritative, WS changepct only as last resort.
+          // null = data not yet available; 0 = valid zero-change result.
           const staticPerf = getEffectivePerf(g, period)
+          const staticRaw  = getRawPerf(g, period)
           const wsChangePct = lastSpotChangePct?.[g.symbol] != null
-            ? parseFloat(lastSpotChangePct![g.symbol]) * (isShort ? -1 : 1)
+            ? parseFloat(lastSpotChangePct![g.symbol])
             : null
-          perf    = (staticPerf != null && staticPerf !== 0) ? staticPerf : (wsChangePct ?? 0)
-          rawPerf = getRawPerf(g, period) ?? (wsChangePct != null ? parseFloat(lastSpotChangePct![g.symbol]) : 0)
+
+          perf    = staticPerf != null ? staticPerf : (wsChangePct != null ? wsChangePct * (isShort ? -1 : 1) : 0)
+          rawPerf = staticRaw  != null ? staticRaw  : (wsChangePct ?? 0)
         }
 
         return {
@@ -1901,19 +1908,20 @@ export default function HoldingsPage() {
               <StatCard
                 label={isEn ? 'Daily Unrealized Change' : '今日浮盈变动'}
                 value={
-                  heroMetrics.dailyUnrealizedPnl !== 0
+                  heroMetrics.hasAnyHolding
                     ? (heroMetrics.dailyUnrealizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dailyUnrealizedPnl)))
                     : '—'
                 }
                 sub={
-                  heroMetrics.dailyUnrealizedPnlPct !== 0
+                  heroMetrics.hasAnyHolding && heroMetrics.portfolioValue > 0
                     ? (heroMetrics.dailyUnrealizedPnlPct >= 0 ? '+' : '') + heroMetrics.dailyUnrealizedPnlPct.toFixed(2) + '%'
                     : undefined
                 }
                 valueClass={
-                  heroMetrics.dailyUnrealizedPnl === 0 ? 'text-slate-900'
+                  !heroMetrics.hasAnyHolding ? 'text-slate-900'
                   : heroMetrics.dailyUnrealizedPnl > 0 ? 'text-emerald-600'
-                  : 'text-rose-600'
+                  : heroMetrics.dailyUnrealizedPnl < 0 ? 'text-rose-600'
+                  : 'text-slate-900'
                 }
               />
               <StatCard
