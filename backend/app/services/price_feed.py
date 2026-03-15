@@ -328,8 +328,8 @@ class PriceFeedService:
             " [MOCK]" if self._mock_mode else "",
         )
 
-        # 3. Diff against cache (Decimal comparison)
-        changed = self.cache.update_and_diff(new_prices)
+        # 3. Significance-gated diff (cache always stores latest price)
+        changed = self.cache.update_and_diff_significant(new_prices)
         if not changed:
             return
 

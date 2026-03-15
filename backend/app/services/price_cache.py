@@ -76,6 +76,59 @@ class PriceCache:
             self._store[sym] = CacheEntry(price=price, updated_at=now)
         return changed
 
+    def update_and_diff_significant(
+        self,
+        prices: dict[str, Decimal],
+        abs_threshold: Decimal = Decimal("0.01"),
+        pct_threshold: Decimal = Decimal("0.0005"),
+    ) -> dict[str, Decimal]:
+        """
+        Update cache with ALL new prices, but return only those whose
+        change exceeds the significance gate.
+
+        A change is significant when:
+          - symbol is new (first observation), OR
+          - abs(new - old) >= abs_threshold, OR
+          - abs(new - old) / old >= pct_threshold  (when old != 0)
+
+        The cache always stores the latest price regardless of significance,
+        keeping it as the authoritative source of truth for downstream reads.
+        """
+        significant: dict[str, Decimal] = {}
+        now = time.monotonic()
+
+        for sym, new_price in prices.items():
+            old_entry = self._store.get(sym)
+
+            # Always update the cache unconditionally
+            self._store[sym] = CacheEntry(price=new_price, updated_at=now)
+
+            # Significance test
+            if old_entry is None:
+                # New symbol — always significant
+                significant[sym] = new_price
+                continue
+
+            old_price = old_entry.price
+            abs_change = abs(new_price - old_price)
+
+            if abs_change >= abs_threshold:
+                significant[sym] = new_price
+                continue
+
+            # Percentage test
+            if old_price == 0:
+                if new_price != 0:
+                    significant[sym] = new_price
+                # 0 -> 0: not significant
+                continue
+
+            pct_change = abs_change / old_price
+            if pct_change >= pct_threshold:
+                significant[sym] = new_price
+
+        return significant
+
     # ── Utility ───────────────────────────────────────────────────────────
 
     def all_prices(self) -> dict[str, Decimal]:
