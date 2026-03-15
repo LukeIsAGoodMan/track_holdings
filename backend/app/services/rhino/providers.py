@@ -43,7 +43,7 @@ async def get_history(symbol: str) -> list[dict]:
         if not d.get("date") or d.get("close") is None or d["close"] <= 0:
             continue
         bars.append({
-            "date": d["date"],
+            "date": str(d["date"])[:10],
             "open": float(d.get("open") or d["close"]),
             "high": float(d.get("high") or d["close"]),
             "low": float(d.get("low") or d["close"]),
@@ -130,10 +130,14 @@ async def get_sma_series(symbol: str, period: int = 200) -> list[dict]:
     sym = normalize_ticker(symbol)
     raw = await get_sma(sym, period)
     if not raw:
+        logger.warning("Rhino SMA [%s]: get_sma returned empty/None", symbol)
         return []
 
-    return [
+    series = [
         {"date": str(pt["date"])[:10], "value": round(float(pt["sma"]), 2)}
         for pt in raw
         if pt.get("sma") is not None
     ]
+    logger.info("Rhino SMA [%s]: %d raw points → %d normalized, sample=%s",
+                symbol, len(raw), len(series), series[-1] if series else "N/A")
+    return series

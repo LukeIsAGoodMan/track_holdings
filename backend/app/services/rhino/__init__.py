@@ -84,6 +84,14 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     # Align SMA to candle dates by matching YYYY-MM-DD
     sma_aligned = [s for s in sma200_series if s["date"] in candle_dates]
 
+    logger.info(
+        "Rhino chart [%s]: %d candles, %d SMA raw, %d SMA aligned | "
+        "candle sample=%s, sma sample=%s",
+        symbol, len(candle_window), len(sma200_series), len(sma_aligned),
+        list(candle_dates)[:3] if candle_dates else "empty",
+        [s["date"] for s in sma200_series[-3:]] if sma200_series else "empty",
+    )
+
     chart = {
         "candles": [
             {"date": b["date"], "open": b["open"], "high": b["high"],

@@ -449,8 +449,10 @@ def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
     accept both old and new keys via _coalesce.
     """
     fmp_s = _fmp_sym(ticker)
-    data = _fmp_get("/analyst-estimates", {"symbol": fmp_s})
+    data = _fmp_get("/analyst-estimates", {"symbol": fmp_s, "period": "annual"})
     if not isinstance(data, list) or len(data) == 0:
+        logger.warning("FMP analyst-estimates empty for %s: type=%s, data=%s",
+                       fmp_s, type(data).__name__, str(data)[:300] if data else "None")
         return None
 
     # Parse all rows into normalized records
@@ -486,6 +488,13 @@ def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
         future = all_rows[-2:] if len(all_rows) >= 2 else all_rows
 
     estimates = future[:2]
+
+    logger.info("FMP estimates [%s]: %d total rows, %d future, selected FY dates=%s, "
+                "FY1 eps=%s, FY2 eps=%s",
+                fmp_s, len(all_rows), len(future),
+                [e["date"] for e in estimates],
+                estimates[0].get("estimated_eps_avg") if estimates else "N/A",
+                estimates[1].get("estimated_eps_avg") if len(estimates) > 1 else "N/A")
 
     result = {"estimates": estimates}
     _set_cached(f"estimates_v2:{ticker.upper()}", result)
@@ -632,43 +641,61 @@ async def get_intraday_5min(ticker: str) -> list[dict] | None:
     )
 
 
-# ── /technical-indicators/sma — SMA(200) for risk modeling ─────────────────
+# ── SMA — computed locally from historical bars ───────────────────────────
+# FMP /technical-indicators/sma requires a higher-tier subscription (402).
+# We compute SMA locally from the daily OHLCV bars fetched via get_history.
 
 def _do_fetch_sma(ticker: str, period: int = 200) -> list[dict] | None:
     """
-    Fetch SMA technical indicator from FMP /technical-indicators/sma.
+    Compute SMA locally from historical EOD bars.
 
-    FMP response: [{date, sma, open, high, low, close, volume}, ...]
+    Fetches bars via _do_fetch_hist_data, then computes a rolling average
+    of closing prices with the given period window.
+
     Returns list of {date, sma, close} in chronological order.
     """
-    fmp_s = _fmp_sym(ticker)
-    data = _fmp_get("/technical-indicators/sma", {
-        "symbol": fmp_s,
-        "periodLength": period,
-        "timeframe": "daily",
-    })
-    if not isinstance(data, list) or len(data) == 0:
+    raw = _do_fetch_hist_data(ticker)
+    if not raw or len(raw) < period:
+        logger.warning("SMA compute: insufficient bars for %s (%d < %d)",
+                       ticker, len(raw) if raw else 0, period)
         return None
 
-    # FMP returns newest-first; reverse for chronological
+    # Sort ascending by date
+    bars = sorted(raw, key=lambda b: str(b.get("date", ""))[:10])
+
+    # Filter valid closes
+    valid = []
+    for b in bars:
+        c = b.get("close")
+        if c is not None and float(c) > 0:
+            valid.append({
+                "date": str(b["date"])[:10],
+                "close": float(c),
+            })
+
+    if len(valid) < period:
+        return None
+
+    # Compute rolling SMA
     points: list[dict] = []
-    for item in reversed(data):
-        sma_val = item.get("sma")
-        if sma_val is None:
-            continue
+    running_sum = sum(v["close"] for v in valid[:period])
+    for i in range(period, len(valid) + 1):
+        if i > period:
+            running_sum += valid[i - 1]["close"] - valid[i - period - 1]["close"]
+        sma_val = round(running_sum / period, 4)
         points.append({
-            "date":  item.get("date", ""),
-            "sma":   round(float(sma_val), 4),
-            "close": round(float(item.get("close", 0)), 4),
+            "date":  valid[i - 1]["date"],
+            "sma":   sma_val,
+            "close": round(valid[i - 1]["close"], 4),
         })
 
     cache_key = f"sma{period}:{ticker.upper()}"
     _set_cached(cache_key, points)
 
-    # Side-effect: cache the latest SMA value for quick lookups
     if points:
         _set_cached(f"sma{period}_latest:{ticker.upper()}", points[-1]["sma"])
 
+    logger.info("SMA compute [%s]: %d bars → %d SMA points", ticker, len(valid), len(points))
     return points
 
 
