@@ -45,6 +45,7 @@ const HOLDINGS_SUBITEMS = [
 const OTHER_NAV = [
   { to: '/risk',          en: 'Risk',          zh: '风险看板' },
   { to: '/opportunities', en: 'Opportunities', zh: '机会扫描' },
+  { to: '/analysis',      en: 'Analysis',      zh: '分析' },
 ]
 
 // ── TopNav ────────────────────────────────────────────────────────────────────

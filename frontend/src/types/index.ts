@@ -447,3 +447,111 @@ export interface SymbolSuggestion {
   name:   string
   type:   string
 }
+
+// ── Rhino Analysis (Phase 15) ──────────────────────────────────────────────
+export interface AnalysisPriceZone {
+  center:   number
+  lower:    number
+  upper:    number
+  strength: number
+  sources:  string[]
+}
+
+export interface AnalysisTechnical {
+  sma200:           number | null
+  avg_volume_50:    number | null
+  atr20:            number | null
+  today_volume:     number | null
+  volume_ratio:     number | null
+  support_zones:    AnalysisPriceZone[]
+  resistance_zones: AnalysisPriceZone[]
+  pattern_tags:     string[]
+}
+
+export interface AnalysisValuation {
+  available:            boolean
+  fy1_eps_avg:          number | null
+  fy2_eps_avg:          number | null
+  eps_growth_pct:       number | null
+  raw_fair_value:       { low: number; mid: number; high: number } | null
+  adjusted_fair_value:  { low: number; mid: number; high: number } | null
+  status:               string   // deeply_undervalued | undervalued | fair_value | overvalued | deeply_overvalued | unavailable
+}
+
+export interface AnalysisMacro {
+  vix_level:               number | null
+  vix_regime:              string   // calm | normal | elevated | crisis
+  treasury_10y:            number | null
+  rate_pressure_regime:    string   // supportive | neutral | restrictive | hostile
+  recommended_haircut_pct: number
+  alerts:                  string[]
+}
+
+export interface AnalysisPlaybook {
+  bias_tag:    string   // bullish | neutral | bearish
+  action_tag:  string   // strong_buy | defensive_buy | hold_watch | reduce | stop_loss
+  rationale:   string[]
+}
+
+export interface AnalysisConfidence {
+  score:   number
+  grade:   string   // A | B | C | D
+  reasons: string[]
+}
+
+export interface AnalysisDataQuality {
+  has_quote:     boolean
+  has_history:   boolean
+  history_days:  number
+  has_estimates: boolean
+  has_vix:       boolean
+  has_treasury:  boolean
+}
+
+export interface AnalysisCandle {
+  date:   string
+  open:   number
+  high:   number
+  low:    number
+  close:  number
+  volume: number
+}
+
+export interface AnalysisChart {
+  candles:          AnalysisCandle[]
+  sma200:           { date: string; value: number }[]
+  support_zones:    AnalysisPriceZone[]
+  resistance_zones: AnalysisPriceZone[]
+}
+
+export interface AnalysisTextSections {
+  overview:   string
+  technical:  string
+  valuation:  string
+  macro:      string
+  playbook:   string
+  confidence: string
+}
+
+export interface AnalysisResult {
+  symbol:       string
+  as_of:        string
+  data_quality: AnalysisDataQuality
+  confidence:   AnalysisConfidence
+  quote:        {
+    symbol: string
+    price: number
+    previous_close: number | null
+    change: number | null
+    change_pct: number | null
+    volume: number | null
+    market_cap: number | null
+    name: string | null
+  } | null
+  technical:    AnalysisTechnical
+  valuation:    AnalysisValuation
+  macro:        AnalysisMacro
+  playbook:     AnalysisPlaybook
+  text:         { lang: string; sections: AnalysisTextSections }
+  chart:        AnalysisChart
+}

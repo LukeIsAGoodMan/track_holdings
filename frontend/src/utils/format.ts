@@ -100,3 +100,17 @@ export function isPositive(v: string | null | undefined): boolean {
   if (!v) return false
   return parseFloat(v) > 0
 }
+
+// ── Analysis page helpers ─────────────────────────────────────────────────
+
+/** "$123.45" — plain price display (no sign, no thousands sep for <1000) */
+export function fmtPrice(v: number | null | undefined): string {
+  if (v == null || isNaN(v)) return '—'
+  return USD.format(v)
+}
+
+/** "+2.35%" or "-0.80%" */
+export function fmtPctSigned(v: number | null | undefined): string {
+  if (v == null || isNaN(v)) return '—'
+  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+}

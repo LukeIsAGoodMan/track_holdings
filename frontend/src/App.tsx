@@ -12,6 +12,7 @@ import LoginPage    from '@/pages/Login/LoginPage'
 import HoldingsPage from '@/pages/Holdings/HoldingsPage'
 import RiskPage     from '@/pages/Risk/RiskPage'
 import ScannerPage  from '@/pages/Scanner/ScannerPage'
+import AnalysisPage from '@/pages/Analysis/AnalysisPage'
 
 export default function App() {
   return (
@@ -54,6 +55,7 @@ export default function App() {
 
                 <Route path="risk"          element={<RiskPage />}     />
                 <Route path="opportunities" element={<ScannerPage />}  />
+                <Route path="analysis"      element={<AnalysisPage />} />
               </Route>
             </Route>
           </Routes>

@@ -24,6 +24,7 @@ import type {
   MarketQuote,
   Transaction,
   SymbolSuggestion,
+  AnalysisResult,
 } from '@/types'
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
@@ -258,3 +259,9 @@ export const searchSymbols = (q: string): Promise<SymbolSuggestion[]> =>
 /** GET /api/symbols/validate/{symbol} → {valid, symbol, type, name} */
 export const validateSymbol = (symbol: string): Promise<{ valid: boolean; symbol: string; type: string; name: string }> =>
   api.get<{ valid: boolean; symbol: string; type: string; name: string }>(`/symbols/validate/${encodeURIComponent(symbol)}`).then((r) => r.data)
+
+// ── Rhino Analysis ──────────────────────────────────────────────────────────
+
+/** GET /api/analysis/stock?symbol=MSFT&lang=en */
+export const fetchAnalysis = (symbol: string, lang: string): Promise<AnalysisResult> =>
+  api.get<AnalysisResult>('/analysis/stock', { params: { symbol, lang }, timeout: 60_000 }).then((r) => r.data)
