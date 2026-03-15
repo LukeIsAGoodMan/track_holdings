@@ -446,7 +446,7 @@ def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
     accept both old and new keys.
     """
     fmp_s = _fmp_sym(ticker)
-    data = _fmp_get("/analyst-estimates", {"symbol": fmp_s, "limit": 4})
+    data = _fmp_get("/analyst-estimates", {"symbol": fmp_s})
     if not isinstance(data, list) or len(data) == 0:
         return None
 
