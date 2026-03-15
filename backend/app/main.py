@@ -102,7 +102,7 @@ async def lifespan(_app: FastAPI):
     asyncio.create_task(_bg_prewarm(), name="prewarm_prices")
 
     # ── Start real-time price feed ────────────────────────────────────────
-    ws_router.init_ws_globals(ws_manager, price_cache, macro_service=macro_service)
+    ws_router.init_ws_globals(ws_manager, price_cache, macro_service=macro_service, price_feed=price_feed)
     alerts_router.init_alert_globals(price_cache, price_feed)
     price_feed.start()
     logger.info("Real-time price feed started (poll every %ds)", settings.ws_price_poll_interval)

@@ -41,14 +41,16 @@ router = APIRouter()
 _manager = None        # type: ignore
 _cache = None          # type: ignore
 _macro_service = None  # type: ignore
+_price_feed = None     # type: ignore
 
 
-def init_ws_globals(manager, cache, macro_service=None):
+def init_ws_globals(manager, cache, macro_service=None, price_feed=None):
     """Called from main.py to inject shared singletons."""
-    global _manager, _cache, _macro_service
+    global _manager, _cache, _macro_service, _price_feed
     _manager = manager
     _cache = cache
     _macro_service = macro_service
+    _price_feed = price_feed
 
 
 async def _authenticate_ws(token: str | None) -> int | None:
@@ -119,6 +121,16 @@ async def websocket_endpoint(
                 symbols = await _get_portfolio_symbols(user_id, pid)
                 _manager.subscribe(ws, pid, symbols)
 
+                # Proactive FSM sync: populate inverse index immediately
+                # so the next _spot_tick uses the primary path, not fallback.
+                # Read normalized symbols back from the connection (CM normalizes).
+                if _price_feed is not None:
+                    normalized_syms = conn._portfolio_map.get(pid, set())
+                    if normalized_syms:
+                        await _price_feed.sync_portfolio_index(
+                            pid, user_id, set(normalized_syms)
+                        )
+
                 # Send initial spot snapshot from cache (with changepct so
                 # the frontend Hero Banner and Treemap are warm on first connect)
                 cached = _cache.get_many(sorted(symbols))
@@ -167,7 +179,15 @@ async def websocket_endpoint(
             elif msg_type == "unsubscribe":
                 pid = msg.get("portfolio_id")
                 if pid is not None:
+                    conn_id = id(ws)
                     _manager.unsubscribe(ws, pid)
+                    # Reference-aware FSM cleanup: only clear if no other
+                    # connection for this user still subscribes to this portfolio.
+                    if _price_feed is not None:
+                        if not _manager.is_portfolio_subscribed_elsewhere(
+                            user_id, pid, conn_id
+                        ):
+                            await _price_feed.remove_portfolio_index(pid)
 
             elif msg_type == "pong":
                 pass  # heartbeat ack — just ignore
@@ -184,7 +204,18 @@ async def websocket_endpoint(
         logger.exception("WS error for user=%d", user_id)
     finally:
         heartbeat_task.cancel()
+        # Snapshot portfolios BEFORE disconnect removes the connection
+        conn_id = id(ws)
+        orphan_pids = list(conn._portfolio_map.keys())
         _manager.disconnect(ws)
+        # Reference-aware FSM cleanup: only clear portfolios that no
+        # remaining connection for this user still subscribes to.
+        if _price_feed is not None:
+            for pid in orphan_pids:
+                if not _manager.is_portfolio_subscribed_elsewhere(
+                    user_id, pid, conn_id
+                ):
+                    await _price_feed.remove_portfolio_index(pid)
 
 
 async def _send_initial_holdings(

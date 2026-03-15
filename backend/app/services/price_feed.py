@@ -616,7 +616,18 @@ class PriceFeedService:
             "portfolio_id": ctx.portfolio_id,
             "data": [g.model_dump(mode="json") for g in groups],
         }
-        await self.manager.broadcast_to_user(ctx.user_id, holdings_msg)
+        # Portfolio-scoped broadcast: only connections subscribed to this portfolio
+        target_conns = self.manager.connections_for_user_portfolio(
+            ctx.user_id, ctx.portfolio_id
+        )
+        if target_conns:
+            await asyncio.gather(
+                *[self.manager.send_json(c.ws, holdings_msg) for c in target_conns],
+                return_exceptions=True,
+            )
+        else:
+            # Fallback: no portfolio-level match (e.g. initial snapshot race)
+            await self.manager.broadcast_to_user(ctx.user_id, holdings_msg)
 
     async def _compute_and_send_risk(self, ctx: PortfolioContext) -> None:
         """
@@ -639,7 +650,17 @@ class PriceFeedService:
                 "risk_alerts": risk_summary["risk_alerts"],
             },
         }
-        await self.manager.broadcast_to_user(ctx.user_id, risk_msg)
+        # Portfolio-scoped broadcast: only connections subscribed to this portfolio
+        target_conns = self.manager.connections_for_user_portfolio(
+            ctx.user_id, ctx.portfolio_id
+        )
+        if target_conns:
+            await asyncio.gather(
+                *[self.manager.send_json(c.ws, risk_msg) for c in target_conns],
+                return_exceptions=True,
+            )
+        else:
+            await self.manager.broadcast_to_user(ctx.user_id, risk_msg)
 
     # ── Vol cache management ──────────────────────────────────────────────
 

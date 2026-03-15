@@ -237,6 +237,37 @@ class ConnectionManager:
             if conn.user_id == user_id
         ]
 
+    def connections_for_user_portfolio(
+        self, user_id: int, portfolio_id: int
+    ) -> list[WSConnection]:
+        """
+        Return connections for a user that are subscribed to a specific portfolio.
+
+        Used for portfolio-scoped broadcasting to avoid cross-tab pollution.
+        """
+        return [
+            conn for conn in self._connections.values()
+            if conn.user_id == user_id and portfolio_id in conn._portfolio_map
+        ]
+
+    def is_portfolio_subscribed_elsewhere(
+        self, user_id: int, portfolio_id: int, exclude_conn_id: int
+    ) -> bool:
+        """
+        Check if any OTHER connection for this user still subscribes to the portfolio.
+
+        Used for reference-aware FSM cleanup: only clear FSM index when the
+        last connection referencing a portfolio disconnects or unsubscribes.
+        """
+        for cid, conn in self._connections.items():
+            if (
+                cid != exclude_conn_id
+                and conn.user_id == user_id
+                and portfolio_id in conn._portfolio_map
+            ):
+                return True
+        return False
+
     def snapshot_connections(self) -> list[WSConnection]:
         """Return a read-only snapshot of all connections (safe to iterate)."""
         return list(self._connections.values())
