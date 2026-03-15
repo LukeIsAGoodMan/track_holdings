@@ -67,20 +67,28 @@ function CandleShape(props: CandleShapeProps) {
 
 /* ── Zone detail row ────────────────────────────────────────────────────── */
 
+function strengthLabel(s: number, lang: string): string {
+  if (s >= 0.7) return lang === 'zh' ? '强' : 'Strong'
+  if (s >= 0.4) return lang === 'zh' ? '中' : 'Medium'
+  return lang === 'zh' ? '弱' : 'Weak'
+}
+
 function ZoneRow({ zone, type, lang }: { zone: AnalysisPriceZone; type: 'support' | 'resistance'; lang: string }) {
-  const color = type === 'support'
+  const isSupport = type === 'support'
+  const color = isSupport
     ? 'text-emerald-700 bg-emerald-50 border-emerald-100'
     : 'text-rose-700 bg-rose-50 border-rose-100'
-  const label = type === 'support'
+  const label = isSupport
     ? (lang === 'zh' ? '支撑' : 'S')
     : (lang === 'zh' ? '阻力' : 'R')
+  const sLabel = strengthLabel(zone.strength, lang)
 
   return (
     <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-medium tabular-nums ${color}`}>
       <span className="font-semibold">{label}</span>
       {fmtPrice(zone.lower)} – {fmtPrice(zone.upper)}
-      <span className="text-[10px] opacity-60">
-        ({lang === 'zh' ? '强度' : 'str'} {(zone.strength * 100).toFixed(0)}%)
+      <span className={`text-[10px] ${zone.strength >= 0.7 ? 'opacity-90 font-semibold' : 'opacity-60'}`}>
+        {sLabel}
       </span>
     </div>
   )
@@ -173,7 +181,7 @@ export default function RhinoChart({ chart, price }: Props) {
             tickFormatter={formatDate}
             tick={{ fontSize: 10, fill: '#94a3b8' }}
             tickLine={false}
-            axisLine={{ stroke: '#e2e8f0' }}
+            axisLine={false}
             interval={Math.max(Math.floor(data.length / 8), 1)}
           />
           <YAxis
@@ -228,43 +236,56 @@ export default function RhinoChart({ chart, price }: Props) {
             }}
           />
 
-          {/* Support zones (green bands) */}
-          {supportZones.map((z, i) => (
-            <ReferenceArea
-              key={`s-${i}`}
-              yAxisId="price"
-              y1={z.lower}
-              y2={z.upper}
-              fill="#10b981"
-              fillOpacity={0.08}
-              stroke="#10b981"
-              strokeOpacity={0.2}
-              strokeDasharray="3 3"
-            />
-          ))}
+          {/* Support zones — opacity scales with strength */}
+          {supportZones.map((z, i) => {
+            const opacity = 0.06 + z.strength * 0.18
+            return (
+              <ReferenceArea
+                key={`s-${i}`}
+                yAxisId="price"
+                y1={z.lower}
+                y2={z.upper}
+                fill="#10b981"
+                fillOpacity={opacity}
+                stroke="#10b981"
+                strokeOpacity={opacity + 0.1}
+                strokeDasharray="3 3"
+              />
+            )
+          })}
 
-          {/* Resistance zones (red bands) */}
-          {resistanceZones.map((z, i) => (
-            <ReferenceArea
-              key={`r-${i}`}
-              yAxisId="price"
-              y1={z.lower}
-              y2={z.upper}
-              fill="#ef4444"
-              fillOpacity={0.08}
-              stroke="#ef4444"
-              strokeOpacity={0.2}
-              strokeDasharray="3 3"
-            />
-          ))}
+          {/* Resistance zones — opacity scales with strength */}
+          {resistanceZones.map((z, i) => {
+            const opacity = 0.06 + z.strength * 0.18
+            return (
+              <ReferenceArea
+                key={`r-${i}`}
+                yAxisId="price"
+                y1={z.lower}
+                y2={z.upper}
+                fill="#ef4444"
+                fillOpacity={opacity}
+                stroke="#ef4444"
+                strokeOpacity={opacity + 0.1}
+                strokeDasharray="3 3"
+              />
+            )
+          })}
 
-          {/* Current price line */}
+          {/* Current price line with label */}
           <ReferenceLine
             yAxisId="price"
             y={price}
             stroke="#6366f1"
             strokeDasharray="4 4"
             strokeWidth={1}
+            label={{
+              value: `$${price.toFixed(2)}`,
+              position: 'right',
+              fill: '#6366f1',
+              fontSize: 10,
+              fontWeight: 600,
+            }}
           />
 
           {/* Candle bodies via custom shape */}

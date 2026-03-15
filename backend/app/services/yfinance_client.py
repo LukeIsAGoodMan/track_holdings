@@ -936,6 +936,55 @@ def get_cached_sector(symbol: str) -> str:
     return _TICKER_SECTOR_FALLBACK.get(sym, "")
 
 
+# ── /treasury-rates — US treasury yields ──────────────────────────────────
+
+def _do_fetch_treasury_rates() -> dict | None:
+    """
+    Fetch latest US treasury yields from FMP /treasury-rates.
+
+    FMP response: [{date, month1, month2, month3, month6, year1, year2,
+                     year3, year5, year7, year10, year20, year30}, ...]
+    Returns dict with maturity → yield mappings, or None on failure.
+    """
+    data = _fmp_get("/treasury-rates", {})
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+
+    item = data[0]
+    result = {
+        "date":    item.get("date"),
+        "month1":  _safe_float_val(item.get("month1")),
+        "month3":  _safe_float_val(item.get("month3")),
+        "month6":  _safe_float_val(item.get("month6")),
+        "year1":   _safe_float_val(item.get("year1")),
+        "year2":   _safe_float_val(item.get("year2")),
+        "year5":   _safe_float_val(item.get("year5")),
+        "year10":  _safe_float_val(item.get("year10")),
+        "year20":  _safe_float_val(item.get("year20")),
+        "year30":  _safe_float_val(item.get("year30")),
+    }
+    _set_cached("treasury_rates", result)
+    return result
+
+
+async def get_treasury_rates() -> dict | None:
+    """
+    Return latest US treasury yields (1h TTL, SWR).
+
+    Returns: {date, month1, month3, month6, year1, year2, year5,
+              year10, year20, year30} — values are float percentages or None.
+    """
+    cache_key = "treasury_rates"
+    cached = _get_cached(cache_key, 3600.0)  # 1h TTL — rates change slowly
+    if isinstance(cached, dict):
+        if not _is_cache_fresh(cache_key, 3600.0):
+            _schedule_bg_refresh(cache_key, _do_fetch_treasury_rates)
+        return cached
+    return await asyncio.get_running_loop().run_in_executor(
+        _refresh_pool, _do_fetch_treasury_rates
+    )
+
+
 async def get_ytd_return(ticker: str) -> Decimal | None:
     closes = await get_1y_closes(ticker)
     if len(closes) < 2: return None

@@ -125,6 +125,8 @@ def _macro(t: dict, ctx: dict) -> str:
         lines.append(_fmt(t["macro_rates"],
                           rate=f"{m['treasury_10y']:.2f}",
                           regime=m["rate_pressure_regime"]))
+    else:
+        lines.append(t["macro_rates_unavailable"])
 
     if m.get("recommended_haircut_pct", 0) > 0:
         lines.append(_fmt(t["macro_haircut"], pct=m["recommended_haircut_pct"]))

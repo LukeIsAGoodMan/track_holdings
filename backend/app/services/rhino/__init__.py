@@ -1,6 +1,9 @@
 """
 Rhino Analysis Engine — async orchestrator.
 
+Price basis: latest historical EOD close (not intraday quote).
+All indicators, zones, valuation, and playbook use the same EOD snapshot.
+
 Usage:
     from app.services.rhino import analyze
     result = await analyze("MSFT", lang="en")
@@ -34,11 +37,16 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         get_macro(),
     )
 
+    # ── Price basis: latest EOD close (not intraday quote) ────────────
+    # All indicators, zones, valuation are computed from the same historical
+    # snapshot. The quote is only used for supplementary display fields
+    # (change, change_pct) — never as the primary analysis price.
     price = 0.0
-    if quote and quote.get("price"):
-        price = quote["price"]
-    elif bars:
+    if bars:
         price = bars[-1]["close"]
+    elif quote and quote.get("price"):
+        # Fallback if history is empty but quote exists (rare)
+        price = quote["price"]
 
     # Degraded result if no pricing data at all
     if price == 0:
@@ -74,9 +82,22 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "resistance_zones": technical["resistance_zones"],
     }
 
+    # Build quote response with EOD price as basis, supplemented by
+    # intraday change data from the quote (if available)
+    analysis_quote = {
+        "symbol": symbol,
+        "price": price,  # EOD close — primary analysis price
+        "previous_close": quote.get("previous_close") if quote else None,
+        "change": quote.get("change") if quote else None,
+        "change_pct": quote.get("change_pct") if quote else None,
+        "volume": bars[-1]["volume"] if bars else None,
+        "market_cap": quote.get("market_cap") if quote else None,
+        "name": quote.get("name") if quote else None,
+    }
+
     # Text report
     text = build_report(lang, {
-        "symbol": symbol, "price": price, "quote": quote,
+        "symbol": symbol, "price": price, "quote": analysis_quote,
         "technical": technical, "valuation": valuation,
         "macro": macro, "playbook": playbook, "confidence": confidence,
     })
@@ -86,7 +107,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "as_of": datetime.now(timezone.utc).isoformat(),
         "data_quality": dq,
         "confidence": confidence,
-        "quote": quote,
+        "quote": analysis_quote,
         "technical": technical,
         "valuation": valuation,
         "macro": macro,

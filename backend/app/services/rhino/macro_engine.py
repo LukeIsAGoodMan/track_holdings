@@ -1,5 +1,8 @@
 """
 Macro engine — classifies VIX regime and rate pressure from raw data.
+
+When data is genuinely unavailable, returns "unavailable" — never a
+false-positive "normal" or "neutral" label.
 """
 from __future__ import annotations
 
@@ -25,7 +28,7 @@ def build_macro(raw: dict) -> dict:
 
 def _classify_vix(vix: float | None) -> str:
     if vix is None:
-        return "normal"
+        return "unavailable"
     if vix <= 15:
         return "calm"
     if vix <= 20:
@@ -37,7 +40,7 @@ def _classify_vix(vix: float | None) -> str:
 
 def _classify_rates(us10y: float | None) -> str:
     if us10y is None:
-        return "neutral"
+        return "unavailable"
     if us10y <= 3.0:
         return "supportive"
     if us10y <= 4.0:
@@ -52,6 +55,7 @@ _RATE_HAIRCUT = {"supportive": 0, "neutral": 2, "restrictive": 5, "hostile": 10}
 
 
 def _compute_haircut(vix_regime: str, rate_regime: str) -> float:
+    """Only apply haircut when data is actually present — never from 'unavailable'."""
     return _VIX_HAIRCUT.get(vix_regime, 0) + _RATE_HAIRCUT.get(rate_regime, 0)
 
 

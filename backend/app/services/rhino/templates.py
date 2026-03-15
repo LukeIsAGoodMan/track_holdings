@@ -41,6 +41,7 @@ EN = {
     "macro_crisis": "Macro: VIX at {vix} — CRISIS. Risk-off environment, defensive positioning recommended",
     "macro_vix_unavailable": "Macro: VIX data unavailable",
     "macro_rates": "10Y Treasury at {rate}% — {regime} environment",
+    "macro_rates_unavailable": "Macro: Treasury yield data unavailable",
     "macro_haircut": "Fair value haircut of {pct}% applied for macro conditions",
 
     "playbook_strong_buy": "PLAYBOOK: STRONG BUY — {rationale}",
@@ -89,6 +90,7 @@ ZH = {
     "macro_crisis": "宏观: VIX {vix} — 危机水平。风险规避环境，建议防御性配置",
     "macro_vix_unavailable": "宏观: VIX 数据不可用",
     "macro_rates": "10年期美债收益率 {rate}% — {regime}环境",
+    "macro_rates_unavailable": "宏观: 美债收益率数据不可用",
     "macro_haircut": "宏观条件导致合理价值折扣 {pct}%",
 
     "playbook_strong_buy": "策略: 强烈买入 — {rationale}",

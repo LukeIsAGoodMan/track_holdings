@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 
 from app.dependencies import get_current_user
 from app.services.rhino import analyze
-from app.services.rhino.fmp_client import normalize_ticker
+from app.services.yfinance_client import normalize_ticker
 
 router = APIRouter(tags=["analysis"])
 
