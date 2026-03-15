@@ -190,7 +190,7 @@ class NlvSamplerService:
 
         # Collect unique (user_id, portfolio_id) pairs from active connections
         seen: set[tuple[int, int]] = set()
-        for conn in list(self.manager._connections.values()):
+        for conn in self.manager.snapshot_connections():
             for pid in conn.subscribed_portfolio_ids:
                 seen.add((conn.user_id, pid))
 

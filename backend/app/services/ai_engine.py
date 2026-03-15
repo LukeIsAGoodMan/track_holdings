@@ -1284,7 +1284,7 @@ class AiInsightService:
         # If a user has multiple connections with different languages, use the
         # most recently connected language (last wins).
         seen: dict[tuple[int, int], str] = {}  # (user_id, pid) -> language
-        for conn in list(self._manager._connections.values()):
+        for conn in self._manager.snapshot_connections():
             for pid in conn.subscribed_portfolio_ids:
                 seen[(conn.user_id, pid)] = conn.language
 
