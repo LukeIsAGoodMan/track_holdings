@@ -377,15 +377,17 @@ class PriceFeedService:
         affected_pids = await self.state.portfolios_for_symbols(changed_syms)
 
         # Also mark portfolios from WS connections (backward compat — covers
-        # portfolios that haven't been indexed via sync_portfolio_index yet)
+        # portfolios that haven't been indexed via sync_portfolio_index yet).
+        # Only mark a portfolio dirty if its own symbol set overlaps changed_syms.
         for conn in target_conns:
-            for pid in conn.subscribed_portfolio_ids:
-                affected_pids.add(pid)
-                # Ensure owner mapping exists for broadcast routing
-                if await self.state.get_owner(pid) is None:
-                    await self.state.sync_portfolio_index(
-                        pid, conn.user_id, conn.subscribed_symbols
-                    )
+            for pid, port_syms in conn._portfolio_map.items():
+                if port_syms & changed_syms:
+                    affected_pids.add(pid)
+                    # Backfill owner/index with this portfolio's symbols only
+                    if await self.state.get_owner(pid) is None:
+                        await self.state.sync_portfolio_index(
+                            pid, conn.user_id, port_syms
+                        )
 
         if affected_pids:
             await self.state.mark_dirty(affected_pids)
