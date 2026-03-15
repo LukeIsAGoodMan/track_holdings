@@ -9,13 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date
 
 from app.services.yfinance_client import (
     normalize_ticker,
     get_spot_price,
     get_analyst_estimates,
     get_treasury_rates,
+    get_sma,
     _do_fetch_hist_data,
     _refresh_pool,
 )
@@ -59,7 +59,14 @@ async def get_history(symbol: str) -> list[dict]:
 # ── Estimates ────────────────────────────────────────────────────────────────
 
 async def get_estimates(symbol: str) -> dict:
-    """Fetch analyst consensus EPS for FY1 and FY2 via shared layer."""
+    """Fetch analyst consensus EPS for FY1 and FY2 via shared layer.
+
+    The shared layer (_do_fetch_analyst_estimates) already:
+      - parses all rows from FMP
+      - sorts ascending by fiscal year date
+      - selects the nearest two future fiscal years
+    So estimates[0] = FY1, estimates[1] = FY2.
+    """
     sym = normalize_ticker(symbol)
     empty = {"fy1_eps_avg": None, "fy2_eps_avg": None}
 
@@ -71,21 +78,25 @@ async def get_estimates(symbol: str) -> dict:
     if len(estimates_list) == 0:
         return empty
 
-    # yfinance_client returns estimates newest-first (first two entries)
-    # Filter to future-dated estimates
-    today = date.today().isoformat()
-    future = [e for e in estimates_list if e.get("date") and e["date"] >= today]
+    fy1 = estimates_list[0]
+    fy2 = estimates_list[1] if len(estimates_list) > 1 else None
 
-    # If no future estimates, use whatever we have
-    if not future:
-        future = estimates_list
+    fy1_eps = fy1.get("estimated_eps_avg") if fy1 else None
+    fy2_eps = fy2.get("estimated_eps_avg") if fy2 else None
 
-    fy1 = future[0] if len(future) > 0 else None
-    fy2 = future[1] if len(future) > 1 else None
+    logger.info(
+        "Rhino estimates for %s: FY1=%s (date=%s, eps=%.4f), FY2=%s (eps=%s)",
+        sym,
+        fy1.get("date") if fy1 else "N/A",
+        fy1.get("date") if fy1 else "N/A",
+        fy1_eps if fy1_eps is not None else 0,
+        fy2.get("date") if fy2 else "N/A",
+        f"{fy2_eps:.4f}" if fy2_eps is not None else "N/A",
+    )
 
     return {
-        "fy1_eps_avg": fy1.get("estimated_eps_avg") if fy1 else None,
-        "fy2_eps_avg": fy2.get("estimated_eps_avg") if fy2 else None,
+        "fy1_eps_avg": fy1_eps,
+        "fy2_eps_avg": fy2_eps,
     }
 
 
@@ -104,3 +115,25 @@ async def get_macro() -> dict:
         us10y = treasury_data.get("year10")
 
     return {"vix": vix, "us10y": us10y}
+
+
+# ── SMA ───────────────────────────────────────────────────────────────────
+# Sourced from the shared market-data layer (FMP /technical-indicators/sma).
+# Rhino no longer computes SMA locally — see previous _compute_sma200_series.
+
+async def get_sma_series(symbol: str, period: int = 200) -> list[dict]:
+    """Fetch SMA series from the shared endpoint, return [{date, value}].
+
+    Returns chronologically ordered list aligned for chart overlay.
+    Empty list if SMA is unavailable.
+    """
+    sym = normalize_ticker(symbol)
+    raw = await get_sma(sym, period)
+    if not raw:
+        return []
+
+    return [
+        {"date": str(pt["date"])[:10], "value": round(float(pt["sma"]), 2)}
+        for pt in raw
+        if pt.get("sma") is not None
+    ]

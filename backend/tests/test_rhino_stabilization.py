@@ -1,18 +1,19 @@
 """
 Rhino Analysis stabilization tests.
 
-Validates the data-integrity fixes introduced during the stabilization pass:
+Validates:
   1. Index symbol normalization (_fmp_sym adds '^' for indices only)
   2. Chart payload is self-contained (current_price + analysis_close)
   3. Analyst estimate fallback (new + old FMP schema)
-  4. Treasury extraction (flat dict, no list[0] regression)
-  5. EOD price change derivation (bars-only, no intraday quote)
-  6. Boundary guard (0 or 1 bar does not crash)
-  7. _coalesce helper
+  4. Analyst estimate fiscal-year selection (nearest future, not far-future)
+  5. Treasury extraction (flat dict, no list[0] regression)
+  6. EOD price change derivation (bars-only, no intraday quote)
+  7. Boundary guard (0 or 1 bar does not crash)
+  8. Valuation pipeline acceptance (must render when valid EPS exists)
+  9. _coalesce + _safe_int helpers
 """
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import patch, AsyncMock
 
 import pytest
@@ -22,7 +23,38 @@ from app.services.yfinance_client import (
     _fmp_sym,
     _coalesce,
     _safe_float_val,
+    _safe_int,
+    _do_fetch_analyst_estimates,
 )
+
+
+# ── Shared mock helpers ──────────────────────────────────────────────────
+
+def _make_bars(n: int, base_price: float = 100.0) -> list[dict]:
+    """Create n ascending-date bars for testing."""
+    bars = []
+    for i in range(n):
+        p = base_price + i * 0.5
+        bars.append({
+            "date": f"2025-01-{i + 1:02d}",
+            "open": p, "high": p + 1, "low": p - 1, "close": p,
+            "volume": 1000000,
+        })
+    return bars
+
+
+def _rhino_mocks(bars=None, estimates=None, macro=None, sma=None):
+    """Return a tuple of context managers for patching all Rhino data providers."""
+    return (
+        patch("app.services.rhino.get_history",
+              new_callable=AsyncMock, return_value=bars or []),
+        patch("app.services.rhino.get_estimates",
+              new_callable=AsyncMock, return_value=estimates or {"fy1_eps_avg": None, "fy2_eps_avg": None}),
+        patch("app.services.rhino.get_macro",
+              new_callable=AsyncMock, return_value=macro or {"vix": None, "us10y": None}),
+        patch("app.services.rhino.get_sma_series",
+              new_callable=AsyncMock, return_value=sma or []),
+    )
 
 
 # ── 1. Index symbol normalization ─────────────────────────────────────────
@@ -80,19 +112,6 @@ class TestIndexSymbolNormalization:
 # ── 2. Chart payload self-containment ─────────────────────────────────────
 
 
-def _make_bars(n: int, base_price: float = 100.0) -> list[dict]:
-    """Create n ascending-date bars for testing."""
-    bars = []
-    for i in range(n):
-        p = base_price + i * 0.5
-        bars.append({
-            "date": f"2025-01-{i + 1:02d}",
-            "open": p, "high": p + 1, "low": p - 1, "close": p,
-            "volume": 1000000,
-        })
-    return bars
-
-
 class TestChartPayload:
     """Chart section must include current_price and analysis_close."""
 
@@ -100,10 +119,10 @@ class TestChartPayload:
     async def test_chart_contains_price_fields(self):
         bars = _make_bars(5)
         expected_close = bars[-1]["close"]
+        m1, m2, m3, m4 = _rhino_mocks(
+            bars=bars, macro={"vix": 18.0, "us10y": 4.2})
 
-        with patch("app.services.rhino.get_history", new_callable=AsyncMock, return_value=bars), \
-             patch("app.services.rhino.get_estimates", new_callable=AsyncMock, return_value={"fy1_eps_avg": None, "fy2_eps_avg": None}), \
-             patch("app.services.rhino.get_macro", new_callable=AsyncMock, return_value={"vix": 18.0, "us10y": 4.2}):
+        with m1, m2, m3, m4:
             from app.services.rhino import analyze
             result = await analyze("TEST", lang="en")
 
@@ -114,9 +133,9 @@ class TestChartPayload:
 
     @pytest.mark.asyncio
     async def test_degraded_chart_has_zero_prices(self):
-        with patch("app.services.rhino.get_history", new_callable=AsyncMock, return_value=[]), \
-             patch("app.services.rhino.get_estimates", new_callable=AsyncMock, return_value={"fy1_eps_avg": None, "fy2_eps_avg": None}), \
-             patch("app.services.rhino.get_macro", new_callable=AsyncMock, return_value={"vix": None, "us10y": None}):
+        m1, m2, m3, m4 = _rhino_mocks()
+
+        with m1, m2, m3, m4:
             from app.services.rhino import analyze
             result = await analyze("NODATA", lang="en")
 
@@ -125,11 +144,11 @@ class TestChartPayload:
         assert chart["analysis_close"] == 0.0
 
 
-# ── 3. Analyst estimate fallback ──────────────────────────────────────────
+# ── 3. Analyst estimate helpers ───────────────────────────────────────────
 
 
-class TestAnalystEstimateFallback:
-    """_coalesce and the shared-layer parser must handle both FMP schemas."""
+class TestAnalystEstimateHelpers:
+    """_coalesce, _safe_float_val, _safe_int must be None-safe."""
 
     def test_coalesce_prefers_first_key(self):
         d = {"epsAvg": 3.5, "estimatedEpsAvg": 3.0}
@@ -154,8 +173,108 @@ class TestAnalystEstimateFallback:
     def test_safe_float_val_handles_none(self):
         assert _safe_float_val(None) is None
 
+    def test_safe_int_handles_valid(self):
+        assert _safe_int(42) == 42
 
-# ── 4. Treasury extraction ────────────────────────────────────────────────
+    def test_safe_int_handles_none(self):
+        assert _safe_int(None) == 0
+
+    def test_safe_int_handles_zero(self):
+        """Zero is a valid analyst count — must remain 0, not default."""
+        assert _safe_int(0) == 0
+
+
+# ── 4. Analyst estimate fiscal-year selection ─────────────────────────────
+
+
+class TestEstimateFiscalYearSelection:
+    """Parser must select nearest future FY, not far-future FY."""
+
+    def test_selects_nearest_from_far_future_ordered_payload(self):
+        """FMP returns 2030, 2029, ... 2025. Parser must pick 2025 as FY1."""
+        fmp_payload = [
+            {"date": "2030-09-30", "epsAvg": 15.0},
+            {"date": "2029-09-30", "epsAvg": 13.0},
+            {"date": "2028-09-30", "epsAvg": 11.0},
+            {"date": "2027-09-30", "epsAvg": 9.5},
+            {"date": "2026-09-30", "epsAvg": 8.0},
+            {"date": "2025-09-30", "epsAvg": 7.0},
+        ]
+
+        with patch("app.services.yfinance_client._fmp_get", return_value=fmp_payload):
+            result = _do_fetch_analyst_estimates("AAPL")
+
+        assert result is not None
+        estimates = result["estimates"]
+        assert len(estimates) >= 2
+        # FY1 = nearest future (2025 or 2026 depending on today)
+        assert estimates[0]["date"] <= estimates[1]["date"]
+        # Must NOT be the far-future year
+        assert estimates[0]["date"] != "2030-09-30"
+
+    def test_new_schema_epsAvg_parsed(self):
+        """New FMP schema field epsAvg must be parsed correctly."""
+        fmp_payload = [
+            {"date": "2026-12-31", "epsAvg": 7.25, "revenueAvg": 500000000000},
+            {"date": "2027-12-31", "epsAvg": 8.10, "revenueAvg": 550000000000},
+        ]
+
+        with patch("app.services.yfinance_client._fmp_get", return_value=fmp_payload):
+            result = _do_fetch_analyst_estimates("AAPL")
+
+        estimates = result["estimates"]
+        assert estimates[0]["estimated_eps_avg"] == 7.25
+        assert estimates[1]["estimated_eps_avg"] == 8.10
+
+    def test_old_schema_estimatedEpsAvg_parsed(self):
+        """Old FMP schema field estimatedEpsAvg must still work."""
+        fmp_payload = [
+            {"date": "2026-12-31", "estimatedEpsAvg": 7.25},
+            {"date": "2027-12-31", "estimatedEpsAvg": 8.10},
+        ]
+
+        with patch("app.services.yfinance_client._fmp_get", return_value=fmp_payload):
+            result = _do_fetch_analyst_estimates("AAPL")
+
+        estimates = result["estimates"]
+        assert estimates[0]["estimated_eps_avg"] == 7.25
+        assert estimates[1]["estimated_eps_avg"] == 8.10
+
+    def test_analyst_count_new_schema(self):
+        """numAnalystsEps (new) must be parsed."""
+        fmp_payload = [
+            {"date": "2026-12-31", "epsAvg": 7.0, "numAnalystsEps": 30},
+        ]
+
+        with patch("app.services.yfinance_client._fmp_get", return_value=fmp_payload):
+            result = _do_fetch_analyst_estimates("TEST")
+
+        assert result["estimates"][0]["number_analysts_estimated_eps"] == 30
+
+    def test_analyst_count_zero_preserved(self):
+        """Zero analyst coverage must remain 0, not be treated as None."""
+        fmp_payload = [
+            {"date": "2026-12-31", "epsAvg": 7.0, "numAnalystsEps": 0},
+        ]
+
+        with patch("app.services.yfinance_client._fmp_get", return_value=fmp_payload):
+            result = _do_fetch_analyst_estimates("TEST")
+
+        assert result["estimates"][0]["number_analysts_estimated_eps"] == 0
+
+    def test_date_canonicalized(self):
+        """Dates with time components must be trimmed to YYYY-MM-DD."""
+        fmp_payload = [
+            {"date": "2026-12-31 00:00:00", "epsAvg": 7.0},
+        ]
+
+        with patch("app.services.yfinance_client._fmp_get", return_value=fmp_payload):
+            result = _do_fetch_analyst_estimates("TEST")
+
+        assert result["estimates"][0]["date"] == "2026-12-31"
+
+
+# ── 5. Treasury extraction ────────────────────────────────────────────────
 
 
 class TestTreasuryExtraction:
@@ -184,7 +303,7 @@ class TestTreasuryExtraction:
         assert result["us10y"] is None
 
 
-# ── 5. EOD price change derivation ───────────────────────────────────────
+# ── 6. EOD price change derivation ───────────────────────────────────────
 
 
 class TestEodPriceChange:
@@ -195,10 +314,10 @@ class TestEodPriceChange:
         bars = _make_bars(3)  # closes: 100.0, 100.5, 101.0
         expected_change = 101.0 - 100.5
         expected_pct = expected_change / 100.5 * 100
+        m1, m2, m3, m4 = _rhino_mocks(
+            bars=bars, macro={"vix": 15.0, "us10y": 4.0})
 
-        with patch("app.services.rhino.get_history", new_callable=AsyncMock, return_value=bars), \
-             patch("app.services.rhino.get_estimates", new_callable=AsyncMock, return_value={"fy1_eps_avg": None, "fy2_eps_avg": None}), \
-             patch("app.services.rhino.get_macro", new_callable=AsyncMock, return_value={"vix": 15.0, "us10y": 4.0}):
+        with m1, m2, m3, m4:
             from app.services.rhino import analyze
             result = await analyze("TEST", lang="en")
 
@@ -209,7 +328,7 @@ class TestEodPriceChange:
         assert abs(quote["change_pct"] - round(expected_pct, 4)) < 0.01
 
 
-# ── 6. Boundary guard ────────────────────────────────────────────────────
+# ── 7. Boundary guard ────────────────────────────────────────────────────
 
 
 class TestBoundaryGuard:
@@ -217,9 +336,9 @@ class TestBoundaryGuard:
 
     @pytest.mark.asyncio
     async def test_zero_bars_returns_degraded(self):
-        with patch("app.services.rhino.get_history", new_callable=AsyncMock, return_value=[]), \
-             patch("app.services.rhino.get_estimates", new_callable=AsyncMock, return_value={"fy1_eps_avg": None, "fy2_eps_avg": None}), \
-             patch("app.services.rhino.get_macro", new_callable=AsyncMock, return_value={"vix": None, "us10y": None}):
+        m1, m2, m3, m4 = _rhino_mocks()
+
+        with m1, m2, m3, m4:
             from app.services.rhino import analyze
             result = await analyze("NODATA", lang="en")
 
@@ -229,10 +348,10 @@ class TestBoundaryGuard:
     @pytest.mark.asyncio
     async def test_one_bar_no_crash(self):
         bars = _make_bars(1, base_price=50.0)
+        m1, m2, m3, m4 = _rhino_mocks(
+            bars=bars, macro={"vix": 20.0, "us10y": None})
 
-        with patch("app.services.rhino.get_history", new_callable=AsyncMock, return_value=bars), \
-             patch("app.services.rhino.get_estimates", new_callable=AsyncMock, return_value={"fy1_eps_avg": None, "fy2_eps_avg": None}), \
-             patch("app.services.rhino.get_macro", new_callable=AsyncMock, return_value={"vix": 20.0, "us10y": None}):
+        with m1, m2, m3, m4:
             from app.services.rhino import analyze
             result = await analyze("ONEBAR", lang="en")
 
@@ -242,3 +361,91 @@ class TestBoundaryGuard:
         assert quote["change"] is None
         assert quote["change_pct"] is None
         assert result["chart"]["current_price"] == 50.0
+
+
+# ── 8. Valuation pipeline acceptance ─────────────────────────────────────
+
+
+class TestValuationAcceptance:
+    """MANDATORY: valuation.available must be True when valid FY1 EPS exists.
+
+    This is the acceptance test proving the entire pipeline works end-to-end:
+    estimate parser → provider → valuation engine → response contract.
+    """
+
+    @pytest.mark.asyncio
+    async def test_valuation_renders_with_valid_eps(self):
+        """Simulates AAPL-like estimates: FY1=7.25, FY2=8.10, price=195."""
+        bars = _make_bars(30, base_price=195.0)
+        estimates = {"fy1_eps_avg": 7.25, "fy2_eps_avg": 8.10}
+        m1, m2, m3, m4 = _rhino_mocks(
+            bars=bars,
+            estimates=estimates,
+            macro={"vix": 18.0, "us10y": 4.2},
+        )
+
+        with m1, m2, m3, m4:
+            from app.services.rhino import analyze
+            result = await analyze("AAPL", lang="en")
+
+        valuation = result["valuation"]
+        assert valuation["available"] is True, (
+            "Valuation must render when valid FY1 EPS exists "
+            f"(fy1={estimates['fy1_eps_avg']})"
+        )
+        assert valuation["fy1_eps_avg"] == 7.25
+        assert valuation["fy2_eps_avg"] == 8.10
+        assert valuation["eps_growth_pct"] is not None
+        assert valuation["raw_fair_value"] is not None
+        assert valuation["adjusted_fair_value"] is not None
+        assert valuation["status"] != "unavailable"
+
+    @pytest.mark.asyncio
+    async def test_valuation_unavailable_with_no_eps(self):
+        bars = _make_bars(10, base_price=100.0)
+        m1, m2, m3, m4 = _rhino_mocks(
+            bars=bars, macro={"vix": 15.0, "us10y": 4.0})
+
+        with m1, m2, m3, m4:
+            from app.services.rhino import analyze
+            result = await analyze("NOEST", lang="en")
+
+        valuation = result["valuation"]
+        assert valuation["available"] is False
+        assert valuation["status"] == "unavailable"
+
+    @pytest.mark.asyncio
+    async def test_valuation_unavailable_with_negative_eps(self):
+        bars = _make_bars(10, base_price=50.0)
+        estimates = {"fy1_eps_avg": -2.5, "fy2_eps_avg": None}
+        m1, m2, m3, m4 = _rhino_mocks(
+            bars=bars,
+            estimates=estimates,
+            macro={"vix": 25.0, "us10y": 4.5},
+        )
+
+        with m1, m2, m3, m4:
+            from app.services.rhino import analyze
+            result = await analyze("LOSS", lang="en")
+
+        valuation = result["valuation"]
+        assert valuation["available"] is False
+
+    @pytest.mark.asyncio
+    async def test_valuation_zh_no_false_unavailable_message(self):
+        """Chinese text report must NOT say '数据不足' when valuation is available."""
+        bars = _make_bars(30, base_price=195.0)
+        estimates = {"fy1_eps_avg": 7.25, "fy2_eps_avg": 8.10}
+        m1, m2, m3, m4 = _rhino_mocks(
+            bars=bars,
+            estimates=estimates,
+            macro={"vix": 18.0, "us10y": 4.2},
+        )
+
+        with m1, m2, m3, m4:
+            from app.services.rhino import analyze
+            result = await analyze("AAPL", lang="zh")
+
+        valuation_text = result["text"]["sections"]["valuation"]
+        assert "分析师预估数据不足" not in valuation_text
+        assert result["valuation"]["available"] is True

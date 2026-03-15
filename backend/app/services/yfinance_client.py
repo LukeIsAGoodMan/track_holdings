@@ -441,35 +441,65 @@ def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
     """
     Fetch analyst consensus estimates from FMP /analyst-estimates.
 
-    Returns structured dict with current/next year EPS + revenue estimates.
+    FMP returns rows ordered far-future first (2030, 2029, ... 2025).
+    We sort ascending by date and select the nearest two future fiscal years
+    as FY1 and FY2.
+
     FMP has migrated field names (estimatedEpsAvg → epsAvg etc.) so we
-    accept both old and new keys.
+    accept both old and new keys via _coalesce.
     """
     fmp_s = _fmp_sym(ticker)
     data = _fmp_get("/analyst-estimates", {"symbol": fmp_s})
     if not isinstance(data, list) or len(data) == 0:
         return None
 
-    # FMP returns future fiscal years first (desc by date).
-    # Take the first two entries as next_year and current_year.
-    estimates: list[dict] = []
-    for item in data[:2]:
+    # Parse all rows into normalized records
+    all_rows: list[dict] = []
+    for item in data:
+        d = item.get("date")
+        if not d:
+            continue
+        # Canonicalize date to YYYY-MM-DD (strip any time component)
+        date_str = str(d)[:10]
         entry = {
-            "date":                  item.get("date"),
+            "date":                  date_str,
             "estimated_revenue_low":  _safe_decimal(_coalesce(item, "revenueLow", "estimatedRevenueLow")),
             "estimated_revenue_high": _safe_decimal(_coalesce(item, "revenueHigh", "estimatedRevenueHigh")),
             "estimated_revenue_avg":  _safe_decimal(_coalesce(item, "revenueAvg", "estimatedRevenueAvg")),
             "estimated_eps_avg":      _safe_float_val(_coalesce(item, "epsAvg", "estimatedEpsAvg")),
             "estimated_eps_high":     _safe_float_val(_coalesce(item, "epsHigh", "estimatedEpsHigh")),
             "estimated_eps_low":      _safe_float_val(_coalesce(item, "epsLow", "estimatedEpsLow")),
-            "number_analysts_estimated_revenue": int(item.get("numberAnalystsEstimatedRevenue") or 0),
-            "number_analysts_estimated_eps":     int(item.get("numberAnalystsEstimatedEps") or 0),
+            "number_analysts_estimated_revenue": _safe_int(_coalesce(item, "numAnalystsRevenue", "numberAnalystsEstimatedRevenue")),
+            "number_analysts_estimated_eps":     _safe_int(_coalesce(item, "numAnalystsEps", "numberAnalystsEstimatedEps")),
         }
-        estimates.append(entry)
+        all_rows.append(entry)
+
+    # Sort ascending by date — nearest fiscal year first
+    all_rows.sort(key=lambda r: r["date"])
+
+    # Select nearest future fiscal years as FY1/FY2
+    today_str = date.today().isoformat()
+    future = [r for r in all_rows if r["date"] >= today_str]
+
+    # Fallback: if no future rows, use the two most recent (nearest past)
+    if not future:
+        future = all_rows[-2:] if len(all_rows) >= 2 else all_rows
+
+    estimates = future[:2]
 
     result = {"estimates": estimates}
-    _set_cached(f"estimates:{ticker.upper()}", result)
+    _set_cached(f"estimates_v2:{ticker.upper()}", result)
     return result
+
+
+def _safe_int(val: object) -> int:
+    """Convert to int, None-safe. Returns 0 on failure."""
+    if val is None:
+        return 0
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
 
 
 async def get_analyst_estimates(ticker: str) -> dict | None:
@@ -477,9 +507,10 @@ async def get_analyst_estimates(ticker: str) -> dict | None:
     Return analyst estimates for a ticker (24h TTL, SWR).
 
     Returns: {estimates: [{date, estimated_eps_avg, estimated_revenue_avg, ...}, ...]}
+    Estimates are sorted ascending by fiscal year date; first entry = FY1.
     """
     ticker = ticker.upper()
-    cache_key = f"estimates:{ticker}"
+    cache_key = f"estimates_v2:{ticker}"
     cached = _get_cached(cache_key, 86400.0)  # 24h TTL
     if isinstance(cached, dict):
         if not _is_cache_fresh(cache_key, 86400.0):

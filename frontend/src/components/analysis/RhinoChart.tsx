@@ -102,9 +102,13 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
   const { lang, t } = useLanguage()
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
 
+  // Default view: last 30 trading days for readability
+  const VISIBLE_DAYS = 30
+
   const data = useMemo(() => {
     const smaMap = new Map(chart.sma200.map((s) => [s.date, s.value]))
-    return chart.candles.map((c) => ({
+    const candles = chart.candles.slice(-VISIBLE_DAYS)
+    return candles.map((c) => ({
       date: c.date,
       open: c.open,
       high: c.high,
@@ -205,7 +209,7 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             }}
             formatter={(value: number, name: string) => {
               if (name === 'sma200') return [fmtPrice(value), 'SMA 200']
-              if (name === '_candle') return [null, null]
+              if (name === '_candle' || name === 'close') return [null, null]
               return [fmtPrice(value), name]
             }}
             labelFormatter={formatDate}
@@ -274,20 +278,15 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             )
           })}
 
-          {/* Current price line with label */}
-          <ReferenceLine
+          {/* Historical close line — shows price path clearly */}
+          <Line
+            dataKey="close"
             yAxisId="price"
-            y={price}
-            stroke="#6366f1"
-            strokeDasharray="4 4"
+            type="monotone"
+            stroke="#64748b"
             strokeWidth={1}
-            label={{
-              value: `$${price.toFixed(2)}`,
-              position: 'right',
-              fill: '#6366f1',
-              fontSize: 10,
-              fontWeight: 600,
-            }}
+            dot={false}
+            isAnimationActive={false}
           />
 
           {/* Candle bodies via custom shape */}
@@ -310,11 +309,30 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             connectNulls
             isAnimationActive={false}
           />
+
+          {/* Current price line with label */}
+          <ReferenceLine
+            yAxisId="price"
+            y={price}
+            stroke="#6366f1"
+            strokeDasharray="4 4"
+            strokeWidth={1}
+            label={{
+              value: `$${price.toFixed(2)}`,
+              position: 'right',
+              fill: '#6366f1',
+              fontSize: 10,
+              fontWeight: 600,
+            }}
+          />
         </ComposedChart>
       </ResponsiveContainer>
 
       {/* Legend */}
       <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-slate-400">
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-0.5 bg-slate-500 inline-block rounded" /> {lang === 'zh' ? '收盘价' : 'Close'}
+        </span>
         <span className="flex items-center gap-1">
           <span className="w-3 h-0.5 bg-amber-500 inline-block rounded" /> SMA 200
         </span>

@@ -14,7 +14,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from .providers import get_history, get_estimates, get_macro
+from .providers import get_history, get_estimates, get_macro, get_sma_series
 from .technical_engine import build_technical
 from .valuation_engine import build_valuation
 from .macro_engine import build_macro
@@ -31,10 +31,12 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 
     # Fetch all data in parallel — no intraday quote needed.
     # Price basis is 100% EOD historical.
-    bars, estimates, raw_macro = await asyncio.gather(
+    # SMA sourced from the shared FMP /technical-indicators/sma endpoint.
+    bars, estimates, raw_macro, sma200_series = await asyncio.gather(
         get_history(symbol),
         get_estimates(symbol),
         get_macro(),
+        get_sma_series(symbol, 200),
     )
 
     # ── Price basis: latest EOD close ─────────────────────────────────
@@ -53,6 +55,14 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     macro = build_macro(raw_macro)
     technical = build_technical(bars, price)
     valuation = build_valuation(estimates, price, macro["recommended_haircut_pct"])
+
+    # Pipeline verification — proves estimates reach the valuation engine
+    logger.info(
+        "Rhino valuation pipeline [%s]: estimates=%s, price=%.2f, "
+        "valuation.available=%s, status=%s",
+        symbol, estimates, price, valuation.get("available"), valuation.get("status"),
+    )
+
     playbook = build_playbook(technical, valuation, macro["vix_regime"])
 
     # Data quality + confidence
@@ -68,14 +78,19 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 
     # Chart data — self-contained: includes current_price so the frontend
     # does not need to cross-reference the outer quote section.
-    sma200_series = _compute_sma200_series(bars)
+    # SMA sourced from shared FMP endpoint (not computed locally).
+    candle_window = bars[-120:]
+    candle_dates = {b["date"] for b in candle_window}
+    # Align SMA to candle dates by matching YYYY-MM-DD
+    sma_aligned = [s for s in sma200_series if s["date"] in candle_dates]
+
     chart = {
         "candles": [
             {"date": b["date"], "open": b["open"], "high": b["high"],
              "low": b["low"], "close": b["close"], "volume": b["volume"]}
-            for b in bars[-120:]
+            for b in candle_window
         ],
-        "sma200": sma200_series,
+        "sma200": sma_aligned,
         "support_zones": technical["support_zones"],
         "resistance_zones": technical["resistance_zones"],
         "current_price": float(price),
@@ -157,13 +172,3 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "chart": {"candles": [], "sma200": [], "support_zones": [], "resistance_zones": [],
                   "current_price": 0.0, "analysis_close": 0.0},
     }
-
-
-def _compute_sma200_series(bars: list[dict]) -> list[dict]:
-    if len(bars) < 200:
-        return []
-    result = []
-    for i in range(199, len(bars)):
-        avg = sum(b["close"] for b in bars[i - 199:i + 1]) / 200
-        result.append({"date": bars[i]["date"], "value": round(avg, 2)})
-    return result[-120:]  # match candle window
