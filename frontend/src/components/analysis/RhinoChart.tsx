@@ -1,9 +1,10 @@
 /**
- * Rhino chart — Recharts OHLC visualization with SMA200 overlay,
- * support/resistance zone bands, and a synced zone detail panel.
+ * Rhino chart — Recharts OHLC visualization with SMA30/100/200 overlay,
+ * support/resistance zone bands, timeframe selector, and zone detail panel.
  *
  * Candles: custom Bar shape rendering body + wick in a single pass.
  * Zones: ReferenceArea bands (no native tooltip) → zone legend below chart.
+ * Timeframe: 10D / 30D / 200D — slices the dataset, zero refetches.
  */
 import { useState, useMemo, useCallback } from 'react'
 import {
@@ -19,6 +20,16 @@ interface Props {
   /** @deprecated pass via chart.current_price instead */
   price?: number
 }
+
+/* ── Timeframe options ─────────────────────────────────────────────────── */
+
+const TIMEFRAMES = [
+  { label: '10D', days: 10 },
+  { label: '30D', days: 30 },
+  { label: '200D', days: 200 },
+] as const
+
+type Timeframe = typeof TIMEFRAMES[number]['days']
 
 /* ── Custom candle shape ────────────────────────────────────────────────── */
 
@@ -101,13 +112,13 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
   const price = chart.current_price ?? priceProp ?? 0
   const { lang, t } = useLanguage()
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
-
-  // Default view: last 30 trading days for readability
-  const VISIBLE_DAYS = 30
+  const [timeframe, setTimeframe] = useState<Timeframe>(200)
 
   const data = useMemo(() => {
-    const smaMap = new Map(chart.sma200.map((s) => [s.date, s.value]))
-    const candles = chart.candles.slice(-VISIBLE_DAYS)
+    const sma30Map  = new Map((chart.sma30 ?? []).map((s) => [s.date, s.value]))
+    const sma100Map = new Map((chart.sma100 ?? []).map((s) => [s.date, s.value]))
+    const sma200Map = new Map((chart.sma200 ?? []).map((s) => [s.date, s.value]))
+    const candles = chart.candles.slice(-timeframe)
     return candles.map((c) => ({
       date: c.date,
       open: c.open,
@@ -115,12 +126,14 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
       low: c.low,
       close: c.close,
       volume: c.volume,
-      sma200: smaMap.get(c.date) ?? null,
+      sma30:  sma30Map.get(c.date) ?? null,
+      sma100: sma100Map.get(c.date) ?? null,
+      sma200: sma200Map.get(c.date) ?? null,
       // placeholder field for Bar (actual rendering via custom shape)
       _candle: c.high,
       bullish: c.close >= c.open,
     }))
-  }, [chart])
+  }, [chart, timeframe])
 
   // Find nearest zone to crosshair price
   const nearestZone = useMemo(() => {
@@ -139,8 +152,9 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
     return best
   }, [activeIdx, data, chart.support_zones, chart.resistance_zones])
 
-  const handleMouseMove = useCallback((state: { activeTooltipIndex?: number }) => {
-    if (state?.activeTooltipIndex != null) setActiveIdx(state.activeTooltipIndex)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleMouseMove = useCallback((state: any) => {
+    if (state?.activeTooltipIndex != null) setActiveIdx(Number(state.activeTooltipIndex))
   }, [])
 
   const handleMouseLeave = useCallback(() => setActiveIdx(null), [])
@@ -171,9 +185,27 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-3">
-        {t('analysis_chart')}
-      </h3>
+      {/* Header with timeframe selector */}
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+          {t('analysis_chart')}
+        </h3>
+        <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
+          {TIMEFRAMES.map(({ label, days }) => (
+            <button
+              key={days}
+              onClick={() => setTimeframe(days)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors ${
+                timeframe === days
+                  ? 'bg-white text-slate-800 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-600'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <ResponsiveContainer width="100%" height={360}>
         <ComposedChart
@@ -207,26 +239,35 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
               fontSize: 12,
               boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
             }}
-            formatter={(value: number, name: string) => {
-              if (name === 'sma200') return [fmtPrice(value), 'SMA 200']
+            formatter={(value: unknown, name?: string) => {
+              const v = Number(value)
+              if (name === 'sma30')  return [fmtPrice(v), 'SMA 30']
+              if (name === 'sma100') return [fmtPrice(v), 'SMA 100']
+              if (name === 'sma200') return [fmtPrice(v), 'SMA 200']
               if (name === '_candle' || name === 'close') return [null, null]
-              return [fmtPrice(value), name]
+              return [fmtPrice(v), name]
             }}
-            labelFormatter={formatDate}
+            labelFormatter={(label: unknown) => formatDate(String(label))}
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null
               const d = payload[0]?.payload
               if (!d) return null
               return (
                 <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs">
-                  <div className="font-semibold text-slate-600 mb-1">{formatDate(label)}</div>
+                  <div className="font-semibold text-slate-600 mb-1">{formatDate(String(label ?? ''))}</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums text-slate-700">
                     <span className="text-slate-400">O</span><span>{fmtPrice(d.open)}</span>
                     <span className="text-slate-400">H</span><span>{fmtPrice(d.high)}</span>
                     <span className="text-slate-400">L</span><span>{fmtPrice(d.low)}</span>
                     <span className="text-slate-400">C</span><span className={d.bullish ? 'text-emerald-600' : 'text-rose-600'}>{fmtPrice(d.close)}</span>
+                    {d.sma30 != null && (
+                      <><span className="text-sky-400">S30</span><span>{fmtPrice(d.sma30)}</span></>
+                    )}
+                    {d.sma100 != null && (
+                      <><span className="text-orange-500">S100</span><span>{fmtPrice(d.sma100)}</span></>
+                    )}
                     {d.sma200 != null && (
-                      <><span className="text-amber-500">SMA</span><span>{fmtPrice(d.sma200)}</span></>
+                      <><span className="text-blue-700">S200</span><span>{fmtPrice(d.sma200)}</span></>
                     )}
                   </div>
                   {nearestZone && (
@@ -278,7 +319,7 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             )
           })}
 
-          {/* Historical close line — shows price path clearly */}
+          {/* Historical close line */}
           <Line
             dataKey="close"
             yAxisId="price"
@@ -298,13 +339,38 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             shape={<CandleShape />}
           />
 
-          {/* SMA200 line */}
+          {/* SMA30 — short-term momentum (light, thin, dashed) */}
+          <Line
+            dataKey="sma30"
+            yAxisId="price"
+            type="monotone"
+            stroke="#38bdf8"
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+
+          {/* SMA100 — medium-term watershed (orange, 1.5px) */}
+          <Line
+            dataKey="sma100"
+            yAxisId="price"
+            type="monotone"
+            stroke="#f97316"
+            strokeWidth={1.5}
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+
+          {/* SMA200 — long-term bull/bear line (deep blue, 2.5px bold) */}
           <Line
             dataKey="sma200"
             yAxisId="price"
             type="monotone"
-            stroke="#f59e0b"
-            strokeWidth={1.5}
+            stroke="#1e40af"
+            strokeWidth={2.5}
             dot={false}
             connectNulls
             isAnimationActive={false}
@@ -334,7 +400,13 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
           <span className="w-3 h-0.5 bg-slate-500 inline-block rounded" /> {lang === 'zh' ? '收盘价' : 'Close'}
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-amber-500 inline-block rounded" /> SMA 200
+          <span className="w-3 h-0.5 inline-block rounded" style={{ background: '#38bdf8', borderTop: '1px dashed #38bdf8' }} /> SMA 30
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-0.5 inline-block rounded" style={{ background: '#f97316' }} /> SMA 100
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-[3px] inline-block rounded" style={{ background: '#1e40af' }} /> SMA 200
         </span>
         <span className="flex items-center gap-1">
           <span className="w-3 h-0.5 bg-indigo-500 inline-block rounded" style={{ borderTop: '1px dashed #6366f1' }} /> {lang === 'zh' ? '当前价' : 'Current'}

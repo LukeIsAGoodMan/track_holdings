@@ -36,6 +36,8 @@ export default function TechnicalCard({ technical, price }: Props) {
   const { lang, t } = useLanguage()
 
   const stats = [
+    { label: 'SMA 30', value: technical.sma30 != null ? fmtPrice(technical.sma30) : '—' },
+    { label: 'SMA 100', value: technical.sma100 != null ? fmtPrice(technical.sma100) : '—' },
     { label: 'SMA 200', value: technical.sma200 != null ? fmtPrice(technical.sma200) : '—' },
     { label: 'ATR 20', value: technical.atr20 != null ? fmtPrice(technical.atr20) : '—' },
     {
@@ -55,7 +57,7 @@ export default function TechnicalCard({ technical, price }: Props) {
       </h3>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-4">
         {stats.map(({ label, value }) => (
           <div key={label} className="text-center p-2.5 rounded-xl bg-slate-50 border border-slate-100">
             <div className="text-[11px] text-slate-400 font-medium uppercase">{label}</div>

@@ -14,8 +14,9 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from .providers import get_history, get_estimates, get_macro, get_sma_series
+from .providers import get_history, get_estimates, get_macro
 from .technical_engine import build_technical
+from .indicators import compute_sma_series_multi
 from .valuation_engine import build_valuation
 from .macro_engine import build_macro
 from .confidence_engine import build_confidence
@@ -31,12 +32,10 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 
     # Fetch all data in parallel — no intraday quote needed.
     # Price basis is 100% EOD historical.
-    # SMA sourced from the shared FMP /technical-indicators/sma endpoint.
-    bars, estimates, raw_macro, sma200_series = await asyncio.gather(
+    bars, estimates, raw_macro = await asyncio.gather(
         get_history(symbol),
         get_estimates(symbol),
         get_macro(),
-        get_sma_series(symbol, 200),
     )
 
     # ── Price basis: latest EOD close ─────────────────────────────────
@@ -78,18 +77,22 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 
     # Chart data — self-contained: includes current_price so the frontend
     # does not need to cross-reference the outer quote section.
-    # SMA sourced from shared FMP endpoint (not computed locally).
-    candle_window = bars[-120:]
+    # All SMAs computed locally from the same bars — zero additional API calls.
+    candle_window = bars[-200:]
     candle_dates = {b["date"] for b in candle_window}
-    # Align SMA to candle dates by matching YYYY-MM-DD
-    sma_aligned = [s for s in sma200_series if s["date"] in candle_dates]
+
+    # Compute SMA30/100/200 series from full bar history in a single pass
+    sma_all = compute_sma_series_multi(bars, [30, 100, 200])
+
+    # Align each SMA series to candle dates
+    sma30_aligned = [s for s in sma_all[30] if s["date"] in candle_dates]
+    sma100_aligned = [s for s in sma_all[100] if s["date"] in candle_dates]
+    sma200_aligned = [s for s in sma_all[200] if s["date"] in candle_dates]
 
     logger.info(
-        "Rhino chart [%s]: %d candles, %d SMA raw, %d SMA aligned | "
-        "candle sample=%s, sma sample=%s",
-        symbol, len(candle_window), len(sma200_series), len(sma_aligned),
-        list(candle_dates)[:3] if candle_dates else "empty",
-        [s["date"] for s in sma200_series[-3:]] if sma200_series else "empty",
+        "Rhino chart [%s]: %d candles, SMA aligned 30=%d 100=%d 200=%d",
+        symbol, len(candle_window),
+        len(sma30_aligned), len(sma100_aligned), len(sma200_aligned),
     )
 
     chart = {
@@ -98,7 +101,9 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
              "low": b["low"], "close": b["close"], "volume": b["volume"]}
             for b in candle_window
         ],
-        "sma200": sma_aligned,
+        "sma30": sma30_aligned,
+        "sma100": sma100_aligned,
+        "sma200": sma200_aligned,
         "support_zones": technical["support_zones"],
         "resistance_zones": technical["resistance_zones"],
         "current_price": float(price),
@@ -146,7 +151,8 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
     macro = build_macro(raw_macro)
     empty_tech = {
-        "sma200": None, "avg_volume_50": None, "atr20": None,
+        "sma30": None, "sma100": None, "sma200": None,
+        "avg_volume_50": None, "atr20": None,
         "today_volume": None, "volume_ratio": None,
         "support_zones": [], "resistance_zones": [], "pattern_tags": [],
     }
@@ -177,6 +183,7 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "data_quality": dq, "confidence": confidence, "quote": None,
         "technical": empty_tech, "valuation": empty_val,
         "macro": macro, "playbook": playbook, "text": text,
-        "chart": {"candles": [], "sma200": [], "support_zones": [], "resistance_zones": [],
+        "chart": {"candles": [], "sma30": [], "sma100": [], "sma200": [],
+                  "support_zones": [], "resistance_zones": [],
                   "current_price": 0.0, "analysis_close": 0.0},
     }

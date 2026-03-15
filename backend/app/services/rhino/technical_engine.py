@@ -10,6 +10,8 @@ from .indicators import (
 
 
 def build_technical(bars: list[dict], last_price: float) -> dict:
+    sma30 = compute_sma(bars, 30)
+    sma100 = compute_sma(bars, 100)
     sma200 = compute_sma(bars, 200)
     atr20 = compute_atr(bars, 20)
     avg_vol_50 = compute_avg_volume(bars, 50)
@@ -38,6 +40,8 @@ def build_technical(bars: list[dict], last_price: float) -> dict:
     pattern_tags = _detect_patterns(bars, last_price, sma200, support_zones, volume_ratio)
 
     return {
+        "sma30": sma30,
+        "sma100": sma100,
         "sma200": sma200,
         "avg_volume_50": avg_vol_50,
         "atr20": atr20,

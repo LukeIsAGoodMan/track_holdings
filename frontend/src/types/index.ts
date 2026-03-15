@@ -458,6 +458,8 @@ export interface AnalysisPriceZone {
 }
 
 export interface AnalysisTechnical {
+  sma30:            number | null
+  sma100:           number | null
   sma200:           number | null
   avg_volume_50:    number | null
   atr20:            number | null
@@ -519,6 +521,8 @@ export interface AnalysisCandle {
 
 export interface AnalysisChart {
   candles:          AnalysisCandle[]
+  sma30:            { date: string; value: number }[]
+  sma100:           { date: string; value: number }[]
   sma200:           { date: string; value: number }[]
   support_zones:    AnalysisPriceZone[]
   resistance_zones: AnalysisPriceZone[]

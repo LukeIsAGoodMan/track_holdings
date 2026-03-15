@@ -32,18 +32,21 @@ from app.services.yfinance_client import (
 
 def _make_bars(n: int, base_price: float = 100.0) -> list[dict]:
     """Create n ascending-date bars for testing."""
+    from datetime import date, timedelta
+    start = date(2024, 1, 2)
     bars = []
     for i in range(n):
+        d = start + timedelta(days=i)
         p = base_price + i * 0.5
         bars.append({
-            "date": f"2025-01-{i + 1:02d}",
+            "date": d.isoformat(),
             "open": p, "high": p + 1, "low": p - 1, "close": p,
             "volume": 1000000,
         })
     return bars
 
 
-def _rhino_mocks(bars=None, estimates=None, macro=None, sma=None):
+def _rhino_mocks(bars=None, estimates=None, macro=None):
     """Return a tuple of context managers for patching all Rhino data providers."""
     return (
         patch("app.services.rhino.get_history",
@@ -52,8 +55,6 @@ def _rhino_mocks(bars=None, estimates=None, macro=None, sma=None):
               new_callable=AsyncMock, return_value=estimates or {"fy1_eps_avg": None, "fy2_eps_avg": None}),
         patch("app.services.rhino.get_macro",
               new_callable=AsyncMock, return_value=macro or {"vix": None, "us10y": None}),
-        patch("app.services.rhino.get_sma_series",
-              new_callable=AsyncMock, return_value=sma or []),
     )
 
 
@@ -119,10 +120,10 @@ class TestChartPayload:
     async def test_chart_contains_price_fields(self):
         bars = _make_bars(5)
         expected_close = bars[-1]["close"]
-        m1, m2, m3, m4 = _rhino_mocks(
+        m1, m2, m3 = _rhino_mocks(
             bars=bars, macro={"vix": 18.0, "us10y": 4.2})
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("TEST", lang="en")
 
@@ -133,9 +134,9 @@ class TestChartPayload:
 
     @pytest.mark.asyncio
     async def test_degraded_chart_has_zero_prices(self):
-        m1, m2, m3, m4 = _rhino_mocks()
+        m1, m2, m3 = _rhino_mocks()
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("NODATA", lang="en")
 
@@ -314,10 +315,10 @@ class TestEodPriceChange:
         bars = _make_bars(3)  # closes: 100.0, 100.5, 101.0
         expected_change = 101.0 - 100.5
         expected_pct = expected_change / 100.5 * 100
-        m1, m2, m3, m4 = _rhino_mocks(
+        m1, m2, m3 = _rhino_mocks(
             bars=bars, macro={"vix": 15.0, "us10y": 4.0})
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("TEST", lang="en")
 
@@ -336,9 +337,9 @@ class TestBoundaryGuard:
 
     @pytest.mark.asyncio
     async def test_zero_bars_returns_degraded(self):
-        m1, m2, m3, m4 = _rhino_mocks()
+        m1, m2, m3 = _rhino_mocks()
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("NODATA", lang="en")
 
@@ -348,10 +349,10 @@ class TestBoundaryGuard:
     @pytest.mark.asyncio
     async def test_one_bar_no_crash(self):
         bars = _make_bars(1, base_price=50.0)
-        m1, m2, m3, m4 = _rhino_mocks(
+        m1, m2, m3 = _rhino_mocks(
             bars=bars, macro={"vix": 20.0, "us10y": None})
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("ONEBAR", lang="en")
 
@@ -378,13 +379,13 @@ class TestValuationAcceptance:
         """Simulates AAPL-like estimates: FY1=7.25, FY2=8.10, price=195."""
         bars = _make_bars(30, base_price=195.0)
         estimates = {"fy1_eps_avg": 7.25, "fy2_eps_avg": 8.10}
-        m1, m2, m3, m4 = _rhino_mocks(
+        m1, m2, m3 = _rhino_mocks(
             bars=bars,
             estimates=estimates,
             macro={"vix": 18.0, "us10y": 4.2},
         )
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("AAPL", lang="en")
 
@@ -403,10 +404,10 @@ class TestValuationAcceptance:
     @pytest.mark.asyncio
     async def test_valuation_unavailable_with_no_eps(self):
         bars = _make_bars(10, base_price=100.0)
-        m1, m2, m3, m4 = _rhino_mocks(
+        m1, m2, m3 = _rhino_mocks(
             bars=bars, macro={"vix": 15.0, "us10y": 4.0})
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("NOEST", lang="en")
 
@@ -418,13 +419,13 @@ class TestValuationAcceptance:
     async def test_valuation_unavailable_with_negative_eps(self):
         bars = _make_bars(10, base_price=50.0)
         estimates = {"fy1_eps_avg": -2.5, "fy2_eps_avg": None}
-        m1, m2, m3, m4 = _rhino_mocks(
+        m1, m2, m3 = _rhino_mocks(
             bars=bars,
             estimates=estimates,
             macro={"vix": 25.0, "us10y": 4.5},
         )
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("LOSS", lang="en")
 
@@ -436,16 +437,167 @@ class TestValuationAcceptance:
         """Chinese text report must NOT say '数据不足' when valuation is available."""
         bars = _make_bars(30, base_price=195.0)
         estimates = {"fy1_eps_avg": 7.25, "fy2_eps_avg": 8.10}
-        m1, m2, m3, m4 = _rhino_mocks(
+        m1, m2, m3 = _rhino_mocks(
             bars=bars,
             estimates=estimates,
             macro={"vix": 18.0, "us10y": 4.2},
         )
 
-        with m1, m2, m3, m4:
+        with m1, m2, m3:
             from app.services.rhino import analyze
             result = await analyze("AAPL", lang="zh")
 
         valuation_text = result["text"]["sections"]["valuation"]
         assert "分析师预估数据不足" not in valuation_text
         assert result["valuation"]["available"] is True
+
+
+# ── 9. Multi-SMA computation ─────────────────────────────────────────────
+
+class TestMultiSmaComputation:
+    """Validates compute_sma_series_multi and chart SMA integration."""
+
+    def test_sma30_valid_with_30_bars(self):
+        from app.services.rhino.indicators import compute_sma_series_multi
+        bars = _make_bars(30)
+        result = compute_sma_series_multi(bars, [30, 100, 200])
+        assert len(result[30]) == 1  # exactly enough for 1 SMA point
+        assert result[100] == []
+        assert result[200] == []
+
+    def test_sma100_valid_with_100_bars(self):
+        from app.services.rhino.indicators import compute_sma_series_multi
+        bars = _make_bars(100)
+        result = compute_sma_series_multi(bars, [30, 100, 200])
+        assert len(result[30]) == 71  # 100 - 30 + 1
+        assert len(result[100]) == 1
+        assert result[200] == []
+
+    def test_sma200_valid_with_200_bars(self):
+        from app.services.rhino.indicators import compute_sma_series_multi
+        bars = _make_bars(200)
+        result = compute_sma_series_multi(bars, [30, 100, 200])
+        assert len(result[30]) == 171
+        assert len(result[100]) == 101
+        assert len(result[200]) == 1
+
+    def test_sma_insufficient_bars(self):
+        from app.services.rhino.indicators import compute_sma_series_multi
+        bars = _make_bars(10)
+        result = compute_sma_series_multi(bars, [30, 100, 200])
+        assert result[30] == []
+        assert result[100] == []
+        assert result[200] == []
+
+    def test_sma_values_correct(self):
+        from app.services.rhino.indicators import compute_sma_series_multi
+        bars = _make_bars(35)
+        result = compute_sma_series_multi(bars, [30])
+        # First SMA30 point: avg of bars[0..29]
+        expected = sum(b["close"] for b in bars[:30]) / 30
+        assert abs(result[30][0]["value"] - round(expected, 4)) < 0.001
+
+    def test_sma_chronological_order(self):
+        from app.services.rhino.indicators import compute_sma_series_multi
+        bars = _make_bars(50)
+        result = compute_sma_series_multi(bars, [30])
+        dates = [pt["date"] for pt in result[30]]
+        assert dates == sorted(dates)
+
+    def test_sma_date_format(self):
+        from app.services.rhino.indicators import compute_sma_series_multi
+        bars = _make_bars(35)
+        result = compute_sma_series_multi(bars, [30])
+        for pt in result[30]:
+            assert len(pt["date"]) == 10  # YYYY-MM-DD
+            assert pt["date"][4] == "-"
+
+    @pytest.mark.asyncio
+    async def test_chart_contains_all_sma_series(self):
+        bars = _make_bars(250, base_price=150.0)
+        m1, m2, m3 = _rhino_mocks(
+            bars=bars,
+            estimates={"fy1_eps_avg": 5.0, "fy2_eps_avg": 6.0},
+            macro={"vix": 18.0, "us10y": 4.2},
+        )
+        with m1, m2, m3:
+            from app.services.rhino import analyze
+            result = await analyze("AAPL")
+
+        chart = result["chart"]
+        assert len(chart["sma30"]) > 0
+        assert len(chart["sma100"]) > 0
+        assert len(chart["sma200"]) > 0
+        # All dates are YYYY-MM-DD
+        for series_key in ("sma30", "sma100", "sma200"):
+            for pt in chart[series_key]:
+                assert len(pt["date"]) == 10
+
+    @pytest.mark.asyncio
+    async def test_technical_contains_all_sma_scalars(self):
+        bars = _make_bars(250, base_price=150.0)
+        m1, m2, m3 = _rhino_mocks(
+            bars=bars,
+            estimates={"fy1_eps_avg": 5.0, "fy2_eps_avg": 6.0},
+            macro={"vix": 18.0, "us10y": 4.2},
+        )
+        with m1, m2, m3:
+            from app.services.rhino import analyze
+            result = await analyze("AAPL")
+
+        tech = result["technical"]
+        assert tech["sma30"] is not None
+        assert tech["sma100"] is not None
+        assert tech["sma200"] is not None
+
+    @pytest.mark.asyncio
+    async def test_chart_200_candle_window(self):
+        bars = _make_bars(300, base_price=150.0)
+        m1, m2, m3 = _rhino_mocks(
+            bars=bars,
+            estimates={"fy1_eps_avg": 5.0, "fy2_eps_avg": 6.0},
+            macro={"vix": 18.0, "us10y": 4.2},
+        )
+        with m1, m2, m3:
+            from app.services.rhino import analyze
+            result = await analyze("AAPL")
+
+        assert len(result["chart"]["candles"]) == 200
+
+    @pytest.mark.asyncio
+    async def test_sma_aligned_to_candle_dates(self):
+        bars = _make_bars(250, base_price=150.0)
+        m1, m2, m3 = _rhino_mocks(
+            bars=bars,
+            estimates={"fy1_eps_avg": 5.0, "fy2_eps_avg": 6.0},
+            macro={"vix": 18.0, "us10y": 4.2},
+        )
+        with m1, m2, m3:
+            from app.services.rhino import analyze
+            result = await analyze("AAPL")
+
+        chart = result["chart"]
+        candle_dates = {c["date"] for c in chart["candles"]}
+        for series_key in ("sma30", "sma100", "sma200"):
+            for pt in chart[series_key]:
+                assert pt["date"] in candle_dates, \
+                    f"{series_key} date {pt['date']} not in candle dates"
+
+    @pytest.mark.asyncio
+    async def test_degraded_response_has_all_sma_fields(self):
+        m1, m2, m3 = _rhino_mocks(
+            bars=[],
+            macro={"vix": 18.0, "us10y": 4.2},
+        )
+        with m1, m2, m3:
+            from app.services.rhino import analyze
+            result = await analyze("AAPL")
+
+        tech = result["technical"]
+        assert tech["sma30"] is None
+        assert tech["sma100"] is None
+        assert tech["sma200"] is None
+        chart = result["chart"]
+        assert chart["sma30"] == []
+        assert chart["sma100"] == []
+        assert chart["sma200"] == []

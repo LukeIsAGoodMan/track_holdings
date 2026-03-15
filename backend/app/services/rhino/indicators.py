@@ -16,6 +16,38 @@ def compute_sma(bars: list[dict], period: int) -> float | None:
     return sum(b["close"] for b in bars[-period:]) / period
 
 
+def compute_sma_series_multi(
+    bars: list[dict], periods: list[int],
+) -> dict[int, list[dict]]:
+    """Compute multiple SMA date-series in a single pass over the close array.
+
+    Returns {period: [{date, value}, ...]} for each requested period.
+    Each series is chronologically ordered.  Empty list if insufficient bars.
+    Complexity: O(n) per period (one running-sum sweep each).
+    """
+    closes = [b["close"] for b in bars]
+    n = len(closes)
+    result: dict[int, list[dict]] = {}
+
+    for period in periods:
+        if n < period:
+            result[period] = []
+            continue
+
+        series: list[dict] = []
+        running_sum = sum(closes[:period])
+        for i in range(period, n + 1):
+            if i > period:
+                running_sum += closes[i - 1] - closes[i - period - 1]
+            series.append({
+                "date": bars[i - 1]["date"],
+                "value": round(running_sum / period, 4),
+            })
+        result[period] = series
+
+    return result
+
+
 # ── ATR ──────────────────────────────────────────────────────────────────────
 
 def compute_atr(bars: list[dict], period: int = 20) -> float | None:
