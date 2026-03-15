@@ -357,13 +357,14 @@ class PriceFeedService:
             "changepct": changepct_map,
         }
         changed_syms = set(changed.keys())
-        conns_snapshot = self.manager.snapshot_connections()
-        spot_tasks = []
-        for conn in conns_snapshot:
-            if conn.subscribed_symbols & changed_syms:
-                spot_tasks.append(self.manager.send_json(conn.ws, spot_msg))
-        if spot_tasks:
-            await asyncio.gather(*spot_tasks, return_exceptions=True)
+
+        # Indexed fanout: only connections subscribed to changed symbols
+        target_conns = self.manager.connections_for_any_symbol(changed_syms)
+        if target_conns:
+            await asyncio.gather(
+                *[self.manager.send_json(conn.ws, spot_msg) for conn in target_conns],
+                return_exceptions=True,
+            )
 
         # 5. Check price alerts
         if self.alert_engine:
@@ -377,15 +378,14 @@ class PriceFeedService:
 
         # Also mark portfolios from WS connections (backward compat — covers
         # portfolios that haven't been indexed via sync_portfolio_index yet)
-        for conn in conns_snapshot:
-            if conn.subscribed_symbols & changed_syms:
-                for pid in conn.subscribed_portfolio_ids:
-                    affected_pids.add(pid)
-                    # Ensure owner mapping exists for broadcast routing
-                    if await self.state.get_owner(pid) is None:
-                        await self.state.sync_portfolio_index(
-                            pid, conn.user_id, conn.subscribed_symbols
-                        )
+        for conn in target_conns:
+            for pid in conn.subscribed_portfolio_ids:
+                affected_pids.add(pid)
+                # Ensure owner mapping exists for broadcast routing
+                if await self.state.get_owner(pid) is None:
+                    await self.state.sync_portfolio_index(
+                        pid, conn.user_id, conn.subscribed_symbols
+                    )
 
         if affected_pids:
             await self.state.mark_dirty(affected_pids)

@@ -11,6 +11,11 @@ Subscription model:
                 └── Symbols
 
 Symbols remain active as long as at least one portfolio references them.
+
+Routing index:
+    _symbol_connections: symbol -> set[conn_id]
+    Derived from the hierarchical portfolio maps.  Kept in sync
+    incrementally by subscribe / unsubscribe / disconnect.
 """
 from __future__ import annotations
 
@@ -70,6 +75,8 @@ class ConnectionManager:
     def __init__(self) -> None:
         # conn_id (id(ws)) -> WSConnection
         self._connections: dict[int, WSConnection] = {}
+        # Routing index: symbol -> set of conn_ids subscribed to that symbol
+        self._symbol_connections: dict[str, set[int]] = {}
 
     # ── Connect / Disconnect ──────────────────────────────────────────────
 
@@ -81,8 +88,16 @@ class ConnectionManager:
         return conn
 
     def disconnect(self, ws: WebSocket) -> None:
-        conn = self._connections.pop(id(ws), None)
+        conn_id = id(ws)
+        conn = self._connections.pop(conn_id, None)
         if conn:
+            # Remove conn_id from every symbol bucket it participates in
+            for sym in conn.all_symbols:
+                bucket = self._symbol_connections.get(sym)
+                if bucket is not None:
+                    bucket.discard(conn_id)
+                    if not bucket:
+                        del self._symbol_connections[sym]
             logger.info(
                 "WS disconnected: user=%d  total=%d",
                 conn.user_id, len(self._connections),
@@ -96,44 +111,112 @@ class ConnectionManager:
 
         Idempotent replacement: if portfolio_id already exists, the entire
         symbol set is replaced.  Symbols are normalized via normalize_ticker().
+        The routing index is updated incrementally via before/after diff.
         """
-        conn = self._connections.get(id(ws))
-        if conn:
-            normalized = {normalize_ticker(s) for s in symbols}
-            conn._portfolio_map[portfolio_id] = normalized
-            logger.info(
-                "WS subscribe: user=%d portfolio=%d symbols=%s",
-                conn.user_id, portfolio_id, normalized,
-            )
+        conn_id = id(ws)
+        conn = self._connections.get(conn_id)
+        if not conn:
+            return
+
+        normalized = {normalize_ticker(s) for s in symbols}
+
+        # Snapshot effective symbols BEFORE the change
+        old_effective = conn.all_symbols
+
+        # Update the portfolio map (source of truth)
+        conn._portfolio_map[portfolio_id] = normalized
+
+        # Snapshot effective symbols AFTER the change
+        new_effective = conn.all_symbols
+
+        # Incremental index update
+        removed = old_effective - new_effective
+        added = new_effective - old_effective
+
+        for sym in removed:
+            bucket = self._symbol_connections.get(sym)
+            if bucket is not None:
+                bucket.discard(conn_id)
+                if not bucket:
+                    del self._symbol_connections[sym]
+
+        for sym in added:
+            self._symbol_connections.setdefault(sym, set()).add(conn_id)
+
+        logger.info(
+            "WS subscribe: user=%d portfolio=%d symbols=%s",
+            conn.user_id, portfolio_id, normalized,
+        )
 
     def unsubscribe(self, ws: WebSocket, portfolio_id: int) -> None:
         """
         Unsubscribe a connection from a portfolio.
 
-        Symbols disappear naturally through the derived all_symbols property
-        when no remaining portfolio references them.
+        The routing index is updated via before/after diff so symbols
+        still referenced by other portfolios are retained.
         """
-        conn = self._connections.get(id(ws))
-        if conn:
-            conn._portfolio_map.pop(portfolio_id, None)
-            logger.info(
-                "WS unsubscribe: user=%d portfolio=%d", conn.user_id, portfolio_id,
-            )
+        conn_id = id(ws)
+        conn = self._connections.get(conn_id)
+        if not conn:
+            return
+
+        if portfolio_id not in conn._portfolio_map:
+            return
+
+        # Snapshot effective symbols BEFORE the change
+        old_effective = conn.all_symbols
+
+        # Remove portfolio entry (source of truth)
+        del conn._portfolio_map[portfolio_id]
+
+        # Snapshot effective symbols AFTER the change
+        new_effective = conn.all_symbols
+
+        # Symbols that this connection no longer references at all
+        removed = old_effective - new_effective
+        for sym in removed:
+            bucket = self._symbol_connections.get(sym)
+            if bucket is not None:
+                bucket.discard(conn_id)
+                if not bucket:
+                    del self._symbol_connections[sym]
+
+        logger.info(
+            "WS unsubscribe: user=%d portfolio=%d", conn.user_id, portfolio_id,
+        )
 
     # ── Query ─────────────────────────────────────────────────────────────
 
     def all_subscribed_symbols(self) -> set[str]:
         """Return the union of all symbols across all connections."""
-        symbols: set[str] = set()
-        for conn in self._connections.values():
-            symbols.update(conn.all_symbols)
-        return symbols
+        return set(self._symbol_connections.keys())
 
     def connections_for_symbol(self, symbol: str) -> list[WSConnection]:
         """Return all connections subscribed to a given symbol."""
+        bucket = self._symbol_connections.get(symbol)
+        if not bucket:
+            return []
         return [
-            conn for conn in self._connections.values()
-            if symbol in conn.all_symbols
+            self._connections[cid]
+            for cid in bucket
+            if cid in self._connections
+        ]
+
+    def connections_for_any_symbol(self, symbols: set[str]) -> list[WSConnection]:
+        """
+        Return unique WSConnection objects subscribed to at least one
+        symbol in the input set.  O(changed symbols) instead of O(all connections).
+        """
+        conn_ids: set[int] = set()
+        for sym in symbols:
+            bucket = self._symbol_connections.get(sym)
+            if bucket:
+                conn_ids.update(bucket)
+        # Resolve to WSConnection objects, skip stale ids defensively
+        return [
+            self._connections[cid]
+            for cid in conn_ids
+            if cid in self._connections
         ]
 
     def connections_for_user(self, user_id: int) -> list[WSConnection]:
