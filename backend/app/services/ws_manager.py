@@ -56,6 +56,18 @@ class WSConnection:
             result |= syms
         return result
 
+    # ── Read-only portfolio-level view ───────────────────────────────────────
+
+    @property
+    def portfolio_subscriptions(self) -> list[tuple[int, set[str]]]:
+        """
+        Read-only snapshot of portfolio-level subscriptions.
+
+        Returns a list of (portfolio_id, frozenset_of_symbols) tuples.
+        Each symbol set is a copy — callers cannot mutate internal state.
+        """
+        return [(pid, set(syms)) for pid, syms in self._portfolio_map.items()]
+
     # ── Backward-compatibility aliases ─────────────────────────────────────
 
     @property
