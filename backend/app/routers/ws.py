@@ -251,7 +251,17 @@ async def _send_initial_holdings(
         )
         perf_map = dict(zip(symbols, perf_results))
 
-        groups = compute_holding_groups(positions, spot_map, vol_map, perf_map=perf_map)
+        # Daily P&L: BS mark-to-market (snapshot/recompute parity with price_feed)
+        from app.services.price_feed import PriceFeedService
+        prev_close_map = PriceFeedService._build_prev_close_map(symbols)
+        bs_pnl_map = PriceFeedService._build_daily_pnl_map(
+            positions, spot_map, vol_map, prev_close_map,
+        )
+
+        groups = compute_holding_groups(
+            positions, spot_map, vol_map, perf_map=perf_map,
+            bs_pnl_map=bs_pnl_map,
+        )
         holdings_msg = {
             "type": "holdings_update",
             "portfolio_id": portfolio_id,

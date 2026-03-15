@@ -589,6 +589,134 @@ class PriceFeedService:
                 return conn.user_id
         return None
 
+    # ── Daily P&L computation ────────────────────────────────────────────
+
+    @staticmethod
+    def _build_prev_close_map(symbols: list[str]) -> dict[str, Decimal]:
+        """
+        Build a prev_close lookup for all symbols — zero N+1 queries.
+
+        Priority order per symbol:
+          Tier 1: In-memory cache (populated by FMP /quote → previousClose)
+          Tier 2: None (symbol excluded from P&L)
+
+        Returns {symbol: prev_close} — only symbols with available data.
+        Cache is populated by get_spot_price() which calls _do_fetch_quote(),
+        storing previousClose with a 24h TTL.  By the time this runs, the
+        spot loop or initial snapshot has already fetched quotes for all
+        active symbols, so the cache hit rate is effectively 100%.
+        """
+        result: dict[str, Decimal] = {}
+        for sym in symbols:
+            pc = yfinance_client.get_prev_close_cached_only(sym)
+            if pc is not None:
+                result[sym] = pc
+        return result
+
+    @staticmethod
+    def _build_daily_pnl_map(
+        positions: list,
+        spot_map: dict[str, Decimal | None],
+        vol_map: dict[str, Decimal],
+        prev_close_map: dict[str, Decimal],
+    ) -> dict[str, Decimal]:
+        """
+        Compute per-symbol daily unrealized P&L using prev_close as baseline.
+
+        Stock legs:  net_shares × (spot_now − prev_close)
+        Option legs: Σ (BS(spot_now) − BS(prev_close)) × net_contracts × 100
+
+        Option MTM fallback ladder:
+          Tier 1: BS(spot_now) − BS(prev_close)   [full gamma/convexity]
+          Tier 2: delta × (spot_now − prev_close)  [linear approx, when BS fails]
+          Tier 3: skip leg                          [no prev_close or computation error]
+
+        Args:
+            prev_close_map: Pre-built {symbol: prev_close} from _build_prev_close_map().
+                            Symbols absent from this map are skipped entirely.
+
+        Returns {symbol: daily_pnl_dollars} — only symbols with computable P&L.
+        """
+        from app.services.black_scholes import (
+            calculate_option_price, calculate_greeks, DEFAULT_SIGMA,
+        )
+        from app.models import InstrumentType
+        from app.config import settings
+
+        today = __import__("datetime").date.today()
+        r_f = Decimal(str(settings.risk_free_rate))
+
+        # Group positions by symbol
+        by_symbol: dict[str, list] = {}
+        for pos in positions:
+            by_symbol.setdefault(pos.instrument.symbol, []).append(pos)
+
+        result: dict[str, Decimal] = {}
+
+        for sym, sym_positions in by_symbol.items():
+            spot = spot_map.get(sym)
+            if spot is None or spot <= 0:
+                continue
+
+            prev_close = prev_close_map.get(sym)
+            if prev_close is None:
+                continue  # No prev_close → skip symbol entirely
+
+            sigma = vol_map.get(sym, DEFAULT_SIGMA)
+            daily_pnl = Decimal("0")
+            has_any = False
+
+            for pos in sym_positions:
+                inst = pos.instrument
+
+                # ── Stock / ETF ──
+                if inst.instrument_type == InstrumentType.STOCK or inst.option_type is None:
+                    stock_pnl = Decimal(str(pos.net_contracts)) * (spot - prev_close)
+                    daily_pnl += stock_pnl
+                    has_any = True
+                    continue
+
+                # ── Option ──
+                if inst.expiry is None:
+                    continue
+
+                dte = (inst.expiry - today).days
+                T = Decimal(str(max(dte, 0) / 365.0))
+                net_d = Decimal(str(pos.net_contracts))
+                multiplier = Decimal("100")
+
+                if prev_close > 0 and T > 0:
+                    # Tier 1: full BS mark-to-market
+                    try:
+                        bs_now = calculate_option_price(
+                            S=spot, K=inst.strike, T=T,
+                            option_type=inst.option_type.value, sigma=sigma, r=r_f,
+                        )
+                        bs_prev = calculate_option_price(
+                            S=prev_close, K=inst.strike, T=T,
+                            option_type=inst.option_type.value, sigma=sigma, r=r_f,
+                        )
+                        option_pnl = (bs_now - bs_prev) * net_d * multiplier
+                        daily_pnl += option_pnl
+                        has_any = True
+                    except Exception:
+                        # Tier 2: delta-linear fallback
+                        try:
+                            g = calculate_greeks(
+                                S=spot, K=inst.strike, T=T,
+                                option_type=inst.option_type.value, sigma=sigma, r=r_f,
+                            )
+                            delta_pnl = g.delta * (spot - prev_close) * net_d * multiplier
+                            daily_pnl += delta_pnl
+                            has_any = True
+                        except Exception:
+                            pass  # Tier 3: skip this leg
+
+            if has_any:
+                result[sym] = daily_pnl
+
+        return result
+
     # ── Holdings computation & broadcast ──────────────────────────────────
 
     async def _compute_and_send_holdings(self, ctx: PortfolioContext) -> None:
@@ -607,8 +735,16 @@ class PriceFeedService:
             if isinstance(result, dict):
                 port_perf[sym] = result
 
+        # Daily P&L: BS mark-to-market using prev_close baseline
+        prev_close_map = self._build_prev_close_map(ctx.symbols)
+        bs_pnl_map = self._build_daily_pnl_map(
+            ctx.positions, ctx.spot_map, ctx.vol_map, prev_close_map,
+        )
+
         groups = compute_holding_groups(
-            ctx.positions, ctx.spot_map, ctx.vol_map, perf_map=port_perf or None
+            ctx.positions, ctx.spot_map, ctx.vol_map,
+            perf_map=port_perf or None,
+            bs_pnl_map=bs_pnl_map,
         )
 
         holdings_msg = {

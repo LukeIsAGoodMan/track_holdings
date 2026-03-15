@@ -1777,13 +1777,35 @@ export default function HoldingsPage() {
       })
       .map((g) => {
         const isShort = g.is_short === true
-        const staticPerf = getEffectivePerf(g, period)
-        // If backend perf not yet loaded (null/0), fall back to live WS spot change
-        const wsChangePct = lastSpotChangePct?.[g.symbol] != null
-          ? parseFloat(lastSpotChangePct![g.symbol]) * (isShort ? -1 : 1)
-          : null
-        const perf    = (staticPerf != null && staticPerf !== 0) ? staticPerf : (wsChangePct ?? 0)
-        const rawPerf = getRawPerf(g, period) ?? (wsChangePct ?? 0)
+
+        // 1D period: quote-driven changepct (primary) → effective_perf_1d (fallback)
+        // Other periods: backend effective_perf (primary) → WS changepct (fallback)
+        let perf: number
+        let rawPerf: number
+
+        if (period === '1d') {
+          // Primary: live WS changepct (FMP quote-driven, updates every tick)
+          const wsChangePct = lastSpotChangePct?.[g.symbol] != null
+            ? parseFloat(lastSpotChangePct![g.symbol])
+            : null
+          const wsEffective = wsChangePct != null ? wsChangePct * (isShort ? -1 : 1) : null
+
+          // Fallback: backend effective_perf_1d (from cached 1y closes)
+          const backendPerf = safeFloat(g.effective_perf_1d)
+          const backendRaw  = safeFloat(g.perf_1d)
+
+          perf    = wsEffective ?? backendPerf ?? 0
+          rawPerf = wsChangePct ?? backendRaw ?? 0
+        } else {
+          // 5D/1M/3M: backend perf is authoritative, WS changepct only as last resort
+          const staticPerf = getEffectivePerf(g, period)
+          const wsChangePct = lastSpotChangePct?.[g.symbol] != null
+            ? parseFloat(lastSpotChangePct![g.symbol]) * (isShort ? -1 : 1)
+            : null
+          perf    = (staticPerf != null && staticPerf !== 0) ? staticPerf : (wsChangePct ?? 0)
+          rawPerf = getRawPerf(g, period) ?? (wsChangePct != null ? parseFloat(lastSpotChangePct![g.symbol]) : 0)
+        }
+
         return {
           name:     g.symbol,
           size:     Math.abs(safeFloat(g.delta_adjusted_exposure) ?? 0),  // Recharts needs positive area

@@ -195,7 +195,8 @@ def compute_holding_groups(
                 asset_class = "option"
 
             # BS mark-to-market P&L (precomputed by caller)
-            bs_pnl = (bs_pnl_map or {}).get(sym)
+            # None = P&L unavailable; {} = computed but no symbols had prev_close
+            bs_pnl = bs_pnl_map.get(sym) if bs_pnl_map is not None else None
 
             holding_groups.append(
                 HoldingGroup(
