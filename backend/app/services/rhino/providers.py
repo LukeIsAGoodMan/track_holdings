@@ -23,35 +23,11 @@ from app.services.yfinance_client import (
 logger = logging.getLogger(__name__)
 
 
-# ── Quote ────────────────────────────────────────────────────────────────────
-
-async def get_quote(symbol: str) -> dict | None:
-    """Fetch live quote via the shared market-data layer. Returns dict or None."""
-    sym = normalize_ticker(symbol)
-    price = await get_spot_price(sym)
-    if price is None:
-        return None
-
-    # Retrieve cached supplementary fields populated by _do_fetch_quote
-    from app.services.yfinance_client import (
-        get_prev_close_cached_only,
-        get_change_cached,
-        get_changepct_cached,
-    )
-    prev = get_prev_close_cached_only(sym)
-    change = get_change_cached(sym)
-    change_pct = get_changepct_cached(sym)
-
-    return {
-        "symbol": sym,
-        "price": float(price),
-        "previous_close": float(prev) if prev is not None else None,
-        "change": float(change) if change is not None else None,
-        "change_pct": float(change_pct) if change_pct is not None else None,
-        "volume": None,     # not needed for analysis (EOD basis)
-        "market_cap": None,
-        "name": None,
-    }
+# ── Quote (DEPRECATED) ────────────────────────────────────────────────────────
+# Rhino analysis is 100% EOD-based.  The orchestrator (__init__.py) derives
+# price, change, and change_pct directly from historical bars — it does NOT
+# call get_quote().  This function is retained only in case external callers
+# need an intraday snapshot; do NOT reintroduce it into the analysis pipeline.
 
 
 # ── History ──────────────────────────────────────────────────────────────────

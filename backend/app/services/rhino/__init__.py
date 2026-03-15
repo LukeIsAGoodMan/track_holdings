@@ -14,7 +14,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from .providers import get_quote, get_history, get_estimates, get_macro
+from .providers import get_history, get_estimates, get_macro
 from .technical_engine import build_technical
 from .valuation_engine import build_valuation
 from .macro_engine import build_macro
@@ -29,24 +29,21 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     """Run full Rhino analysis pipeline for a single symbol."""
     symbol = symbol.strip().upper()
 
-    # Fetch all data in parallel
-    quote, bars, estimates, raw_macro = await asyncio.gather(
-        get_quote(symbol),
+    # Fetch all data in parallel — no intraday quote needed.
+    # Price basis is 100% EOD historical.
+    bars, estimates, raw_macro = await asyncio.gather(
         get_history(symbol),
         get_estimates(symbol),
         get_macro(),
     )
 
-    # ── Price basis: latest EOD close (not intraday quote) ────────────
-    # All indicators, zones, valuation are computed from the same historical
-    # snapshot. The quote is only used for supplementary display fields
-    # (change, change_pct) — never as the primary analysis price.
+    # ── Price basis: latest EOD close ─────────────────────────────────
+    # All indicators, zones, valuation, and the chart use the same
+    # historical snapshot.  change/change_pct are derived from the last
+    # two daily closes — never from an intraday quote.
     price = 0.0
     if bars:
         price = bars[-1]["close"]
-    elif quote and quote.get("price"):
-        # Fallback if history is empty but quote exists (rare)
-        price = quote["price"]
 
     # Degraded result if no pricing data at all
     if price == 0:
@@ -60,7 +57,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 
     # Data quality + confidence
     dq = {
-        "has_quote": quote is not None,
+        "has_quote": len(bars) > 0,   # EOD bars serve as quote source
         "has_history": len(bars) > 0,
         "history_days": len(bars),
         "has_estimates": estimates.get("fy1_eps_avg") is not None,
@@ -69,7 +66,8 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     }
     confidence = build_confidence(dq, technical, valuation)
 
-    # Chart data
+    # Chart data — self-contained: includes current_price so the frontend
+    # does not need to cross-reference the outer quote section.
     sma200_series = _compute_sma200_series(bars)
     chart = {
         "candles": [
@@ -80,19 +78,24 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "sma200": sma200_series,
         "support_zones": technical["support_zones"],
         "resistance_zones": technical["resistance_zones"],
+        "current_price": float(price),
+        "analysis_close": float(price),
     }
 
-    # Build quote response with EOD price as basis, supplemented by
-    # intraday change data from the quote (if available)
+    # Build quote from EOD bars — fully self-contained, no intraday quote.
+    prev_close = bars[-2]["close"] if len(bars) >= 2 else None
+    change = (price - prev_close) if prev_close is not None else None
+    change_pct = (change / prev_close * 100) if prev_close and prev_close != 0 else None
+
     analysis_quote = {
         "symbol": symbol,
-        "price": price,  # EOD close — primary analysis price
-        "previous_close": quote.get("previous_close") if quote else None,
-        "change": quote.get("change") if quote else None,
-        "change_pct": quote.get("change_pct") if quote else None,
+        "price": price,
+        "previous_close": prev_close,
+        "change": round(change, 4) if change is not None else None,
+        "change_pct": round(change_pct, 4) if change_pct is not None else None,
         "volume": bars[-1]["volume"] if bars else None,
-        "market_cap": quote.get("market_cap") if quote else None,
-        "name": quote.get("name") if quote else None,
+        "market_cap": None,
+        "name": None,
     }
 
     # Text report
@@ -151,7 +154,8 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "data_quality": dq, "confidence": confidence, "quote": None,
         "technical": empty_tech, "valuation": empty_val,
         "macro": macro, "playbook": playbook, "text": text,
-        "chart": {"candles": [], "sma200": [], "support_zones": [], "resistance_zones": []},
+        "chart": {"candles": [], "sma200": [], "support_zones": [], "resistance_zones": [],
+                  "current_price": 0.0, "analysis_close": 0.0},
     }
 
 

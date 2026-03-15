@@ -16,7 +16,8 @@ import { fmtPrice } from '@/utils/format'
 
 interface Props {
   chart: AnalysisChart
-  price: number
+  /** @deprecated pass via chart.current_price instead */
+  price?: number
 }
 
 /* ── Custom candle shape ────────────────────────────────────────────────── */
@@ -96,7 +97,8 @@ function ZoneRow({ zone, type, lang }: { zone: AnalysisPriceZone; type: 'support
 
 /* ── Main component ─────────────────────────────────────────────────────── */
 
-export default function RhinoChart({ chart, price }: Props) {
+export default function RhinoChart({ chart, price: priceProp }: Props) {
+  const price = chart.current_price ?? priceProp ?? 0
   const { lang, t } = useLanguage()
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
 

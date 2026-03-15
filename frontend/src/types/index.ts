@@ -522,6 +522,8 @@ export interface AnalysisChart {
   sma200:           { date: string; value: number }[]
   support_zones:    AnalysisPriceZone[]
   resistance_zones: AnalysisPriceZone[]
+  current_price:    number
+  analysis_close:   number
 }
 
 export interface AnalysisTextSections {

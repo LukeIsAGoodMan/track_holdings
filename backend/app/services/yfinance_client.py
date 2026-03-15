@@ -1,13 +1,22 @@
 """
-FMP 2026 Stable Protocol - Unified Production Implementation
-1. 100% 对齐规范：使用 /quote?symbol= 和 /historical-price-eod/full?symbol=
-2. 完整保留原始符号映射 (^GSPC -> SPY, ^VIX -> VIX)
-3. 补全 get_1y_closes 接口，修复部署 ImportError
+Shared market-data layer — single FMP client for the entire application.
 
-Performance hardening (止血):
-- _SyncTokenBucket:       global 2 req/s cap on all outbound FMP calls
-- _refresh_scheduled:     deduplicates concurrent background refreshes for the same key
-- get_price_history():    10-min TTL cache (was uncached — hit on every chart render)
+Symbol handling (two-stage):
+  normalize_ticker(sym)  →  bare uppercase form (VIX, GSPC, AAPL)
+  _fmp_sym(sym)          →  FMP-ready form: adds '^' for index symbols
+                             VIX → ^VIX,  GSPC → ^GSPC,  AAPL → AAPL
+
+Key endpoints:
+  /quote?symbol=              intraday price + change data
+  /historical-price-eod/full  daily OHLCV bars
+  /analyst-estimates          forward EPS / revenue consensus
+  /treasury-rates             US treasury yields (all maturities)
+  /stock-price-change         pre-computed 1D/5D/1M/3M returns
+
+Performance:
+  _SyncTokenBucket       global 2 req/s cap on all outbound FMP calls
+  _refresh_scheduled     deduplicates concurrent background refreshes per key
+  SWR cache              stale-while-revalidate with configurable TTL per data type
 """
 from __future__ import annotations
 import asyncio
@@ -29,14 +38,9 @@ _HTTP_TIMEOUT = 5
 _SESSION = requests.Session()
 _SESSION.headers["User-Agent"] = "TrackHoldings/1.0"
 
-# ── 符号映射 (必须保留，用于 scanner_service 扫描指数) ──────────────
-_SYMBOL_MAP: dict[str, str] = {
-    "^GSPC": "SPY",
-    "^VIX":  "VIX",
-}
-
-# Known index symbols that may be stored with or without a leading caret.
-# Normalising to bare form keeps FMP calls consistent (FMP uses VIX, not ^VIX).
+# Known index symbols that require a caret prefix for FMP API calls.
+# Internal representation stays bare (VIX, GSPC); _fmp_sym() adds "^" on
+# outbound requests only.  FMP returns empty results without the caret.
 _INDEX_BARE: frozenset[str] = frozenset({
     "VIX", "SPX", "NDX", "RUT", "DJI", "GSPC", "TNX", "TYX", "VXN",
 })
@@ -50,8 +54,7 @@ def normalize_ticker(symbol: str) -> str:
       their FMP equivalents (VIX, SPX, NDX).
     - Uppercases the result.
 
-    The inverse (adding '^') is intentionally NOT done here because FMP does
-    not require it; the _SYMBOL_MAP below handles any residual caret variants.
+    The inverse (adding '^') is handled by _fmp_sym() for index symbols only.
     """
     sym = symbol.upper().strip()
     if sym.startswith("^"):
@@ -60,8 +63,11 @@ def normalize_ticker(symbol: str) -> str:
 
 
 def _fmp_sym(sym: str) -> str:
-    bare = normalize_ticker(sym)
-    return _SYMBOL_MAP.get(f"^{bare}", _SYMBOL_MAP.get(bare, bare))
+    """Return the FMP-ready symbol.  Index symbols get a '^' prefix."""
+    s = normalize_ticker(sym)
+    if s in _INDEX_BARE:
+        return "^" + s
+    return s
 
 # ── Token-bucket rate limiter (2 req/s, burst 4) ──────────────────────────────
 
@@ -436,9 +442,8 @@ def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
     Fetch analyst consensus estimates from FMP /analyst-estimates.
 
     Returns structured dict with current/next year EPS + revenue estimates.
-    FMP response: [{symbol, date, estimatedRevenueLow, estimatedRevenueHigh,
-                     estimatedRevenueAvg, estimatedEpsAvg, estimatedEpsHigh,
-                     estimatedEpsLow, ...}, ...]  (sorted by date desc)
+    FMP has migrated field names (estimatedEpsAvg → epsAvg etc.) so we
+    accept both old and new keys.
     """
     fmp_s = _fmp_sym(ticker)
     data = _fmp_get("/analyst-estimates", {"symbol": fmp_s, "limit": 4})
@@ -451,12 +456,12 @@ def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
     for item in data[:2]:
         entry = {
             "date":                  item.get("date"),
-            "estimated_revenue_low":  _safe_decimal(item.get("estimatedRevenueLow")),
-            "estimated_revenue_high": _safe_decimal(item.get("estimatedRevenueHigh")),
-            "estimated_revenue_avg":  _safe_decimal(item.get("estimatedRevenueAvg")),
-            "estimated_eps_avg":      _safe_float_val(item.get("estimatedEpsAvg")),
-            "estimated_eps_high":     _safe_float_val(item.get("estimatedEpsHigh")),
-            "estimated_eps_low":      _safe_float_val(item.get("estimatedEpsLow")),
+            "estimated_revenue_low":  _safe_decimal(_coalesce(item, "revenueLow", "estimatedRevenueLow")),
+            "estimated_revenue_high": _safe_decimal(_coalesce(item, "revenueHigh", "estimatedRevenueHigh")),
+            "estimated_revenue_avg":  _safe_decimal(_coalesce(item, "revenueAvg", "estimatedRevenueAvg")),
+            "estimated_eps_avg":      _safe_float_val(_coalesce(item, "epsAvg", "estimatedEpsAvg")),
+            "estimated_eps_high":     _safe_float_val(_coalesce(item, "epsHigh", "estimatedEpsHigh")),
+            "estimated_eps_low":      _safe_float_val(_coalesce(item, "epsLow", "estimatedEpsLow")),
             "number_analysts_estimated_revenue": int(item.get("numberAnalystsEstimatedRevenue") or 0),
             "number_analysts_estimated_eps":     int(item.get("numberAnalystsEstimatedEps") or 0),
         }
@@ -660,6 +665,15 @@ def get_sma_latest_cached(ticker: str, period: int = 200) -> float | None:
 
 
 # ── Shared type-conversion helpers ─────────────────────────────────────────
+
+def _coalesce(d: dict, *keys: str) -> object | None:
+    """Return the first non-None value from d for the given keys."""
+    for k in keys:
+        v = d.get(k)
+        if v is not None:
+            return v
+    return None
+
 
 def _safe_decimal(val: object) -> Decimal | None:
     """Convert a value to Decimal, returning None on failure."""
