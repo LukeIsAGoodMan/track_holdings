@@ -93,6 +93,9 @@ def build_fundamental_narrative(
 
 
 def _classify(price: float, raw_low: float, raw_high: float) -> str:
+    # Guard: invalid or degenerate fair-value band → safe fallback
+    if raw_low <= 0 or raw_high <= 0 or raw_low >= raw_high:
+        return "fair"
     if price < raw_low * 0.92:
         return "deep_value"
     if price < raw_low:

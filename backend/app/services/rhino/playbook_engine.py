@@ -68,6 +68,20 @@ def build_playbook(tech: dict, val: dict, vix_regime: str) -> dict:
     return {"bias_tag": bias_tag, "action_tag": action_tag, "rationale": rationale}
 
 
+_RECOVERY_STYLES = frozenset({"defensive", "cyclical", "financial"})
+
+
+def determine_playbook_framing(style: str) -> str:
+    """Determine upside framing based on valuation style.
+
+    growth / quality_mega_cap / unknown → expansion
+    cyclical / defensive / financial   → recovery
+    """
+    if style in _RECOVERY_STYLES:
+        return "recovery"
+    return "expansion"
+
+
 def _derive_action(bias: str, tags: list[str], vix_regime: str) -> str:
     # analysis.py: reversal at support + volume = left-side defense buy
     if bias == "bullish" and "reversal_at_support" in tags and "high_volume" in tags:

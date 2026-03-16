@@ -14,8 +14,9 @@ PE adjustment factors are applied AFTER the growth-bucket PE lookup,
 never modifying the bucket thresholds themselves.
 
 Priority order:
-  1. sector_hint (Financial → financial, Commodity/Industrial → cyclical)
-  2. Growth/stability heuristics (growth, defensive, unknown)
+  1. TICKER_SECTOR_OVERRIDE (hardcoded per-ticker)
+  2. sector_hint (Financial → financial, Commodity/Industrial → cyclical)
+  3. Growth/stability heuristics (growth, defensive, unknown)
 """
 from __future__ import annotations
 
@@ -75,6 +76,22 @@ _QUALITY_MEGA_HINTS = frozenset({
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# TICKER SECTOR OVERRIDE — highest priority, bypasses all heuristics
+# ═══════════════════════════════════════════════════════════════════════════
+
+TICKER_SECTOR_OVERRIDE: dict[str, str] = {
+    "AMZN": "growth",
+    "TSLA": "growth",
+    "NVDA": "growth",
+    "META": "growth",
+    "GOOGL": "quality_mega_cap",
+    "MSFT": "quality_mega_cap",
+    "AAPL": "quality_mega_cap",
+    "BRK.B": "defensive",
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # WELL-KNOWN FINANCIAL TICKERS (fallback when no sector_hint)
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -107,11 +124,19 @@ def detect_valuation_style(
     """Classify valuation style from available data.
 
     Priority:
-      1. sector_hint → financial / cyclical / quality_mega_cap
-      2. symbol in known ticker sets → financial / cyclical
-      3. Growth/stability heuristics → growth / defensive / unknown
+      1. TICKER_SECTOR_OVERRIDE → hardcoded per-ticker
+      2. sector_hint → financial / cyclical / quality_mega_cap
+      3. symbol in known ticker sets → financial / cyclical
+      4. Growth/stability heuristics → growth / defensive / unknown
     """
-    # ── Priority 1: Sector-based classification ────────────────────────
+    # ── Priority 1: Hardcoded ticker override ─────────────────────────
+    if symbol:
+        sym_upper = symbol.upper().strip()
+        override = TICKER_SECTOR_OVERRIDE.get(sym_upper)
+        if override and override in _STYLE_MAP:
+            return _STYLE_MAP[override]
+
+    # ── Priority 2: Sector-based classification ────────────────────────
     if sector_hint:
         hint_lower = sector_hint.lower().strip()
         if hint_lower in _FINANCIAL_HINTS:
@@ -121,7 +146,7 @@ def detect_valuation_style(
         if hint_lower in _QUALITY_MEGA_HINTS:
             return _STYLE_MAP["quality_mega_cap"]
 
-    # ── Priority 2: Known ticker fallback ──────────────────────────────
+    # ── Priority 3: Known ticker fallback ──────────────────────────────
     if symbol:
         sym_upper = symbol.upper().strip()
         if sym_upper in _FINANCIAL_TICKERS:
@@ -129,7 +154,7 @@ def detect_valuation_style(
         if sym_upper in _CYCLICAL_TICKERS:
             return _STYLE_MAP["cyclical"]
 
-    # ── Priority 3: Growth/stability heuristics ────────────────────────
+    # ── Priority 4: Growth/stability heuristics ────────────────────────
     growth = estimates.get("eps_growth_pct")
 
     if growth is None:

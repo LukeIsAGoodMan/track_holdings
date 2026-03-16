@@ -21,6 +21,9 @@ from .valuation_style_engine import (
 
 logger = logging.getLogger(__name__)
 
+# EPS sanity floor — below this, valuation confidence is too low to classify
+MIN_VALID_EPS = 0.5
+
 # PE multiple table — reference analysis.py discipline
 # Keyed by avg forward growth rate → (pe_low, pe_high)
 # These thresholds are NEVER modified by the style layer.
@@ -96,6 +99,17 @@ def build_valuation(
     # Use FY2 as valuation anchor when available, else FY1
     anchor_eps = fy2 if (fy2 is not None and fy2 > 0) else fy1
 
+    # EPS sanity cap — below MIN_VALID_EPS, classification is unreliable
+    valuation_confidence = "normal"
+    classification_fallback = None
+    if anchor_eps < MIN_VALID_EPS:
+        valuation_confidence = "low"
+        classification_fallback = "fair_value"
+        logger.warning(
+            "EPS sanity cap: anchor_eps=%.2f < %.2f for %s — forcing fair_value",
+            anchor_eps, MIN_VALID_EPS, symbol or "?",
+        )
+
     raw_low = anchor_eps * pe_low
     raw_high = anchor_eps * pe_high
     raw_mid = (raw_low + raw_high) / 2
@@ -108,7 +122,7 @@ def build_valuation(
         "high": raw["high"] * factor,
     }
 
-    status = _classify(price, adjusted)
+    status = classification_fallback if classification_fallback else _classify(price, adjusted)
 
     return {
         "available": True,
@@ -122,6 +136,7 @@ def build_valuation(
         "adjusted_fair_value": adjusted,
         "status": status,
         "valuation_style": style.style,
+        "valuation_confidence": valuation_confidence,
         "_pe_audit": audit._asdict(),
     }
 

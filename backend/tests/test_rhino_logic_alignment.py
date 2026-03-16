@@ -15,18 +15,22 @@ from __future__ import annotations
 
 import pytest
 
-from app.services.rhino.valuation_engine import build_valuation, _compute_avg_growth
+from app.services.rhino.valuation_engine import build_valuation, _compute_avg_growth, MIN_VALID_EPS
 from app.services.rhino.valuation_style_engine import (
     detect_valuation_style,
     apply_style_adjustment,
     StyleResult,
     PeAuditTrail,
+    TICKER_SECTOR_OVERRIDE,
 )
-from app.services.rhino.playbook_engine import build_playbook
+from app.services.rhino.playbook_engine import build_playbook, determine_playbook_framing
 from app.services.rhino.technical_engine import _detect_patterns
 from app.services.rhino.macro_engine import build_macro
 from app.services.rhino.rhino_report_engine import build_battle_report
-from app.services.rhino.fundamental_narrative_engine import build_fundamental_narrative
+from app.services.rhino.fundamental_narrative_engine import (
+    build_fundamental_narrative,
+    _classify as narrative_classify,
+)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -441,3 +445,181 @@ class TestUpsideFraming:
     def test_unknown_expansion_framing(self):
         report = self._report("unknown")
         assert report["playbook"]["upside"]["framing"] == "expansion"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 7: TICKER SECTOR OVERRIDE — Priority 1 classification
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestTickerSectorOverride:
+    """TICKER_SECTOR_OVERRIDE is the highest priority in style detection."""
+
+    def test_nvda_is_growth(self):
+        style = detect_valuation_style({"eps_growth_pct": 0.05}, symbol="NVDA")
+        assert style.style == "growth"
+
+    def test_aapl_is_quality_mega_cap(self):
+        style = detect_valuation_style({"eps_growth_pct": 0.05}, symbol="AAPL")
+        assert style.style == "quality_mega_cap"
+
+    def test_brk_b_is_defensive(self):
+        style = detect_valuation_style({"eps_growth_pct": 0.25}, symbol="BRK.B")
+        assert style.style == "defensive"
+
+    def test_override_beats_sector_hint(self):
+        """TICKER_SECTOR_OVERRIDE takes precedence over sector_hint."""
+        style = detect_valuation_style(
+            {"eps_growth_pct": 0.25}, sector_hint="Financials", symbol="NVDA"
+        )
+        assert style.style == "growth"
+
+    def test_override_beats_ticker_set(self):
+        """BRK.B is in _FINANCIAL_TICKERS, but override says defensive."""
+        style = detect_valuation_style({"eps_growth_pct": 0.25}, symbol="BRK.B")
+        assert style.style == "defensive"
+
+    def test_all_overrides_valid_styles(self):
+        """Every value in TICKER_SECTOR_OVERRIDE maps to a known style."""
+        valid_styles = {"growth", "quality_mega_cap", "cyclical", "financial", "defensive", "unknown"}
+        for ticker, style_name in TICKER_SECTOR_OVERRIDE.items():
+            assert style_name in valid_styles, f"{ticker} → {style_name} is not a valid style"
+
+    def test_meta_growth_through_valuation(self):
+        """Full pipeline: META should get growth PE bands."""
+        est = {"fy0_eps_avg": 10.0, "fy1_eps_avg": 15.0, "fy2_eps_avg": 20.0}
+        result = build_valuation(est, 500, 0, symbol="META")
+        assert result["valuation_style"] == "growth"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 8: EPS SANITY CAP
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestEpsSanityCap:
+    """MIN_VALID_EPS forces fair_value + low confidence when anchor EPS is tiny."""
+
+    def test_eps_below_minimum(self):
+        est = {"fy0_eps_avg": 0.1, "fy1_eps_avg": 0.3, "fy2_eps_avg": 0.4}
+        result = build_valuation(est, 100, 0)
+        assert result["status"] == "fair_value"
+        assert result["valuation_confidence"] == "low"
+
+    def test_eps_at_minimum_ok(self):
+        est = {"fy0_eps_avg": 0.3, "fy1_eps_avg": 0.4, "fy2_eps_avg": 0.5}
+        result = build_valuation(est, 100, 0)
+        assert result["valuation_confidence"] == "normal"
+
+    def test_eps_well_above_minimum(self):
+        est = {"fy0_eps_avg": 5.0, "fy1_eps_avg": 6.0, "fy2_eps_avg": 7.0}
+        result = build_valuation(est, 200, 0)
+        assert result["valuation_confidence"] == "normal"
+
+    def test_negative_eps_unavailable(self):
+        """Negative FY1 → unavailable (before sanity cap is checked)."""
+        est = {"fy0_eps_avg": -1.0, "fy1_eps_avg": -2.0, "fy2_eps_avg": -1.5}
+        result = build_valuation(est, 100, 0)
+        assert result["status"] == "unavailable"
+        assert result["available"] is False
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 9: CLASSIFICATION BOUNDARY GUARDS
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestClassificationGuards:
+    """Narrative _classify() handles degenerate fair-value bands gracefully."""
+
+    def test_raw_low_zero(self):
+        assert narrative_classify(100, 0, 200) == "fair"
+
+    def test_raw_high_zero(self):
+        assert narrative_classify(100, 50, 0) == "fair"
+
+    def test_raw_low_negative(self):
+        assert narrative_classify(100, -10, 200) == "fair"
+
+    def test_raw_high_negative(self):
+        assert narrative_classify(100, 50, -10) == "fair"
+
+    def test_inverted_band(self):
+        """raw_low >= raw_high → degenerate, fallback to fair."""
+        assert narrative_classify(100, 200, 100) == "fair"
+
+    def test_equal_band(self):
+        """raw_low == raw_high → degenerate."""
+        assert narrative_classify(100, 150, 150) == "fair"
+
+    def test_normal_band_still_works(self):
+        """Valid band should still classify normally."""
+        assert narrative_classify(100, 200, 300) == "deep_value"
+        assert narrative_classify(250, 200, 300) == "fair"
+        assert narrative_classify(350, 200, 300) == "premium"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 10: PLAYBOOK FRAMING DISPATCHER
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestPlaybookFramingDispatcher:
+    """determine_playbook_framing() returns correct framing per style."""
+
+    def test_growth_expansion(self):
+        assert determine_playbook_framing("growth") == "expansion"
+
+    def test_quality_mega_cap_expansion(self):
+        assert determine_playbook_framing("quality_mega_cap") == "expansion"
+
+    def test_unknown_expansion(self):
+        assert determine_playbook_framing("unknown") == "expansion"
+
+    def test_defensive_recovery(self):
+        assert determine_playbook_framing("defensive") == "recovery"
+
+    def test_cyclical_recovery(self):
+        assert determine_playbook_framing("cyclical") == "recovery"
+
+    def test_financial_recovery(self):
+        assert determine_playbook_framing("financial") == "recovery"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 11: NEGATIVE / EDGE-CASE INPUTS
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestNegativeEdgeCases:
+    """Negative EPS, negative growth, EPS near zero."""
+
+    def test_negative_growth_lowest_bucket(self):
+        """Negative growth → lowest PE bucket (15-25x base)."""
+        est = {"fy0_eps_avg": 10.0, "fy1_eps_avg": 8.0, "fy2_eps_avg": 6.0}
+        result = build_valuation(est, 100, 0)
+        # CAGR(10→6)^0.5 -1 is negative → base 15-25
+        # Negative growth < 8% → defensive style (0.85x)
+        assert result["pe_band_low"] == round(15 * 0.85, 2)
+        assert result["pe_band_high"] == round(25 * 0.85, 2)
+
+    def test_zero_fy1_unavailable(self):
+        """FY1 EPS = 0 → unavailable."""
+        est = {"fy0_eps_avg": 5.0, "fy1_eps_avg": 0, "fy2_eps_avg": 7.0}
+        result = build_valuation(est, 100, 0)
+        assert result["available"] is False
+
+    def test_narrative_with_negative_raw(self):
+        """Narrative engine handles negative raw values gracefully."""
+        val = {
+            "available": True,
+            "raw_fair_value": {"low": -10, "mid": 0, "high": 10},
+            "fy0_eps_avg": None, "fy1_eps_avg": 1.0, "fy2_eps_avg": None,
+            "pe_band_low": 15, "pe_band_high": 25,
+            "eps_growth_pct": None,
+            "valuation_style": "unknown",
+        }
+        n = build_fundamental_narrative(val, 100)
+        assert n.classification == "fair"  # Guard kicks in
+
+    def test_eps_just_below_sanity_cap(self):
+        """EPS at 0.49 (just below 0.5) → low confidence."""
+        est = {"fy0_eps_avg": 0.2, "fy1_eps_avg": 0.3, "fy2_eps_avg": 0.49}
+        result = build_valuation(est, 100, 0)
+        assert result["valuation_confidence"] == "low"
+        assert result["status"] == "fair_value"

@@ -14,6 +14,7 @@ Never recomputes upstream values.
 from __future__ import annotations
 
 from .fundamental_narrative_engine import FundamentalNarrative
+from .playbook_engine import determine_playbook_framing
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -178,12 +179,7 @@ def _build_playbook_section(
     elif narrative.raw_high is not None:
         upside_target = narrative.raw_high
 
-    # Defensive/cyclical/financial styles use recovery framing for upside
-    _RECOVERY_STYLES = {"defensive", "cyclical", "financial"}
-    upside_framing = (
-        "recovery" if narrative.valuation_style in _RECOVERY_STYLES
-        else "expansion"
-    )
+    upside_framing = determine_playbook_framing(narrative.valuation_style)
 
     upside = {
         "scenario": "upside",
