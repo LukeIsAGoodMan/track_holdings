@@ -33,11 +33,11 @@ class RhinoAnalysisSystem:
         
         # 犀牛哥估值倍数纪律 [6]
         if growth > 0.50:
-            pe_low, pe_high = 30, 40
+            pe_low, pe_high = 35, 45
         elif growth > 0.20:
-            pe_low, pe_high = 25, 35
+            pe_low, pe_high = 25, 37.5
         elif growth > 0.10:
-            pe_low, pe_high = 20, 30
+            pe_low, pe_high = 22.5, 32.5
         else:
             pe_low, pe_high = 15, 25
             

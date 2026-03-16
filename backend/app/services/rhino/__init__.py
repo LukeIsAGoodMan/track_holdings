@@ -21,6 +21,7 @@ from .valuation_engine import build_valuation
 from .macro_engine import build_macro
 from .confidence_engine import build_confidence
 from .playbook_engine import build_playbook
+from .semantic_engine import build_semantic_state
 from .report import build_report
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     )
 
     playbook = build_playbook(technical, valuation, macro["vix_regime"])
+    semantic = build_semantic_state(price, technical, valuation, macro)
 
     # Data quality + confidence
     dq = {
@@ -143,6 +145,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "valuation": valuation,
         "macro": macro,
         "playbook": playbook,
+        "semantic": semantic,
         "text": text,
         "chart": chart,
     }
@@ -172,6 +175,12 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
     }
     confidence = {"score": 0, "grade": "D",
                   "reasons": ["No pricing data — quote and history both unavailable"]}
+    empty_semantic = {
+        "trend_state": "unavailable", "ma_alignment": "unavailable",
+        "price_location": "unavailable", "valuation_zone": "unavailable",
+        "macro_regime": "unavailable", "risk_state": "moderate",
+        "stance": "neutral", "flags": [],
+    }
     text = build_report(lang, {
         "symbol": symbol, "price": 0, "quote": None,
         "technical": empty_tech, "valuation": empty_val,
@@ -182,7 +191,8 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "as_of": datetime.now(timezone.utc).isoformat(),
         "data_quality": dq, "confidence": confidence, "quote": None,
         "technical": empty_tech, "valuation": empty_val,
-        "macro": macro, "playbook": playbook, "text": text,
+        "macro": macro, "playbook": playbook,
+        "semantic": empty_semantic, "text": text,
         "chart": {"candles": [], "sma30": [], "sma100": [], "sma200": [],
                   "support_zones": [], "resistance_zones": [],
                   "current_price": 0.0, "analysis_close": 0.0},

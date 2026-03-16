@@ -1,5 +1,6 @@
 /**
- * Hero summary — price, change, confidence grade, bias tag, action tag.
+ * Hero summary — price, change, confidence grade, bias tag, action tag,
+ * semantic stance, and key flags.
  */
 import type { AnalysisResult } from '@/types'
 import { useLanguage } from '@/context/LanguageContext'
@@ -28,13 +29,55 @@ const actionLabels: Record<string, { en: string; zh: string }> = {
   stop_loss:     { en: 'STOP LOSS',       zh: '止损' },
 }
 
+const stanceColors: Record<string, string> = {
+  constructive:  'text-emerald-700 bg-emerald-50 border-emerald-200',
+  neutral:       'text-slate-600 bg-slate-50 border-slate-200',
+  cautious:      'text-amber-700 bg-amber-50 border-amber-200',
+  defensive:     'text-rose-700 bg-rose-50 border-rose-200',
+  opportunistic: 'text-violet-700 bg-violet-50 border-violet-200',
+}
+
+const stanceLabels: Record<string, { en: string; zh: string }> = {
+  constructive:  { en: 'Constructive',  zh: '积极' },
+  neutral:       { en: 'Neutral',       zh: '中性' },
+  cautious:      { en: 'Cautious',      zh: '谨慎' },
+  defensive:     { en: 'Defensive',     zh: '防御' },
+  opportunistic: { en: 'Opportunistic', zh: '机会型' },
+}
+
+const flagLabels: Record<string, { en: string; zh: string }> = {
+  trend_strong:          { en: 'Trend Strong',        zh: '趋势强劲' },
+  trend_weak:            { en: 'Trend Weak',          zh: '趋势偏弱' },
+  price_near_support:    { en: 'Near Support',        zh: '接近支撑' },
+  price_near_resistance: { en: 'Near Resistance',     zh: '接近压力' },
+  valuation_reasonable:  { en: 'Val. Reasonable',     zh: '估值合理' },
+  valuation_expensive:   { en: 'Val. Expensive',      zh: '估值偏高' },
+  macro_supportive:      { en: 'Macro Supportive',    zh: '宏观友好' },
+  macro_restrictive:     { en: 'Macro Restrictive',   zh: '宏观收紧' },
+  ma_bullish:            { en: 'MA Bullish',          zh: '均线多头' },
+  ma_bearish:            { en: 'MA Bearish',          zh: '均线空头' },
+}
+
+const flagColors: Record<string, string> = {
+  trend_strong:          'text-emerald-600 bg-emerald-50',
+  trend_weak:            'text-amber-600 bg-amber-50',
+  price_near_support:    'text-emerald-600 bg-emerald-50',
+  price_near_resistance: 'text-rose-600 bg-rose-50',
+  valuation_reasonable:  'text-sky-600 bg-sky-50',
+  valuation_expensive:   'text-orange-600 bg-orange-50',
+  macro_supportive:      'text-emerald-600 bg-emerald-50',
+  macro_restrictive:     'text-rose-600 bg-rose-50',
+  ma_bullish:            'text-emerald-600 bg-emerald-50',
+  ma_bearish:            'text-rose-600 bg-rose-50',
+}
+
 interface Props {
   data: AnalysisResult
 }
 
 export default function HeroSummaryCard({ data }: Props) {
   const { lang } = useLanguage()
-  const { quote, confidence, playbook, symbol } = data
+  const { quote, confidence, playbook, semantic, symbol } = data
   const price = quote?.price ?? 0
   const changePct = quote?.change_pct ?? null
 
@@ -42,6 +85,13 @@ export default function HeroSummaryCard({ data }: Props) {
   const actionLabel = actionLabels[actionKey]?.[lang] ?? actionKey.replace(/_/g, ' ').toUpperCase()
   const actionColor = actionColors[actionKey] ?? 'text-slate-600 bg-slate-50 border-slate-200'
   const gradeColor = gradeColors[confidence.grade] ?? gradeColors.D
+
+  const stanceKey = semantic?.stance ?? 'neutral'
+  const stanceLabel = stanceLabels[stanceKey]?.[lang] ?? stanceKey
+  const stanceColor = stanceColors[stanceKey] ?? stanceColors.neutral
+
+  // Show up to 4 most relevant flags
+  const visibleFlags = (semantic?.flags ?? []).slice(0, 4)
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
@@ -72,6 +122,11 @@ export default function HeroSummaryCard({ data }: Props) {
 
         {/* Right: Badges */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* Stance */}
+          <div className={`px-3 py-1.5 rounded-lg border text-sm font-bold ${stanceColor}`}>
+            {stanceLabel}
+          </div>
+
           {/* Confidence grade */}
           <div className={`px-3 py-1.5 rounded-lg border text-sm font-bold ${gradeColor}`}>
             {lang === 'zh' ? '置信度' : 'Confidence'}: {confidence.grade} ({confidence.score})
@@ -83,6 +138,21 @@ export default function HeroSummaryCard({ data }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Semantic flags */}
+      {visibleFlags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-3">
+          {visibleFlags.map((flag) => {
+            const label = flagLabels[flag]?.[lang] ?? flag.replace(/_/g, ' ')
+            const color = flagColors[flag] ?? 'text-slate-500 bg-slate-50'
+            return (
+              <span key={flag} className={`px-2 py-0.5 rounded-md text-[11px] font-semibold ${color}`}>
+                {label}
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {/* Rationale */}
       {playbook.rationale.length > 0 && (

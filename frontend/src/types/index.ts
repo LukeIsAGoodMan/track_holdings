@@ -539,6 +539,17 @@ export interface AnalysisTextSections {
   confidence: string
 }
 
+export interface AnalysisSemantic {
+  trend_state:     string
+  ma_alignment:    string
+  price_location:  string
+  valuation_zone:  string
+  macro_regime:    string
+  risk_state:      string
+  stance:          string
+  flags:           string[]
+}
+
 export interface AnalysisResult {
   symbol:       string
   as_of:        string
@@ -558,6 +569,7 @@ export interface AnalysisResult {
   valuation:    AnalysisValuation
   macro:        AnalysisMacro
   playbook:     AnalysisPlaybook
+  semantic:     AnalysisSemantic
   text:         { lang: string; sections: AnalysisTextSections }
   chart:        AnalysisChart
 }
