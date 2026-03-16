@@ -489,14 +489,19 @@ def _do_fetch_analyst_estimates(ticker: str) -> dict | None:
 
     estimates = future[:2]
 
+    # FY0: most recent past fiscal year (trailing EPS)
+    past = [r for r in all_rows if r["date"] < today_str]
+    fy0 = past[-1] if past else None
+
     logger.info("FMP estimates [%s]: %d total rows, %d future, selected FY dates=%s, "
-                "FY1 eps=%s, FY2 eps=%s",
+                "FY0 eps=%s, FY1 eps=%s, FY2 eps=%s",
                 fmp_s, len(all_rows), len(future),
                 [e["date"] for e in estimates],
+                fy0.get("estimated_eps_avg") if fy0 else "N/A",
                 estimates[0].get("estimated_eps_avg") if estimates else "N/A",
                 estimates[1].get("estimated_eps_avg") if len(estimates) > 1 else "N/A")
 
-    result = {"estimates": estimates}
+    result = {"estimates": estimates, "fy0": fy0}
     _set_cached(f"estimates_v2:{ticker.upper()}", result)
     return result
 

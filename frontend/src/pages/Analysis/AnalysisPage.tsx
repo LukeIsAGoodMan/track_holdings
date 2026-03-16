@@ -2,21 +2,21 @@
  * Rhino Analysis Page — search a symbol, get full analysis.
  *
  * Layout:
- *   SearchBar → Hero → [Technical | Valuation | Macro] → Chart → Narrative
+ *   SearchBar → Hero [Price | Valuation | Macro] → TechnicalDetails → Chart → Narrative
  */
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useLanguage } from '@/context/LanguageContext'
 import { fetchAnalysis } from '@/api/holdings'
 import type { AnalysisResult } from '@/types'
 
-import SymbolSearchBar from '@/components/analysis/SymbolSearchBar'
-import HeroSummaryCard  from '@/components/analysis/HeroSummaryCard'
-import TechnicalCard    from '@/components/analysis/TechnicalCard'
-import ValuationCard    from '@/components/analysis/ValuationCard'
-import MacroCard        from '@/components/analysis/MacroCard'
-import RhinoChart       from '@/components/analysis/RhinoChart'
-import NarrativeSection from '@/components/analysis/NarrativeSection'
-import AnalysisSkeleton from '@/components/analysis/AnalysisSkeleton'
+import SymbolSearchBar       from '@/components/analysis/SymbolSearchBar'
+import PriceCard             from '@/components/analysis/PriceCard'
+import ValuationCard         from '@/components/analysis/ValuationCard'
+import MacroCard             from '@/components/analysis/MacroCard'
+import TechnicalDetailsPanel from '@/components/analysis/TechnicalDetailsPanel'
+import RhinoChart            from '@/components/analysis/RhinoChart'
+import NarrativeSection      from '@/components/analysis/NarrativeSection'
+import AnalysisSkeleton      from '@/components/analysis/AnalysisSkeleton'
 
 export default function AnalysisPage() {
   const { lang, t } = useLanguage()
@@ -79,13 +79,15 @@ export default function AnalysisPage() {
       {/* Results */}
       {result && !loading && (
         <>
-          <HeroSummaryCard data={result} />
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            <TechnicalCard technical={result.technical} price={price} />
+          {/* Hero: Price (1.2fr) | Valuation (1fr) | Macro (0.8fr) */}
+          <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_0.8fr] gap-5">
+            <PriceCard data={result} />
             <ValuationCard valuation={result.valuation} price={price} />
             <MacroCard macro={result.macro} />
           </div>
+
+          {/* Technical details — collapsible, below hero */}
+          <TechnicalDetailsPanel technical={result.technical} price={price} />
 
           <RhinoChart chart={result.chart} price={price} />
 

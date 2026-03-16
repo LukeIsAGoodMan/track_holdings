@@ -472,9 +472,12 @@ export interface AnalysisTechnical {
 
 export interface AnalysisValuation {
   available:            boolean
+  fy0_eps_avg:          number | null
   fy1_eps_avg:          number | null
   fy2_eps_avg:          number | null
   eps_growth_pct:       number | null
+  pe_band_low:          number | null
+  pe_band_high:         number | null
   raw_fair_value:       { low: number; mid: number; high: number } | null
   adjusted_fair_value:  { low: number; mid: number; high: number } | null
   status:               string   // deeply_undervalued | undervalued | fair_value | overvalued | deeply_overvalued | unavailable

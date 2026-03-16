@@ -1,8 +1,5 @@
 /**
- * Macro card — VIX regime, treasury rate, haircut.
- *
- * Shows "unavailable" state truthfully when data is missing — never
- * displays fake "normal" or "neutral" labels for absent data.
+ * Macro hero card — VIX regime, treasury rate, haircut, macro warnings.
  */
 import type { AnalysisMacro } from '@/types'
 import { useLanguage } from '@/context/LanguageContext'
@@ -24,11 +21,11 @@ const regimeLabels: Record<string, { en: string; zh: string }> = {
 }
 
 const pressureColors: Record<string, string> = {
-  supportive:  'text-emerald-600',
-  neutral:     'text-sky-600',
-  restrictive: 'text-amber-600',
-  hostile:     'text-rose-600',
-  unavailable: 'text-slate-400',
+  supportive:  'text-emerald-700 bg-emerald-50 border-emerald-200',
+  neutral:     'text-sky-700 bg-sky-50 border-sky-200',
+  restrictive: 'text-amber-700 bg-amber-50 border-amber-200',
+  hostile:     'text-rose-700 bg-rose-50 border-rose-200',
+  unavailable: 'text-slate-400 bg-slate-50 border-slate-200',
 }
 
 const pressureLabels: Record<string, { en: string; zh: string }> = {
@@ -51,58 +48,56 @@ export default function MacroCard({ macro }: Props) {
   const pressureLabel = pressureLabels[macro.rate_pressure_regime]?.[lang] ?? macro.rate_pressure_regime
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col">
       <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide mb-4">
         {t('analysis_macro')}
       </h3>
 
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="space-y-3 flex-1">
         {/* VIX */}
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-          <div className="text-[11px] text-slate-400 font-medium uppercase">VIX</div>
-          <div className="text-lg font-bold text-slate-700 tabular-nums mt-0.5">
-            {macro.vix_level != null ? macro.vix_level.toFixed(1) : '—'}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+          <div>
+            <div className="text-[11px] text-slate-400 font-medium uppercase">VIX</div>
+            <div className="text-xl font-bold text-slate-700 tabular-nums mt-0.5">
+              {macro.vix_level != null ? macro.vix_level.toFixed(1) : '—'}
+            </div>
           </div>
           {macro.vix_regime !== 'unavailable' ? (
-            <span className={`inline-block mt-1 px-2 py-0.5 rounded-md border text-[11px] font-semibold ${regimeColor}`}>
+            <span className={`px-2.5 py-1 rounded-lg border text-xs font-bold ${regimeColor}`}>
               {regimeLabel}
             </span>
           ) : (
-            <span className="inline-block mt-1 text-[11px] text-slate-400 italic">
-              {regimeLabel}
-            </span>
+            <span className="text-xs text-slate-400 italic">{regimeLabel}</span>
           )}
         </div>
 
         {/* Treasury */}
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-          <div className="text-[11px] text-slate-400 font-medium uppercase">10Y Treasury</div>
-          <div className="text-lg font-bold text-slate-700 tabular-nums mt-0.5">
-            {macro.treasury_10y != null ? `${macro.treasury_10y.toFixed(2)}%` : '—'}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+          <div>
+            <div className="text-[11px] text-slate-400 font-medium uppercase">10Y Treasury</div>
+            <div className="text-xl font-bold text-slate-700 tabular-nums mt-0.5">
+              {macro.treasury_10y != null ? `${macro.treasury_10y.toFixed(2)}%` : '—'}
+            </div>
           </div>
-          <span className={`inline-block mt-1 text-[11px] font-medium ${pressureColor}`}>
+          <span className={`px-2.5 py-1 rounded-lg border text-xs font-bold ${pressureColor}`}>
             {pressureLabel}
           </span>
         </div>
       </div>
 
-      {/* Haircut — only show when data-backed, not from unavailable inputs */}
-      {macro.recommended_haircut_pct > 0 && macro.vix_regime !== 'unavailable' && (
-        <div className="text-xs text-amber-600 font-medium">
-          {lang === 'zh' ? `估值折扣 ${macro.recommended_haircut_pct}%` : `Valuation haircut: ${macro.recommended_haircut_pct}%`}
-        </div>
-      )}
-
-      {/* Alerts */}
-      {macro.alerts.length > 0 && (
-        <div className="mt-3 space-y-1">
-          {macro.alerts.map((alert, i) => (
-            <div key={i} className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
-              {alert}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Haircut + Alerts */}
+      <div className="mt-auto pt-3 border-t border-slate-100 space-y-1.5">
+        {macro.recommended_haircut_pct > 0 && macro.vix_regime !== 'unavailable' && (
+          <div className="text-xs text-amber-600 font-medium">
+            {lang === 'zh' ? `估值折扣 ${macro.recommended_haircut_pct}%` : `Valuation haircut: ${macro.recommended_haircut_pct}%`}
+          </div>
+        )}
+        {macro.alerts.map((alert, i) => (
+          <div key={i} className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5">
+            {alert}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

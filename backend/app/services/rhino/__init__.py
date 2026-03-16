@@ -175,9 +175,12 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "support_zones": [], "resistance_zones": [], "pattern_tags": [],
     }
     empty_val = {
-        "available": False, "fy1_eps_avg": estimates.get("fy1_eps_avg"),
+        "available": False,
+        "fy0_eps_avg": estimates.get("fy0_eps_avg"),
+        "fy1_eps_avg": estimates.get("fy1_eps_avg"),
         "fy2_eps_avg": estimates.get("fy2_eps_avg"),
-        "eps_growth_pct": None, "raw_fair_value": None,
+        "eps_growth_pct": None, "pe_band_low": None, "pe_band_high": None,
+        "raw_fair_value": None,
         "adjusted_fair_value": None, "status": "unavailable",
     }
     playbook = {"bias_tag": "neutral", "action_tag": "hold_watch",

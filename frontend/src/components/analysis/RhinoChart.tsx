@@ -1,17 +1,21 @@
 /**
- * Rhino chart — Recharts OHLC visualization with SMA30/100/200 overlay,
- * support/resistance zone bands, timeframe selector, and zone detail panel.
+ * Rhino chart — Recharts OHLC visualization with SMA overlays,
+ * support/resistance bands, and prominent current price marker.
  *
- * Candles: custom Bar shape rendering body + wick in a single pass.
- * Zones: ReferenceArea bands (no native tooltip) → zone legend below chart.
- * Timeframe: 10D / 30D / 200D — slices the dataset, zero refetches.
+ * Visual hierarchy (strongest → weakest):
+ *   1. Current price marker + guide line
+ *   2. Price series (candles)
+ *   3. SMA200 (bold)
+ *   4. SMA100 (medium)
+ *   5. SMA30 (subtle dashed)
+ *   6. Support / resistance bands (translucent, thin)
  */
 import { useState, useMemo, useCallback } from 'react'
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, ReferenceArea,
   ReferenceLine, ResponsiveContainer,
 } from 'recharts'
-import type { AnalysisChart, AnalysisPriceZone } from '@/types'
+import type { AnalysisChart } from '@/types'
 import { useLanguage } from '@/context/LanguageContext'
 import { fmtPrice } from '@/utils/format'
 
@@ -61,9 +65,7 @@ function CandleShape(props: CandleShapeProps) {
 
   return (
     <g>
-      {/* Wick */}
       <line x1={cx} x2={cx} y1={yHigh} y2={yLow} stroke={color} strokeWidth={1} />
-      {/* Body */}
       <rect
         x={cx - 2}
         y={bodyTop}
@@ -77,32 +79,19 @@ function CandleShape(props: CandleShapeProps) {
   )
 }
 
-/* ── Zone detail row ────────────────────────────────────────────────────── */
+/* ── Current price label (custom right-edge badge) ─────────────────────── */
 
-function strengthLabel(s: number, lang: string): string {
-  if (s >= 0.7) return lang === 'zh' ? '强' : 'Strong'
-  if (s >= 0.4) return lang === 'zh' ? '中' : 'Medium'
-  return lang === 'zh' ? '弱' : 'Weak'
-}
-
-function ZoneRow({ zone, type, lang }: { zone: AnalysisPriceZone; type: 'support' | 'resistance'; lang: string }) {
-  const isSupport = type === 'support'
-  const color = isSupport
-    ? 'text-emerald-700 bg-emerald-50 border-emerald-100'
-    : 'text-rose-700 bg-rose-50 border-rose-100'
-  const label = isSupport
-    ? (lang === 'zh' ? '支撑' : 'S')
-    : (lang === 'zh' ? '阻力' : 'R')
-  const sLabel = strengthLabel(zone.strength, lang)
-
+function CurrentPriceLabel({ viewBox, value }: { viewBox?: { x?: number; y?: number; width?: number }; value?: string }) {
+  if (!viewBox) return null
+  const x = (viewBox.x ?? 0) + (viewBox.width ?? 0) + 2
+  const y = viewBox.y ?? 0
   return (
-    <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-medium tabular-nums ${color}`}>
-      <span className="font-semibold">{label}</span>
-      {fmtPrice(zone.lower)} – {fmtPrice(zone.upper)}
-      <span className={`text-[10px] ${zone.strength >= 0.7 ? 'opacity-90 font-semibold' : 'opacity-60'}`}>
-        {sLabel}
-      </span>
-    </div>
+    <g>
+      <rect x={x} y={y - 10} width={62} height={20} rx={4} fill="#4f46e5" />
+      <text x={x + 31} y={y + 4} textAnchor="middle" fill="#fff" fontSize={11} fontWeight={700}>
+        {value}
+      </text>
+    </g>
   )
 }
 
@@ -111,7 +100,6 @@ function ZoneRow({ zone, type, lang }: { zone: AnalysisPriceZone; type: 'support
 export default function RhinoChart({ chart, price: priceProp }: Props) {
   const price = chart.current_price ?? priceProp ?? 0
   const { lang, t } = useLanguage()
-  const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const [timeframe, setTimeframe] = useState<Timeframe>(200)
 
   const data = useMemo(() => {
@@ -129,35 +117,14 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
       sma30:  sma30Map.get(c.date) ?? null,
       sma100: sma100Map.get(c.date) ?? null,
       sma200: sma200Map.get(c.date) ?? null,
-      // placeholder field for Bar (actual rendering via custom shape)
       _candle: c.high,
       bullish: c.close >= c.open,
     }))
   }, [chart, timeframe])
 
-  // Find nearest zone to crosshair price
-  const nearestZone = useMemo(() => {
-    if (activeIdx == null || activeIdx < 0 || activeIdx >= data.length) return null
-    const curPrice = data[activeIdx].close
-    const allZones = [
-      ...chart.support_zones.map((z) => ({ ...z, type: 'support' as const })),
-      ...chart.resistance_zones.map((z) => ({ ...z, type: 'resistance' as const })),
-    ]
-    let best: (typeof allZones)[number] | null = null
-    let bestDist = Infinity
-    for (const z of allZones) {
-      const dist = Math.abs(curPrice - z.center)
-      if (dist < bestDist) { bestDist = dist; best = z }
-    }
-    return best
-  }, [activeIdx, data, chart.support_zones, chart.resistance_zones])
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const handleMouseMove = useCallback((state: any) => {
-    if (state?.activeTooltipIndex != null) setActiveIdx(Number(state.activeTooltipIndex))
-  }, [])
-
-  const handleMouseLeave = useCallback(() => setActiveIdx(null), [])
+  const handleMouseMove = useCallback((_state: any) => {}, [])
+  const handleMouseLeave = useCallback(() => {}, [])
 
   if (data.length === 0) {
     return (
@@ -180,8 +147,9 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
     return `${parts[1]}/${parts[2]}`
   }
 
-  const supportZones = chart.support_zones.slice(0, 5)
-  const resistanceZones = chart.resistance_zones.slice(0, 5)
+  // Limit zones to top 3 for cleaner visual
+  const supportZones = chart.support_zones.slice(0, 3)
+  const resistanceZones = chart.resistance_zones.slice(0, 3)
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
@@ -210,7 +178,7 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
       <ResponsiveContainer width="100%" height={360}>
         <ComposedChart
           data={data}
-          margin={{ top: 10, right: 10, bottom: 0, left: 0 }}
+          margin={{ top: 10, right: 65, bottom: 0, left: 0 }}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         >
@@ -229,25 +197,9 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => `$${v.toFixed(0)}`}
-            width={60}
+            width={55}
           />
           <Tooltip
-            contentStyle={{
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderRadius: 12,
-              fontSize: 12,
-              boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-            }}
-            formatter={(value: unknown, name?: string) => {
-              const v = Number(value)
-              if (name === 'sma30')  return [fmtPrice(v), 'SMA 30']
-              if (name === 'sma100') return [fmtPrice(v), 'SMA 100']
-              if (name === 'sma200') return [fmtPrice(v), 'SMA 200']
-              if (name === '_candle' || name === 'close') return [null, null]
-              return [fmtPrice(v), name]
-            }}
-            labelFormatter={(label: unknown) => formatDate(String(label))}
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null
               const d = payload[0]?.payload
@@ -259,73 +211,90 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
                     <span className="text-slate-400">O</span><span>{fmtPrice(d.open)}</span>
                     <span className="text-slate-400">H</span><span>{fmtPrice(d.high)}</span>
                     <span className="text-slate-400">L</span><span>{fmtPrice(d.low)}</span>
-                    <span className="text-slate-400">C</span><span className={d.bullish ? 'text-emerald-600' : 'text-rose-600'}>{fmtPrice(d.close)}</span>
-                    {d.sma30 != null && (
-                      <><span className="text-sky-400">S30</span><span>{fmtPrice(d.sma30)}</span></>
-                    )}
-                    {d.sma100 != null && (
-                      <><span className="text-orange-500">S100</span><span>{fmtPrice(d.sma100)}</span></>
-                    )}
-                    {d.sma200 != null && (
-                      <><span className="text-blue-700">S200</span><span>{fmtPrice(d.sma200)}</span></>
-                    )}
+                    <span className="text-slate-400">C</span>
+                    <span className={d.bullish ? 'text-emerald-600' : 'text-rose-600'}>{fmtPrice(d.close)}</span>
                   </div>
-                  {nearestZone && (
-                    <div className={`mt-1.5 pt-1.5 border-t border-slate-100 text-[10px] ${
-                      nearestZone.type === 'support' ? 'text-emerald-600' : 'text-rose-600'
-                    }`}>
-                      {nearestZone.type === 'support' ? (lang === 'zh' ? '最近支撑' : 'Nearest support') : (lang === 'zh' ? '最近阻力' : 'Nearest resistance')}:
-                      {' '}{fmtPrice(nearestZone.lower)} – {fmtPrice(nearestZone.upper)}
-                    </div>
-                  )}
                 </div>
               )
             }}
           />
 
-          {/* Support zones — opacity scales with strength */}
-          {supportZones.map((z, i) => {
-            const opacity = 0.06 + z.strength * 0.18
-            return (
-              <ReferenceArea
-                key={`s-${i}`}
-                yAxisId="price"
-                y1={z.lower}
-                y2={z.upper}
-                fill="#10b981"
-                fillOpacity={opacity}
-                stroke="#10b981"
-                strokeOpacity={opacity + 0.1}
-                strokeDasharray="3 3"
-              />
-            )
-          })}
+          {/* Support zones — very light, thin outlines */}
+          {supportZones.map((z, i) => (
+            <ReferenceArea
+              key={`s-${i}`}
+              yAxisId="price"
+              y1={z.lower}
+              y2={z.upper}
+              fill="#10b981"
+              fillOpacity={0.04 + z.strength * 0.08}
+              stroke="#10b981"
+              strokeOpacity={0.15}
+              strokeDasharray="4 4"
+              strokeWidth={0.5}
+            />
+          ))}
 
-          {/* Resistance zones — opacity scales with strength */}
-          {resistanceZones.map((z, i) => {
-            const opacity = 0.06 + z.strength * 0.18
-            return (
-              <ReferenceArea
-                key={`r-${i}`}
-                yAxisId="price"
-                y1={z.lower}
-                y2={z.upper}
-                fill="#ef4444"
-                fillOpacity={opacity}
-                stroke="#ef4444"
-                strokeOpacity={opacity + 0.1}
-                strokeDasharray="3 3"
-              />
-            )
-          })}
+          {/* Resistance zones — very light, thin outlines */}
+          {resistanceZones.map((z, i) => (
+            <ReferenceArea
+              key={`r-${i}`}
+              yAxisId="price"
+              y1={z.lower}
+              y2={z.upper}
+              fill="#ef4444"
+              fillOpacity={0.04 + z.strength * 0.08}
+              stroke="#ef4444"
+              strokeOpacity={0.15}
+              strokeDasharray="4 4"
+              strokeWidth={0.5}
+            />
+          ))}
+
+          {/* SMA30 — most subtle (thin dashed, light color) */}
+          <Line
+            dataKey="sma30"
+            yAxisId="price"
+            type="monotone"
+            stroke="#94a3b8"
+            strokeWidth={0.8}
+            strokeDasharray="3 3"
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+
+          {/* SMA100 — medium emphasis */}
+          <Line
+            dataKey="sma100"
+            yAxisId="price"
+            type="monotone"
+            stroke="#f97316"
+            strokeWidth={1.2}
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+
+          {/* SMA200 — strong emphasis (deep blue, thicker) */}
+          <Line
+            dataKey="sma200"
+            yAxisId="price"
+            type="monotone"
+            stroke="#1e40af"
+            strokeWidth={2}
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
 
           {/* Historical close line */}
           <Line
             dataKey="close"
             yAxisId="price"
             type="monotone"
-            stroke="#64748b"
-            strokeWidth={1}
+            stroke="#475569"
+            strokeWidth={1.2}
             dot={false}
             isAnimationActive={false}
           />
@@ -339,102 +308,42 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             shape={<CandleShape />}
           />
 
-          {/* SMA30 — short-term momentum (light, thin, dashed) */}
-          <Line
-            dataKey="sma30"
-            yAxisId="price"
-            type="monotone"
-            stroke="#38bdf8"
-            strokeWidth={1}
-            strokeDasharray="4 3"
-            dot={false}
-            connectNulls
-            isAnimationActive={false}
-          />
-
-          {/* SMA100 — medium-term watershed (orange, 1.5px) */}
-          <Line
-            dataKey="sma100"
-            yAxisId="price"
-            type="monotone"
-            stroke="#f97316"
-            strokeWidth={1.5}
-            dot={false}
-            connectNulls
-            isAnimationActive={false}
-          />
-
-          {/* SMA200 — long-term bull/bear line (deep blue, 2.5px bold) */}
-          <Line
-            dataKey="sma200"
-            yAxisId="price"
-            type="monotone"
-            stroke="#1e40af"
-            strokeWidth={2.5}
-            dot={false}
-            connectNulls
-            isAnimationActive={false}
-          />
-
-          {/* Current price line with label */}
+          {/* ═══ CURRENT PRICE — PRIMARY VISUAL ANCHOR ═══ */}
+          {/* Horizontal guide line across full chart */}
           <ReferenceLine
             yAxisId="price"
             y={price}
-            stroke="#6366f1"
-            strokeDasharray="4 4"
-            strokeWidth={1}
-            label={{
-              value: `$${price.toFixed(2)}`,
-              position: 'right',
-              fill: '#6366f1',
-              fontSize: 10,
-              fontWeight: 600,
-            }}
+            stroke="#4f46e5"
+            strokeWidth={1.5}
+            strokeDasharray="6 3"
+            label={<CurrentPriceLabel value={`$${price.toFixed(2)}`} />}
           />
         </ComposedChart>
       </ResponsiveContainer>
 
-      {/* Legend */}
+      {/* Simplified legend */}
       <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-slate-400">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-slate-500 inline-block rounded" /> {lang === 'zh' ? '收盘价' : 'Close'}
+          <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block" />
+          {lang === 'zh' ? '当前价' : 'Current'}
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 inline-block rounded" style={{ background: '#38bdf8', borderTop: '1px dashed #38bdf8' }} /> SMA 30
+          <span className="w-3 h-0.5 bg-slate-500 inline-block rounded" />
+          {lang === 'zh' ? '收盘价' : 'Close'}
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 inline-block rounded" style={{ background: '#f97316' }} /> SMA 100
+          <span className="w-3 h-[3px] inline-block rounded" style={{ background: '#1e40af' }} />
+          SMA 200
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-[3px] inline-block rounded" style={{ background: '#1e40af' }} /> SMA 200
+          <span className="w-3 h-0.5 inline-block rounded" style={{ background: '#f97316' }} />
+          SMA 100
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-indigo-500 inline-block rounded" style={{ borderTop: '1px dashed #6366f1' }} /> {lang === 'zh' ? '当前价' : 'Current'}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-2 bg-emerald-500/20 inline-block rounded border border-emerald-500/30" /> {lang === 'zh' ? '支撑' : 'Support'}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-2 bg-rose-500/20 inline-block rounded border border-rose-500/30" /> {lang === 'zh' ? '阻力' : 'Resistance'}
+          <span className="w-3 h-0.5 inline-block rounded opacity-50" style={{ background: '#94a3b8', borderTop: '1px dashed #94a3b8' }} />
+          SMA 30
         </span>
       </div>
-
-      {/* Zone detail panel — exposes lower/upper/strength for each zone */}
-      {(supportZones.length > 0 || resistanceZones.length > 0) && (
-        <div className="mt-3 pt-3 border-t border-slate-100">
-          <div className="text-[11px] text-slate-400 font-medium uppercase mb-1.5">
-            {lang === 'zh' ? '关键价格区域' : 'Key Price Zones'}
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {supportZones.map((z, i) => (
-              <ZoneRow key={`s-${i}`} zone={z} type="support" lang={lang} />
-            ))}
-            {resistanceZones.map((z, i) => (
-              <ZoneRow key={`r-${i}`} zone={z} type="resistance" lang={lang} />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

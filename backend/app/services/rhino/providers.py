@@ -59,16 +59,14 @@ async def get_history(symbol: str) -> list[dict]:
 # ── Estimates ────────────────────────────────────────────────────────────────
 
 async def get_estimates(symbol: str) -> dict:
-    """Fetch analyst consensus EPS for FY1 and FY2 via shared layer.
+    """Fetch analyst consensus EPS for FY0 (trailing), FY1, FY2.
 
-    The shared layer (_do_fetch_analyst_estimates) already:
-      - parses all rows from FMP
-      - sorts ascending by fiscal year date
-      - selects the nearest two future fiscal years
-    So estimates[0] = FY1, estimates[1] = FY2.
+    The shared layer returns:
+      - estimates[0] = FY1, estimates[1] = FY2 (future fiscal years)
+      - fy0 = most recent past fiscal year (trailing EPS)
     """
     sym = normalize_ticker(symbol)
-    empty = {"fy1_eps_avg": None, "fy2_eps_avg": None}
+    empty = {"fy0_eps_avg": None, "fy1_eps_avg": None, "fy2_eps_avg": None}
 
     result = await get_analyst_estimates(sym)
     if result is None or not isinstance(result.get("estimates"), list):
@@ -81,12 +79,15 @@ async def get_estimates(symbol: str) -> dict:
     fy1 = estimates_list[0]
     fy2 = estimates_list[1] if len(estimates_list) > 1 else None
 
+    fy0_row = result.get("fy0")
+    fy0_eps = fy0_row.get("estimated_eps_avg") if fy0_row else None
     fy1_eps = fy1.get("estimated_eps_avg") if fy1 else None
     fy2_eps = fy2.get("estimated_eps_avg") if fy2 else None
 
     logger.info(
-        "Rhino estimates for %s: FY1=%s (date=%s, eps=%.4f), FY2=%s (eps=%s)",
+        "Rhino estimates for %s: FY0 eps=%s, FY1=%s (date=%s, eps=%.4f), FY2=%s (eps=%s)",
         sym,
+        f"{fy0_eps:.4f}" if fy0_eps is not None else "N/A",
         fy1.get("date") if fy1 else "N/A",
         fy1.get("date") if fy1 else "N/A",
         fy1_eps if fy1_eps is not None else 0,
@@ -95,6 +96,7 @@ async def get_estimates(symbol: str) -> dict:
     )
 
     return {
+        "fy0_eps_avg": fy0_eps,
         "fy1_eps_avg": fy1_eps,
         "fy2_eps_avg": fy2_eps,
     }
