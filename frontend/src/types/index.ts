@@ -550,6 +550,11 @@ export interface AnalysisSemantic {
   flags:           string[]
 }
 
+export interface AnalysisScenario {
+  scenario:   string   // trend_pullback | bullish_breakout | mean_reversion | macro_headwind | defensive | neutral
+  confidence: string   // high | moderate | low
+}
+
 export interface AnalysisNarrative {
   summary: string
   sections: {
@@ -581,6 +586,7 @@ export interface AnalysisResult {
   macro:        AnalysisMacro
   playbook:     AnalysisPlaybook
   semantic:     AnalysisSemantic
+  scenario:     AnalysisScenario
   narrative:    AnalysisNarrative
   text:         { lang: string; sections: AnalysisTextSections }
   chart:        AnalysisChart

@@ -6,9 +6,10 @@ lexical variation.  No LLM.  Pure rule-based, deterministic seed.
 
 Design:
   - Each narrative section has a small pool of sentence variants per state.
-  - A deterministic hash of the symbol selects which variant to use, so the
+  - A deterministic hash of symbol+lang selects which variant to use, so the
     same symbol always gets the same phrasing within a session.
   - Joint-reasoning rules override flat single-factor narration.
+  - Scenario context enriches the summary.
   - EN and ZH are fully parallel.
 """
 from __future__ import annotations
@@ -23,9 +24,10 @@ def _pick(variants: list[str], seed: int) -> str:
     return variants[seed % len(variants)]
 
 
-def _seed(symbol: str) -> int:
-    """Stable per-symbol seed from hash — same symbol, same phrasing."""
-    return int(hashlib.md5(symbol.encode()).hexdigest()[:8], 16)
+def _seed(symbol: str, lang: str = "en") -> int:
+    """Stable per-symbol+lang seed from hash — same inputs, same phrasing."""
+    key = f"{symbol}:{lang}"
+    return int(hashlib.md5(key.encode()).hexdigest()[:8], 16)
 
 
 # ── Format helpers ────────────────────────────────────────────────────────
@@ -47,9 +49,10 @@ def build_rhino_narrative(
     semantic: dict,
     playbook: dict,
     lang: str = "en",
+    scenario: dict | None = None,
 ) -> dict:
     """Build structured Rhino narrative from analysis outputs."""
-    s = _seed(symbol)
+    s = _seed(symbol, lang)
     pool = _EN if lang != "zh" else _ZH
 
     val_text = _narrate_valuation(pool, s, price, valuation, semantic)
@@ -57,7 +60,7 @@ def build_rhino_narrative(
     macro_text = _narrate_macro(pool, s, macro, semantic)
     pattern_text = _narrate_patterns(pool, s, price, technical, semantic)
     playbook_text = _narrate_playbook(pool, s, semantic, playbook)
-    summary_text = _narrate_summary(pool, s, price, semantic)
+    summary_text = _narrate_summary(pool, s, price, semantic, scenario)
 
     return {
         "summary": summary_text,
@@ -124,6 +127,21 @@ _EN = {
     "joint_above_near_resistance": [
         "The broader trend remains constructive, but price is now approaching a key resistance zone where upside may temporarily stall unless momentum expands.",
         "The long-term trend is healthy, yet the stock is bumping against structural resistance. A clean breakout with volume would be the signal to watch.",
+    ],
+    # Joint: above SMA200 + breakout zone (momentum continuation)
+    "joint_above_breakout": [
+        "The uptrend remains intact and price is now pressing into breakout territory. If momentum and volume confirm, this could mark the beginning of an acceleration phase within the existing trend.",
+        "Within an established uptrend, the stock is testing a potential breakout level. A sustained push above this zone would signal momentum continuation and invite trend-following capital.",
+    ],
+    # Joint: high risk + breakdown risk (downside vulnerability)
+    "joint_risk_breakdown": [
+        "Elevated risk conditions coincide with price breaking below key support. This combination signals meaningful downside vulnerability and calls for immediate risk reduction.",
+        "With risk already elevated, a breakdown below support intensifies the bearish case. Capital preservation must take absolute priority in this configuration.",
+    ],
+    # Joint: undervalued + near support (valuation + technical confluence)
+    "joint_undervalued_support": [
+        "Price has pulled back to a key support zone while valuation remains attractive. This confluence of technical support and fundamental discount creates a potentially favorable risk/reward setup for patient buyers.",
+        "The combination of discounted valuation and proximity to structural support offers a rare confluence. If the level holds, this represents one of the more compelling entry zones the structure can produce.",
     ],
 
     # ── Macro ──────────────────────────────────────────────────────────
@@ -221,6 +239,14 @@ _EN = {
     "sum_macro_restrictive": "macro conditions remain restrictive",
     "sum_macro_stressed": "the macro backdrop signals significant stress",
     "sum_macro_unavailable": "macro assessment is limited",
+
+    # ── Scenario context lines ────────────────────────────────────────
+    "scenario_trend_pullback": "Price remains within a constructive long-term trend but has pulled back toward a support zone.",
+    "scenario_bullish_breakout": "The stock approaches a potential breakout zone within an established uptrend.",
+    "scenario_macro_headwind": "Despite constructive fundamentals, macro conditions may cap upside.",
+    "scenario_defensive": "Elevated risk conditions suggest a defensive posture.",
+    "scenario_mean_reversion": "The stock has pulled back below the long-term trend toward support, opening a potential mean-reversion setup.",
+    "scenario_neutral": "Market structure remains balanced without a dominant directional signal.",
 }
 
 
@@ -275,6 +301,18 @@ _ZH = {
     "joint_above_near_resistance": [
         "整体趋势保持建设性，但价格正在逼近一个关键压力区域，若动能未能扩大，上行空间可能暂时受阻。",
         "中长期趋势健康，然而股价正在触碰结构性压力位。放量突破将是需要关注的信号。",
+    ],
+    "joint_above_breakout": [
+        "上升趋势依然完好，价格正在试探突破区域。如果动能和成交量确认，这可能标志着现有趋势内加速阶段的开始。",
+        "在已建立的上升趋势中，股价正在测试潜在突破位。持续站稳该区域上方将发出动能延续信号，吸引趋势跟随资金。",
+    ],
+    "joint_risk_breakdown": [
+        "高风险环境叠加价格跌破关键支撑，这一组合发出显著的下行脆弱信号，要求立即降低风险敞口。",
+        "在风险已经偏高的情况下，跌破支撑进一步强化看空格局。资本保全在此配置下必须绝对优先。",
+    ],
+    "joint_undervalued_support": [
+        "价格已回撤至关键支撑区域，同时估值仍具吸引力。技术支撑与基本面折价的共振为耐心买家创造了潜在有利的风险收益格局。",
+        "折价估值与结构性支撑的邻近提供了难得的共振机会。若支撑守住，这将是结构能提供的最具说服力的入场区域之一。",
     ],
 
     # ── Macro ──────────────────────────────────────────────────────────
@@ -370,6 +408,14 @@ _ZH = {
     "sum_macro_restrictive": "宏观环境仍然偏紧",
     "sum_macro_stressed": "宏观背景发出显著压力信号",
     "sum_macro_unavailable": "宏观评估受限",
+
+    # ── Scenario context lines ────────────────────────────────────────
+    "scenario_trend_pullback": "价格处于中长期上升趋势中，但已回撤至支撑区域附近。",
+    "scenario_bullish_breakout": "股价在已建立的上升趋势中逼近潜在突破区域。",
+    "scenario_macro_headwind": "尽管基本面积极，宏观条件可能限制上行空间。",
+    "scenario_defensive": "风险偏高的环境建议采取防御姿态。",
+    "scenario_mean_reversion": "股价已跌破中长期趋势线至支撑附近，形成潜在的均值回归格局。",
+    "scenario_neutral": "市场结构保持均衡，未出现主导性方向信号。",
 }
 
 
@@ -410,8 +456,14 @@ def _narrate_structure(pool: dict, s: int, price: float, technical: dict, semant
     trend = semantic.get("trend_state", "unavailable")
     location = semantic.get("price_location", "unavailable")
     alignment = semantic.get("ma_alignment", "unavailable")
+    risk_state = semantic.get("risk_state", "moderate")
 
-    # ── Joint-reasoning overrides ──────────────────────────────────────
+    # ── Joint-reasoning overrides (Task 5) ───────────────────────────
+    # Priority: risk+breakdown > above+breakout > below+support > above+resistance
+    if risk_state == "high" and location == "breakdown_risk":
+        return _pick(pool["joint_risk_breakdown"], s)
+    if trend == "above_sma200" and location == "breakout_zone":
+        return _pick(pool["joint_above_breakout"], s)
     if trend == "below_sma200" and location == "near_support":
         return _pick(pool["joint_below_near_support"], s)
     if trend == "above_sma200" and location == "near_resistance":
@@ -478,6 +530,12 @@ def _narrate_macro(pool: dict, s: int, macro: dict, semantic: dict) -> str:
 
 def _narrate_patterns(pool: dict, s: int, price: float, technical: dict, semantic: dict) -> str:
     loc = semantic.get("price_location", "unavailable")
+    val_zone = semantic.get("valuation_zone", "unavailable")
+
+    # ── Joint: undervalued + near_support (Task 5) ────────────────────
+    if val_zone == "undervalued" and loc == "near_support":
+        return _pick(pool["joint_undervalued_support"], s)
+
     key = {"near_support": "loc_near_support", "near_resistance": "loc_near_resistance",
            "breakout_zone": "loc_breakout", "breakdown_risk": "loc_breakdown",
            "mid_range": "loc_mid_range"}.get(loc)
@@ -495,12 +553,15 @@ def _narrate_playbook(pool: dict, s: int, semantic: dict, playbook: dict) -> str
     rationale = playbook.get("rationale", [])
     if rationale:
         joined = "; ".join(rationale)
-        parts.append(f"({joined})" if pool is _EN else f"({joined})")
+        parts.append(f"({joined})")
 
     return " ".join(parts)
 
 
-def _narrate_summary(pool: dict, s: int, price: float, semantic: dict) -> str:
+def _narrate_summary(
+    pool: dict, s: int, price: float, semantic: dict,
+    scenario: dict | None = None,
+) -> str:
     val_zone = semantic.get("valuation_zone", "unavailable")
     trend = semantic.get("trend_state", "unavailable")
     macro_regime = semantic.get("macro_regime", "unavailable")
@@ -525,8 +586,18 @@ def _narrate_summary(pool: dict, s: int, price: float, semantic: dict) -> str:
     stance_label = (stance_labels_en if pool is _EN else stance_labels_zh).get(stance, stance)
 
     tmpl = _pick(pool["summary_template"], s)
-    return (tmpl
+    base = (tmpl
             .replace("{val_clause}", val_clause)
             .replace("{trend_clause}", trend_clause)
             .replace("{macro_clause}", macro_clause)
             .replace("{stance}", stance_label))
+
+    # Append scenario context if available
+    if scenario:
+        sc_type = scenario.get("scenario", "neutral")
+        sc_key = f"scenario_{sc_type}"
+        sc_line = pool.get(sc_key)
+        if sc_line:
+            base = f"{sc_line} {base}"
+
+    return base

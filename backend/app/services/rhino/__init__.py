@@ -22,6 +22,7 @@ from .macro_engine import build_macro
 from .confidence_engine import build_confidence
 from .playbook_engine import build_playbook
 from .semantic_engine import build_semantic_state
+from .scenario_engine import build_scenario_state
 from .narrative_engine import build_rhino_narrative
 from .report import build_report
 
@@ -66,8 +67,10 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 
     playbook = build_playbook(technical, valuation, macro["vix_regime"])
     semantic = build_semantic_state(price, technical, valuation, macro)
+    scenario = build_scenario_state(semantic, technical, valuation, macro, playbook)
     narrative = build_rhino_narrative(
         symbol, price, technical, valuation, macro, semantic, playbook, lang,
+        scenario=scenario,
     )
 
     # Data quality + confidence
@@ -150,6 +153,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "macro": macro,
         "playbook": playbook,
         "semantic": semantic,
+        "scenario": scenario,
         "narrative": narrative,
         "text": text,
         "chart": chart,
@@ -198,6 +202,7 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "technical": empty_tech, "valuation": empty_val,
         "macro": macro, "playbook": playbook,
         "semantic": empty_semantic,
+        "scenario": {"scenario": "neutral", "confidence": "low"},
         "narrative": {"summary": "", "sections": {
             "valuation": "", "structure": "", "macro": "",
             "patterns": "", "playbook": ""}},

@@ -81,9 +81,10 @@ export default function NarrativeSection({ narrative, sections }: Props) {
   const { lang, t } = useLanguage()
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
 
-  // Determine if narrative has content
-  const hasNarrative = narrative && narrative.summary &&
-    Object.values(narrative.sections).some((s) => s && s.length > 0)
+  // Determine if narrative has content (summary OR sections)
+  const hasNarrative = narrative &&
+    (narrative.summary ||
+     Object.values(narrative.sections).some((s) => s && s.length > 0))
 
   // Fall back to legacy if narrative is empty/absent
   if (!hasNarrative) {
