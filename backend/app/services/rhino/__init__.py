@@ -24,6 +24,7 @@ from .playbook_engine import build_playbook
 from .semantic_engine import build_semantic_state
 from .scenario_engine import build_scenario_state, NEUTRAL_SCENARIO
 from .narrative_engine import build_rhino_narrative
+from .briefing_engine import build_rhino_briefing
 from .report import build_report
 
 logger = logging.getLogger(__name__)
@@ -71,6 +72,10 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     narrative = build_rhino_narrative(
         symbol, price, technical, valuation, macro, semantic, playbook, lang,
         scenario=scenario,
+    )
+    briefing = build_rhino_briefing(
+        symbol, price, technical, valuation, macro,
+        scenario=scenario, playbook=playbook,
     )
 
     # Data quality + confidence
@@ -155,6 +160,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "semantic": semantic,
         "scenario": scenario._asdict(),
         "narrative": narrative,
+        "briefing": briefing,
         "text": text,
         "chart": chart,
     }
@@ -206,6 +212,9 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "narrative": {"summary": "", "sections": {
             "valuation": "", "structure": "", "macro": "",
             "patterns": "", "playbook": ""}},
+        "briefing": build_rhino_briefing(
+            symbol, 0, empty_tech, empty_val, macro,
+        ),
         "text": text,
         "chart": {"candles": [], "sma30": [], "sma100": [], "sma200": [],
                   "support_zones": [], "resistance_zones": [],
