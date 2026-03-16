@@ -93,7 +93,12 @@ export default function AnalysisPage() {
           {/* Technical details — collapsible, below hero */}
           <TechnicalDetailsPanel technical={result.technical} price={price} />
 
-          <RhinoChart chart={result.chart} price={price} />
+          <RhinoChart
+            chart={result.chart}
+            price={price}
+            fairValue={result.valuation.raw_fair_value ?? undefined}
+            reversalLine={result.battle_report?.playbook?.reversal_confirmation_line ?? undefined}
+          />
 
           <NarrativeSection narrative={result.narrative} sections={result.text.sections} />
 
