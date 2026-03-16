@@ -550,6 +550,17 @@ export interface AnalysisSemantic {
   flags:           string[]
 }
 
+export interface AnalysisNarrative {
+  summary: string
+  sections: {
+    valuation: string
+    structure: string
+    macro:     string
+    patterns:  string
+    playbook:  string
+  }
+}
+
 export interface AnalysisResult {
   symbol:       string
   as_of:        string
@@ -570,6 +581,7 @@ export interface AnalysisResult {
   macro:        AnalysisMacro
   playbook:     AnalysisPlaybook
   semantic:     AnalysisSemantic
+  narrative:    AnalysisNarrative
   text:         { lang: string; sections: AnalysisTextSections }
   chart:        AnalysisChart
 }

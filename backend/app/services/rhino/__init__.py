@@ -22,6 +22,7 @@ from .macro_engine import build_macro
 from .confidence_engine import build_confidence
 from .playbook_engine import build_playbook
 from .semantic_engine import build_semantic_state
+from .narrative_engine import build_rhino_narrative
 from .report import build_report
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,9 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
 
     playbook = build_playbook(technical, valuation, macro["vix_regime"])
     semantic = build_semantic_state(price, technical, valuation, macro)
+    narrative = build_rhino_narrative(
+        symbol, price, technical, valuation, macro, semantic, playbook, lang,
+    )
 
     # Data quality + confidence
     dq = {
@@ -146,6 +150,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "macro": macro,
         "playbook": playbook,
         "semantic": semantic,
+        "narrative": narrative,
         "text": text,
         "chart": chart,
     }
@@ -192,7 +197,11 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "data_quality": dq, "confidence": confidence, "quote": None,
         "technical": empty_tech, "valuation": empty_val,
         "macro": macro, "playbook": playbook,
-        "semantic": empty_semantic, "text": text,
+        "semantic": empty_semantic,
+        "narrative": {"summary": "", "sections": {
+            "valuation": "", "structure": "", "macro": "",
+            "patterns": "", "playbook": ""}},
+        "text": text,
         "chart": {"candles": [], "sma30": [], "sma100": [], "sma200": [],
                   "support_zones": [], "resistance_zones": [],
                   "current_price": 0.0, "analysis_close": 0.0},

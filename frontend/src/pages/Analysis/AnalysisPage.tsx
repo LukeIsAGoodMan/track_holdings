@@ -89,7 +89,7 @@ export default function AnalysisPage() {
 
           <RhinoChart chart={result.chart} price={price} />
 
-          <NarrativeSection sections={result.text.sections} />
+          <NarrativeSection narrative={result.narrative} sections={result.text.sections} />
 
           {/* Data quality footer */}
           <div className="text-[11px] text-slate-400 text-right">
