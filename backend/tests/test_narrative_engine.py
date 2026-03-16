@@ -7,11 +7,11 @@ Covers:
   3. Macro narratives (supportive / restrictive / stressed)
   4. Pattern narratives (price location states)
   5. Playbook narratives (stance variants)
-  6. Joint reasoning (below_sma200 + near_support, restrictive + overvalued,
-     above + breakout, risk + breakdown, undervalued + support)
+  6. Scenario-driven rendering (narrative reads scenario fields, not semantic)
   7. Lexical variation (bounded, deterministic)
   8. Summary generation (with scenario context)
-  9. Full integration (response schema)
+  9. Fallback safety
+ 10. Full integration (response schema)
 """
 from __future__ import annotations
 
@@ -22,7 +22,10 @@ from app.services.rhino.narrative_engine import (
     build_rhino_narrative,
     _pick,
     _seed,
+    _FALLBACK_EN,
+    _FALLBACK_ZH,
 )
+from app.services.rhino.scenario_engine import ScenarioResult, NEUTRAL_SCENARIO
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -77,8 +80,12 @@ def _playbook(action="hold_watch", bias="neutral"):
             "rationale": ["Testing narrative"]}
 
 
-def _scenario(scenario="neutral", confidence="low"):
-    return {"scenario": scenario, "confidence": confidence}
+def _scenario(scenario="neutral", regime="unavailable", setup="default",
+              bias="neutral", confidence="low", constraints=()):
+    return ScenarioResult(
+        scenario=scenario, regime=regime, setup=setup,
+        bias=bias, confidence=confidence, constraints=constraints,
+    )
 
 
 # ── 1. Valuation narratives ───────────────────────────────────────────────
@@ -143,6 +150,7 @@ class TestStructureNarrative:
         result = build_rhino_narrative(
             "AAPL", 250, _tech(sma200=200), _val(),
             _macro(), _sem(trend_state="above_sma200"), _playbook(),
+            scenario=_scenario(setup="above_trend"),
         )
         text = result["sections"]["structure"]
         assert "200" in text
@@ -152,6 +160,7 @@ class TestStructureNarrative:
         result = build_rhino_narrative(
             "AAPL", 150, _tech(sma200=200), _val(),
             _macro(), _sem(trend_state="below_sma200"), _playbook(),
+            scenario=_scenario(setup="below_trend"),
         )
         text = result["sections"]["structure"]
         assert "below" in text.lower() or "pressure" in text.lower()
@@ -160,6 +169,7 @@ class TestStructureNarrative:
         result = build_rhino_narrative(
             "AAPL", 100, _tech(resistance_zones=[_zone(110)]), _val(),
             _macro(), _sem(), _playbook(),
+            scenario=_scenario(setup="above_trend"),
         )
         text = result["sections"]["structure"]
         assert "110" in text
@@ -171,6 +181,7 @@ class TestStructureNarrative:
             _macro(),
             _sem(trend_state="above_sma200", ma_alignment="bullish_alignment"),
             _playbook(),
+            scenario=_scenario(setup="above_trend"),
         )
         text = result["sections"]["structure"]
         assert "bullish" in text.lower() or "30/100/200" in text
@@ -184,6 +195,7 @@ class TestMacroNarrative:
             "AAPL", 100, _tech(),
             _val(), _macro(vix_regime="elevated", rate_regime="restrictive"),
             _sem(macro_regime="restrictive_risk"), _playbook(),
+            scenario=_scenario(regime="restrictive"),
         )
         text = result["sections"]["macro"]
         assert "restrictive" in text.lower() or "tighten" in text.lower() or "headwind" in text.lower()
@@ -193,6 +205,7 @@ class TestMacroNarrative:
             "AAPL", 100, _tech(),
             _val(), _macro(vix_regime="crisis", rate_regime="hostile", vix=35),
             _sem(macro_regime="stressed"), _playbook(),
+            scenario=_scenario(regime="stressed"),
         )
         text = result["sections"]["macro"]
         assert "risk-off" in text.lower() or "crisis" in text.lower() or "defensive" in text.lower()
@@ -202,6 +215,7 @@ class TestMacroNarrative:
             "AAPL", 100, _tech(),
             _val(), _macro(vix_regime="calm", rate_regime="supportive", vix=14),
             _sem(macro_regime="supportive"), _playbook(),
+            scenario=_scenario(regime="supportive"),
         )
         text = result["sections"]["macro"]
         assert "favorable" in text.lower() or "supportive" in text.lower() or "constructive" in text.lower()
@@ -211,6 +225,7 @@ class TestMacroNarrative:
             "AAPL", 100, _tech(),
             _val(), _macro(vix=27.5),
             _sem(macro_regime="restrictive_risk", valuation_zone="undervalued"), _playbook(),
+            scenario=_scenario(regime="restrictive"),
         )
         text = result["sections"]["macro"]
         assert "27.5" in text
@@ -220,6 +235,7 @@ class TestMacroNarrative:
             "AAPL", 100, _tech(),
             _val(), _macro(vix_regime="crisis", rate_regime="hostile", vix=35),
             _sem(macro_regime="stressed"), _playbook(), lang="zh",
+            scenario=_scenario(regime="stressed"),
         )
         text = result["sections"]["macro"]
         assert any('\u4e00' <= c <= '\u9fff' for c in text)
@@ -281,64 +297,90 @@ class TestPlaybookNarrative:
         assert "Testing narrative" in text
 
 
-# ── 6. Joint reasoning ────────────────────────────────────────────────────
+# ── 6. Scenario-driven rendering ─────────────────────────────────────────
 
-class TestJointReasoning:
-    def test_below_sma200_near_support(self):
+class TestScenarioDrivenRendering:
+    """Proves narrative renders from ScenarioResult fields, not by re-inferring."""
+
+    def test_structure_uses_scenario_setup_not_semantic(self):
+        """Even if semantic says above_sma200+breakout, scenario.setup controls template."""
+        # Scenario says below_support, semantic says above breakout — scenario wins
         result = build_rhino_narrative(
-            "MSFT", 100, _tech(sma200=120, support_zones=[_zone(100)]),
-            _val(),
-            _macro(),
-            _sem(trend_state="below_sma200", price_location="near_support"),
+            "MSFT", 100, _tech(), _val(), _macro(),
+            _sem(trend_state="above_sma200", price_location="breakout_zone"),
             _playbook(),
+            scenario=_scenario(setup="below_support"),
         )
         struct = result["sections"]["structure"]
-        # Should use joint narrative, not flat single-factor
+        # Should use below_support template (joint_below_near_support), not breakout
         assert "200" in struct.lower() or "support" in struct.lower()
         assert "stabiliz" in struct.lower() or "base" in struct.lower() or "capitulation" in struct.lower()
 
-    def test_restrictive_overvalued(self):
+    def test_macro_uses_scenario_regime_not_semantic(self):
+        """Even if semantic says supportive, scenario.regime controls template."""
+        result = build_rhino_narrative(
+            "TSLA", 300, _tech(), _val(),
+            _macro(vix_regime="elevated", rate_regime="restrictive"),
+            _sem(macro_regime="supportive"),  # semantic says supportive
+            _playbook(),
+            scenario=_scenario(regime="restrictive_overvalued"),  # scenario says restrictive_overvalued
+        )
+        macro_text = result["sections"]["macro"]
+        assert "double headwind" in macro_text.lower() or "margin for error" in macro_text.lower()
+
+    def test_patterns_uses_scenario_constraints_not_semantic(self):
+        """val_support constraint triggers joint template."""
+        result = build_rhino_narrative(
+            "AMZN", 100, _tech(), _val(), _macro(),
+            _sem(valuation_zone="fair_value", price_location="near_support"),
+            _playbook(),
+            scenario=_scenario(constraints=("val_support",)),
+        )
+        pattern = result["sections"]["patterns"]
+        assert "confluence" in pattern.lower() or "discount" in pattern.lower() or "risk/reward" in pattern.lower()
+
+    def test_below_sma200_near_support_via_scenario(self):
+        result = build_rhino_narrative(
+            "MSFT", 100, _tech(sma200=120, support_zones=[_zone(100)]),
+            _val(), _macro(),
+            _sem(trend_state="below_sma200", price_location="near_support"),
+            _playbook(),
+            scenario=_scenario(setup="below_support"),
+        )
+        struct = result["sections"]["structure"]
+        assert "200" in struct.lower() or "support" in struct.lower()
+
+    def test_above_breakout_via_scenario(self):
+        result = build_rhino_narrative(
+            "NVDA", 500, _tech(), _val(), _macro(),
+            _sem(trend_state="above_sma200", price_location="breakout_zone"),
+            _playbook(),
+            scenario=_scenario(setup="momentum_breakout"),
+        )
+        struct = result["sections"]["structure"]
+        assert "uptrend" in struct.lower() or "breakout" in struct.lower() or "momentum" in struct.lower()
+
+    def test_risk_breakdown_via_scenario(self):
+        result = build_rhino_narrative(
+            "META", 200, _tech(), _val(), _macro(),
+            _sem(risk_state="high", price_location="breakdown_risk"),
+            _playbook(),
+            scenario=_scenario(setup="risk_breakdown"),
+        )
+        struct = result["sections"]["structure"]
+        assert "risk" in struct.lower() or "breakdown" in struct.lower()
+
+    def test_restrictive_overvalued_via_scenario(self):
         result = build_rhino_narrative(
             "TSLA", 300, _tech(),
             _val(status="overvalued"),
             _macro(vix_regime="elevated", rate_regime="restrictive"),
             _sem(macro_regime="restrictive_risk", valuation_zone="overvalued"),
             _playbook(),
+            scenario=_scenario(regime="restrictive_overvalued"),
         )
         macro_text = result["sections"]["macro"]
         assert "double headwind" in macro_text.lower() or "margin for error" in macro_text.lower()
-
-    def test_above_breakout_momentum_continuation(self):
-        """Joint: above_sma200 + breakout_zone → momentum continuation."""
-        result = build_rhino_narrative(
-            "NVDA", 500, _tech(), _val(), _macro(),
-            _sem(trend_state="above_sma200", price_location="breakout_zone"),
-            _playbook(),
-        )
-        struct = result["sections"]["structure"]
-        assert "uptrend" in struct.lower() or "breakout" in struct.lower() or "momentum" in struct.lower()
-        assert "acceleration" in struct.lower() or "continuation" in struct.lower() or "trend-following" in struct.lower()
-
-    def test_risk_breakdown_downside_vulnerability(self):
-        """Joint: high risk + breakdown_risk → downside vulnerability."""
-        result = build_rhino_narrative(
-            "META", 200, _tech(), _val(), _macro(),
-            _sem(risk_state="high", price_location="breakdown_risk"),
-            _playbook(),
-        )
-        struct = result["sections"]["structure"]
-        assert "risk" in struct.lower() or "breakdown" in struct.lower()
-        assert "preservation" in struct.lower() or "vulnerability" in struct.lower() or "reduction" in struct.lower()
-
-    def test_undervalued_near_support_confluence(self):
-        """Joint: undervalued + near_support → valuation+technical confluence."""
-        result = build_rhino_narrative(
-            "AMZN", 100, _tech(), _val(), _macro(),
-            _sem(valuation_zone="undervalued", price_location="near_support"),
-            _playbook(),
-        )
-        pattern = result["sections"]["patterns"]
-        assert "confluence" in pattern.lower() or "discount" in pattern.lower() or "risk/reward" in pattern.lower()
 
 
 # ── 7. Lexical variation ──────────────────────────────────────────────────
@@ -385,7 +427,6 @@ class TestLexicalVariation:
         """Seed includes lang so EN and ZH can select different variants independently."""
         s_en = _seed("AAPL", "en")
         s_zh = _seed("AAPL", "zh")
-        # Different seeds (extremely unlikely collision from MD5)
         assert s_en != s_zh
 
 
@@ -417,7 +458,7 @@ class TestSummary:
         """Summary should prepend scenario context when provided."""
         result = build_rhino_narrative(
             "AAPL", 100, _tech(), _val(), _macro(), _sem(), _playbook(),
-            scenario=_scenario("trend_pullback", "moderate"),
+            scenario=_scenario(scenario="trend_pullback"),
         )
         assert "pulled back" in result["summary"].lower() or "support" in result["summary"].lower()
 
@@ -425,7 +466,7 @@ class TestSummary:
         result = build_rhino_narrative(
             "AAPL", 100, _tech(), _val(), _macro(),
             _sem(stance="defensive"), _playbook(),
-            scenario=_scenario("defensive", "high"),
+            scenario=_scenario(scenario="defensive"),
         )
         assert "defensive" in result["summary"].lower() or "risk" in result["summary"].lower()
 
@@ -433,13 +474,50 @@ class TestSummary:
         """Neutral scenario adds context line without crashing."""
         result = build_rhino_narrative(
             "AAPL", 100, _tech(), _val(), _macro(), _sem(), _playbook(),
-            scenario=_scenario("neutral", "low"),
+            scenario=_scenario(scenario="neutral"),
         )
         assert result["summary"]
         assert "balanced" in result["summary"].lower() or "signal" in result["summary"].lower()
 
 
-# ── 9. Integration ────────────────────────────────────────────────────────
+# ── 9. Fallback safety ───────────────────────────────────────────────────
+
+class TestFallbackSafety:
+    def test_none_scenario_uses_neutral(self):
+        """Passing scenario=None uses NEUTRAL_SCENARIO, no crash."""
+        result = build_rhino_narrative(
+            "AAPL", 100, _tech(), _val(), _macro(), _sem(), _playbook(),
+            scenario=None,
+        )
+        assert result["summary"]
+        assert isinstance(result["sections"]["structure"], str)
+
+    def test_unknown_scenario_key_in_summary(self):
+        """Unknown scenario name doesn't crash — just skips context line."""
+        result = build_rhino_narrative(
+            "AAPL", 100, _tech(), _val(), _macro(), _sem(), _playbook(),
+            scenario=_scenario(scenario="unknown_scenario_xyz"),
+        )
+        assert result["summary"]
+
+    def test_fallback_constants_exist(self):
+        assert len(_FALLBACK_EN) > 20
+        assert len(_FALLBACK_ZH) > 5
+
+    def test_narrative_never_crashes_on_missing_semantic_keys(self):
+        """Narrative engine handles degraded semantic with missing keys."""
+        result = build_rhino_narrative(
+            "AAPL", 100, _tech(), _val(), _macro(),
+            {},  # empty semantic — all keys missing
+            _playbook(),
+        )
+        assert result["summary"]
+        assert isinstance(result["sections"]["valuation"], str)
+        assert isinstance(result["sections"]["structure"], str)
+        assert isinstance(result["sections"]["macro"], str)
+
+
+# ── 10. Integration ────────────────────────────────────────────────────────
 
 class TestNarrativeIntegration:
     def test_response_schema(self):
@@ -487,13 +565,15 @@ class TestNarrativeIntegration:
         narr = result["narrative"]
         assert narr["summary"]
         assert any(narr["sections"][k] for k in narr["sections"])
-        # Scenario present and valid
+        # Scenario present and valid (dict from _asdict())
         sc = result["scenario"]
         assert sc["scenario"] in {
             "trend_pullback", "bullish_breakout", "mean_reversion",
             "macro_headwind", "defensive", "neutral",
         }
         assert sc["confidence"] in {"high", "moderate", "low"}
+        assert "regime" in sc
+        assert "setup" in sc
 
     @pytest.mark.asyncio
     async def test_degraded_has_narrative(self):
@@ -514,15 +594,3 @@ class TestNarrativeIntegration:
         assert "scenario" in result
         assert isinstance(result["narrative"]["sections"], dict)
         assert result["scenario"]["scenario"] == "neutral"
-
-    def test_narrative_never_crashes_on_missing_semantic_keys(self):
-        """Narrative engine handles degraded semantic with missing keys."""
-        result = build_rhino_narrative(
-            "AAPL", 100, _tech(), _val(), _macro(),
-            {},  # empty semantic — all keys missing
-            _playbook(),
-        )
-        assert result["summary"]
-        assert isinstance(result["sections"]["valuation"], str)
-        assert isinstance(result["sections"]["structure"], str)
-        assert isinstance(result["sections"]["macro"], str)

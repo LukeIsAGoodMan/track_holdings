@@ -551,8 +551,12 @@ export interface AnalysisSemantic {
 }
 
 export interface AnalysisScenario {
-  scenario:   string   // trend_pullback | bullish_breakout | mean_reversion | macro_headwind | defensive | neutral
-  confidence: string   // high | moderate | low
+  scenario:    string   // trend_pullback | bullish_breakout | mean_reversion | macro_headwind | defensive | neutral
+  regime:      string   // macro interpretation for narrative
+  setup:       string   // structural setup for narrative
+  bias:        string   // directional bias
+  confidence:  string   // high | moderate | low
+  constraints: string[] // trigger transparency tags
 }
 
 export interface AnalysisNarrative {

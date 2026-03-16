@@ -1,20 +1,26 @@
 """
-Narrative engine — Rhino-style analysis commentary.
+Narrative engine — pure rendering layer for Rhino analysis commentary.
 
-Converts structured analysis states into prose commentary with controlled
+Converts a fully resolved ScenarioResult into prose commentary with controlled
 lexical variation.  No LLM.  Pure rule-based, deterministic seed.
 
 Design:
   - Each narrative section has a small pool of sentence variants per state.
   - A deterministic hash of symbol+lang selects which variant to use, so the
     same symbol always gets the same phrasing within a session.
-  - Joint-reasoning rules override flat single-factor narration.
-  - Scenario context enriches the summary.
+  - Template selection is driven entirely by ScenarioResult fields
+    (setup, regime, constraints) — no joint reasoning lives here.
+  - If any rendering error occurs, a deterministic fallback string is returned.
   - EN and ZH are fully parallel.
 """
 from __future__ import annotations
 
 import hashlib
+import logging
+
+from .scenario_engine import ScenarioResult, NEUTRAL_SCENARIO
+
+logger = logging.getLogger(__name__)
 
 
 # ── Variant selector ──────────────────────────────────────────────────────
@@ -40,6 +46,35 @@ def _fp(n: float | None) -> str:
 # PUBLIC API
 # ═══════════════════════════════════════════════════════════════════════════
 
+_FALLBACK_EN = "The setup remains mixed, with no dominant edge."
+_FALLBACK_ZH = "\u5f53\u524d\u4fe1\u53f7\u504f\u4e2d\u6027\uff0c\u5c1a\u672a\u5f62\u6210\u660e\u786e\u4e3b\u5bfc\u4f18\u52bf\u3002"
+
+# ── Scenario-driven lookup maps ──────────────────────────────────────────
+
+_SETUP_STRUCT: dict[str, str] = {
+    "risk_breakdown": "joint_risk_breakdown",
+    "momentum_breakout": "joint_above_breakout",
+    "below_support": "joint_below_near_support",
+    "above_resistance": "joint_above_near_resistance",
+}
+
+_SETUP_TREND: dict[str, str] = {
+    "above_trend": "struct_above_sma200",
+    "below_trend": "struct_below_sma200",
+    "near_trend": "struct_near_sma200",
+}
+
+_REGIME_MAP: dict[str, str] = {
+    "restrictive_overvalued": "joint_restrictive_overvalued",
+    "restrictive_fair": "joint_restrictive_fair",
+    "restrictive": "macro_restrictive",
+    "supportive": "macro_supportive",
+    "mixed": "macro_mixed",
+    "stressed": "macro_stressed",
+    "unavailable": "macro_unavailable",
+}
+
+
 def build_rhino_narrative(
     symbol: str,
     price: float,
@@ -49,29 +84,45 @@ def build_rhino_narrative(
     semantic: dict,
     playbook: dict,
     lang: str = "en",
-    scenario: dict | None = None,
+    scenario: "ScenarioResult | None" = None,
 ) -> dict:
-    """Build structured Rhino narrative from analysis outputs."""
-    s = _seed(symbol, lang)
+    """Build structured Rhino narrative from analysis outputs.
+
+    Narrative is a pure rendering layer.  All interpretation is resolved
+    upstream in the ScenarioResult — this function only selects templates.
+    """
     pool = _EN if lang != "zh" else _ZH
+    sc = scenario if scenario is not None else NEUTRAL_SCENARIO
 
-    val_text = _narrate_valuation(pool, s, price, valuation, semantic)
-    struct_text = _narrate_structure(pool, s, price, technical, semantic)
-    macro_text = _narrate_macro(pool, s, macro, semantic)
-    pattern_text = _narrate_patterns(pool, s, price, technical, semantic)
-    playbook_text = _narrate_playbook(pool, s, semantic, playbook)
-    summary_text = _narrate_summary(pool, s, price, semantic, scenario)
+    try:
+        s = _seed(symbol, lang)
+        val_text = _narrate_valuation(pool, s, price, valuation, semantic)
+        struct_text = _narrate_structure(pool, s, technical, semantic, sc)
+        macro_text = _narrate_macro(pool, s, macro, sc)
+        pattern_text = _narrate_patterns(pool, s, price, technical, semantic, sc)
+        playbook_text = _narrate_playbook(pool, s, semantic, playbook)
+        summary_text = _narrate_summary(pool, s, price, semantic, sc)
 
-    return {
-        "summary": summary_text,
-        "sections": {
-            "valuation": val_text,
-            "structure": struct_text,
-            "macro": macro_text,
-            "patterns": pattern_text,
-            "playbook": playbook_text,
-        },
-    }
+        return {
+            "summary": summary_text,
+            "sections": {
+                "valuation": val_text,
+                "structure": struct_text,
+                "macro": macro_text,
+                "patterns": pattern_text,
+                "playbook": playbook_text,
+            },
+        }
+    except Exception:
+        logger.exception("Narrative rendering failed for %s", symbol)
+        fallback = _FALLBACK_EN if lang != "zh" else _FALLBACK_ZH
+        return {
+            "summary": fallback,
+            "sections": {
+                "valuation": "", "structure": "", "macro": "",
+                "patterns": "", "playbook": "",
+            },
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -452,32 +503,24 @@ def _narrate_valuation(pool: dict, s: int, price: float, valuation: dict, semant
     return " ".join(lines)
 
 
-def _narrate_structure(pool: dict, s: int, price: float, technical: dict, semantic: dict) -> str:
-    trend = semantic.get("trend_state", "unavailable")
-    location = semantic.get("price_location", "unavailable")
+def _narrate_structure(
+    pool: dict, s: int, technical: dict, semantic: dict,
+    scenario: "ScenarioResult",
+) -> str:
     alignment = semantic.get("ma_alignment", "unavailable")
-    risk_state = semantic.get("risk_state", "moderate")
 
-    # ── Joint-reasoning overrides (Task 5) ───────────────────────────
-    # Priority: risk+breakdown > above+breakout > below+support > above+resistance
-    if risk_state == "high" and location == "breakdown_risk":
-        return _pick(pool["joint_risk_breakdown"], s)
-    if trend == "above_sma200" and location == "breakout_zone":
-        return _pick(pool["joint_above_breakout"], s)
-    if trend == "below_sma200" and location == "near_support":
-        return _pick(pool["joint_below_near_support"], s)
-    if trend == "above_sma200" and location == "near_resistance":
-        return _pick(pool["joint_above_near_resistance"], s)
+    # ── Joint-reasoning templates driven by scenario.setup ───────────
+    joint_key = _SETUP_STRUCT.get(scenario.setup)
+    if joint_key:
+        return _pick(pool[joint_key], s)
 
-    # ── Single-factor trend ────────────────────────────────────────────
+    # ── Single-factor trend driven by scenario.setup ─────────────────
     parts: list[str] = []
-    trend_key = {"above_sma200": "struct_above_sma200",
-                 "below_sma200": "struct_below_sma200",
-                 "near_sma200": "struct_near_sma200"}.get(trend)
+    trend_key = _SETUP_TREND.get(scenario.setup)
     if trend_key:
         parts.append(_pick(pool[trend_key], s))
 
-    # Alignment addendum
+    # Alignment addendum (single-factor, not joint reasoning)
     if alignment == "bullish_alignment":
         parts.append(pool["struct_bullish_align"])
     elif alignment == "bearish_alignment":
@@ -494,23 +537,14 @@ def _narrate_structure(pool: dict, s: int, price: float, technical: dict, semant
     return " ".join(parts) if parts else ""
 
 
-def _narrate_macro(pool: dict, s: int, macro: dict, semantic: dict) -> str:
-    regime = semantic.get("macro_regime", "unavailable")
-    val_zone = semantic.get("valuation_zone", "unavailable")
+def _narrate_macro(
+    pool: dict, s: int, macro: dict, scenario: "ScenarioResult",
+) -> str:
+    # ── Template selection driven by scenario.regime ───────────────────
+    pool_key = _REGIME_MAP.get(scenario.regime, "macro_unavailable")
+    parts = [_pick(pool[pool_key], s)]
 
-    # ── Joint-reasoning overrides ──────────────────────────────────────
-    if regime == "restrictive_risk" and val_zone == "overvalued":
-        return _pick(pool["joint_restrictive_overvalued"], s)
-    if regime == "restrictive_risk" and val_zone == "fair_value":
-        return _pick(pool["joint_restrictive_fair"], s)
-
-    # ── Single-factor macro ────────────────────────────────────────────
-    key = {"supportive": "macro_supportive", "mixed_macro": "macro_mixed",
-           "restrictive_risk": "macro_restrictive", "stressed": "macro_stressed",
-           }.get(regime, "macro_unavailable")
-    parts = [_pick(pool[key], s)]
-
-    # Metric detail lines
+    # Metric detail lines (single-factor rendering, no joint reasoning)
     vix = macro.get("vix_level")
     if vix is not None:
         vix_regime = macro.get("vix_regime", "")
@@ -528,14 +562,17 @@ def _narrate_macro(pool: dict, s: int, macro: dict, semantic: dict) -> str:
     return " ".join(parts)
 
 
-def _narrate_patterns(pool: dict, s: int, price: float, technical: dict, semantic: dict) -> str:
+def _narrate_patterns(
+    pool: dict, s: int, price: float, technical: dict, semantic: dict,
+    scenario: "ScenarioResult",
+) -> str:
     loc = semantic.get("price_location", "unavailable")
-    val_zone = semantic.get("valuation_zone", "unavailable")
 
-    # ── Joint: undervalued + near_support (Task 5) ────────────────────
-    if val_zone == "undervalued" and loc == "near_support":
+    # ── Joint template driven by scenario.constraints ─────────────────
+    if "val_support" in scenario.constraints:
         return _pick(pool["joint_undervalued_support"], s)
 
+    # ── Single-factor location template ───────────────────────────────
     key = {"near_support": "loc_near_support", "near_resistance": "loc_near_resistance",
            "breakout_zone": "loc_breakout", "breakdown_risk": "loc_breakdown",
            "mid_range": "loc_mid_range"}.get(loc)
@@ -560,7 +597,7 @@ def _narrate_playbook(pool: dict, s: int, semantic: dict, playbook: dict) -> str
 
 def _narrate_summary(
     pool: dict, s: int, price: float, semantic: dict,
-    scenario: dict | None = None,
+    scenario: "ScenarioResult",
 ) -> str:
     val_zone = semantic.get("valuation_zone", "unavailable")
     trend = semantic.get("trend_state", "unavailable")
@@ -580,9 +617,9 @@ def _narrate_summary(
     stance_labels_en = {"constructive": "constructive", "neutral": "neutral",
                         "cautious": "cautious", "defensive": "defensive",
                         "opportunistic": "opportunistic"}
-    stance_labels_zh = {"constructive": "积极", "neutral": "中性",
-                        "cautious": "谨慎", "defensive": "防御",
-                        "opportunistic": "机会型"}
+    stance_labels_zh = {"constructive": "\u79ef\u6781", "neutral": "\u4e2d\u6027",
+                        "cautious": "\u8c28\u614e", "defensive": "\u9632\u5fa1",
+                        "opportunistic": "\u673a\u4f1a\u578b"}
     stance_label = (stance_labels_en if pool is _EN else stance_labels_zh).get(stance, stance)
 
     tmpl = _pick(pool["summary_template"], s)
@@ -592,12 +629,10 @@ def _narrate_summary(
             .replace("{macro_clause}", macro_clause)
             .replace("{stance}", stance_label))
 
-    # Append scenario context if available
-    if scenario:
-        sc_type = scenario.get("scenario", "neutral")
-        sc_key = f"scenario_{sc_type}"
-        sc_line = pool.get(sc_key)
-        if sc_line:
-            base = f"{sc_line} {base}"
+    # Prepend scenario context line
+    sc_key = f"scenario_{scenario.scenario}"
+    sc_line = pool.get(sc_key)
+    if sc_line:
+        base = f"{sc_line} {base}"
 
     return base
