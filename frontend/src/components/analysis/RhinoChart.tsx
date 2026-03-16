@@ -219,7 +219,7 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             }}
           />
 
-          {/* Support zones — very light, thin outlines */}
+          {/* Support zones — opacity capped at 0.12 */}
           {supportZones.map((z, i) => (
             <ReferenceArea
               key={`s-${i}`}
@@ -227,15 +227,15 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
               y1={z.lower}
               y2={z.upper}
               fill="#10b981"
-              fillOpacity={0.04 + z.strength * 0.08}
+              fillOpacity={Math.min(0.03 + z.strength * 0.09, 0.12)}
               stroke="#10b981"
-              strokeOpacity={0.15}
+              strokeOpacity={0.12}
               strokeDasharray="4 4"
               strokeWidth={0.5}
             />
           ))}
 
-          {/* Resistance zones — very light, thin outlines */}
+          {/* Resistance zones — opacity capped at 0.12 */}
           {resistanceZones.map((z, i) => (
             <ReferenceArea
               key={`r-${i}`}
@@ -243,9 +243,9 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
               y1={z.lower}
               y2={z.upper}
               fill="#ef4444"
-              fillOpacity={0.04 + z.strength * 0.08}
+              fillOpacity={Math.min(0.03 + z.strength * 0.09, 0.12)}
               stroke="#ef4444"
-              strokeOpacity={0.15}
+              strokeOpacity={0.12}
               strokeDasharray="4 4"
               strokeWidth={0.5}
             />
@@ -288,17 +288,6 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             isAnimationActive={false}
           />
 
-          {/* Historical close line */}
-          <Line
-            dataKey="close"
-            yAxisId="price"
-            type="monotone"
-            stroke="#475569"
-            strokeWidth={1.2}
-            dot={false}
-            isAnimationActive={false}
-          />
-
           {/* Candle bodies via custom shape */}
           <Bar
             dataKey="_candle"
@@ -315,7 +304,7 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             y={price}
             stroke="#4f46e5"
             strokeWidth={1.5}
-            strokeDasharray="6 3"
+            strokeDasharray="4 4"
             label={<CurrentPriceLabel value={`$${price.toFixed(2)}`} />}
           />
         </ComposedChart>
@@ -326,10 +315,6 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block" />
           {lang === 'zh' ? '当前价' : 'Current'}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="w-3 h-0.5 bg-slate-500 inline-block rounded" />
-          {lang === 'zh' ? '收盘价' : 'Close'}
         </span>
         <span className="flex items-center gap-1">
           <span className="w-3 h-[3px] inline-block rounded" style={{ background: '#1e40af' }} />

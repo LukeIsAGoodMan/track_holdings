@@ -83,11 +83,15 @@ export default function PriceCard({ data }: Props) {
   const price = quote?.price ?? 0
   const changePct = quote?.change_pct ?? null
 
-  // Derive trend state from semantic or pattern tags
+  // Explicit enum mapping — no string matching
+  const TREND_MAP: Record<string, string> = {
+    above_sma200: 'above_sma200',
+    below_sma200: 'below_sma200',
+    near_sma200:  'near_sma200',
+    unavailable:  'near_sma200',
+  }
   const trendState = semantic?.trend_state ?? 'unavailable'
-  const trendKey = trendState.includes('above') ? 'above_sma200'
-    : trendState.includes('below') ? 'below_sma200'
-    : 'near_sma200'
+  const trendKey = TREND_MAP[trendState] ?? 'near_sma200'
 
   const locationKey = semantic?.price_location ?? 'mid_range'
   const stanceKey = semantic?.stance ?? 'neutral'

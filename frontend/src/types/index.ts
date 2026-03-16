@@ -573,6 +573,58 @@ export interface AnalysisNarrative {
   }
 }
 
+// ── Battle Report (Phase 6.2) ───────────────────────────────────────────────
+export interface BattleReportFundamental {
+  title:          string
+  classification: string   // deep_value | discount | fair | premium
+  label:          string
+  lines:          string[]
+}
+
+export interface BattleReportLadderRung {
+  level:     number
+  dist_pct:  number
+  label:     string        // Structural Reversal | Regime Line | Major | Structural | Weak
+  strength:  number
+}
+
+export interface BattleReportLadder {
+  title:      string
+  support:    BattleReportLadderRung[]
+  resistance: BattleReportLadderRung[]
+}
+
+export interface BattleReportMacroRisk {
+  signal:   string
+  label:    string
+  severity: string   // high | medium | low
+}
+
+export interface BattleReportMacro {
+  title:        string
+  vix_regime:   string
+  rate_regime:  string
+  haircut_pct:  number
+  risks:        BattleReportMacroRisk[]
+}
+
+export interface BattleReportPlaybook {
+  title:      string
+  action_tag: string
+  bias_tag:   string
+  rationale:  string[]
+  upside:     { scenario: string; target: number | null; target_label: string }
+  downside:   { scenario: string; stop: number | null; stop_label: string }
+  risk_rule:  string
+}
+
+export interface BattleReport {
+  fundamental: BattleReportFundamental
+  ladder:      BattleReportLadder
+  macro:       BattleReportMacro
+  playbook:    BattleReportPlaybook
+}
+
 export interface AnalysisResult {
   symbol:       string
   as_of:        string
@@ -594,7 +646,8 @@ export interface AnalysisResult {
   playbook:     AnalysisPlaybook
   semantic:     AnalysisSemantic
   scenario:     AnalysisScenario
-  narrative:    AnalysisNarrative
-  text:         { lang: string; sections: AnalysisTextSections }
-  chart:        AnalysisChart
+  narrative:      AnalysisNarrative
+  battle_report:  BattleReport
+  text:           { lang: string; sections: AnalysisTextSections }
+  chart:          AnalysisChart
 }

@@ -14,6 +14,7 @@ import PriceCard             from '@/components/analysis/PriceCard'
 import ValuationCard         from '@/components/analysis/ValuationCard'
 import MacroCard             from '@/components/analysis/MacroCard'
 import TechnicalDetailsPanel from '@/components/analysis/TechnicalDetailsPanel'
+import RhinoBattleReport     from '@/components/analysis/RhinoBattleReport'
 import RhinoChart            from '@/components/analysis/RhinoChart'
 import NarrativeSection      from '@/components/analysis/NarrativeSection'
 import AnalysisSkeleton      from '@/components/analysis/AnalysisSkeleton'
@@ -85,6 +86,9 @@ export default function AnalysisPage() {
             <ValuationCard valuation={result.valuation} price={price} />
             <MacroCard macro={result.macro} />
           </div>
+
+          {/* Battle Report — 4-section structured analysis */}
+          <RhinoBattleReport report={result.battle_report} />
 
           {/* Technical details — collapsible, below hero */}
           <TechnicalDetailsPanel technical={result.technical} price={price} />

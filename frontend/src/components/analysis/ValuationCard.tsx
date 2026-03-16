@@ -64,7 +64,7 @@ export default function ValuationCard({ valuation, price }: Props) {
       {band && (
         <div className="mb-4">
           <div className="text-[11px] text-slate-400 font-medium mb-2">
-            {t('analysis_fair_value_band')}
+            {lang === 'zh' ? '宏观调整估值区间' : 'Macro-adjusted valuation band'}
           </div>
           <FairValueBar band={band} price={price} />
         </div>

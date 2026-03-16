@@ -25,6 +25,8 @@ from .semantic_engine import build_semantic_state
 from .scenario_engine import build_scenario_state, NEUTRAL_SCENARIO
 from .narrative_engine import build_rhino_narrative
 from .briefing_engine import build_rhino_briefing
+from .fundamental_narrative_engine import build_fundamental_narrative
+from .rhino_report_engine import build_battle_report
 from .report import build_report
 
 logger = logging.getLogger(__name__)
@@ -76,6 +78,10 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     briefing = build_rhino_briefing(
         symbol, price, technical, valuation, macro,
         scenario=scenario, playbook=playbook,
+    )
+    fundamental_narrative = build_fundamental_narrative(valuation, price)
+    battle_report = build_battle_report(
+        price, technical, valuation, macro, playbook, fundamental_narrative,
     )
 
     # Data quality + confidence
@@ -161,6 +167,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "scenario": scenario._asdict(),
         "narrative": narrative,
         "briefing": briefing,
+        "battle_report": battle_report,
         "text": text,
         "chart": chart,
     }
@@ -217,6 +224,10 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
             "patterns": "", "playbook": ""}},
         "briefing": build_rhino_briefing(
             symbol, 0, empty_tech, empty_val, macro,
+        ),
+        "battle_report": build_battle_report(
+            0, empty_tech, empty_val, macro,
+            playbook, build_fundamental_narrative(empty_val, 0),
         ),
         "text": text,
         "chart": {"candles": [], "sma30": [], "sma100": [], "sma200": [],
