@@ -1,11 +1,11 @@
 /**
- * Rhino Battle Report — 4-section structured analysis summary.
+ * Rhino Battle Report — 4-section structured analysis summary with narrative.
  *
  * Sections:
- *   1. Fundamental & valuation anchor (classification + key metrics)
- *   2. Support/resistance ladder (semantic-labeled price levels)
- *   3. Macro radar (risk flags)
- *   4. Tactical playbook (dual-track: upside + downside)
+ *   1. Fundamental & valuation anchor (narrative + classification + key metrics)
+ *   2. Support/resistance ladder (narrative + semantic-labeled price levels)
+ *   3. Macro radar (narrative + risk flags)
+ *   4. Tactical playbook (narrative + dual-track: upside + downside)
  */
 import type { BattleReport } from '@/types'
 import { useLanguage } from '@/context/LanguageContext'
@@ -66,11 +66,22 @@ const actionLabels: Record<string, { en: string; zh: string }> = {
   stop_loss:     { en: 'STOP LOSS',     zh: '止损' },
 }
 
+/* ── Narrative paragraph component ─────────────────────────────────────── */
+
+function NarrativeParagraph({ text }: { text?: string }) {
+  if (!text) return null
+  return (
+    <p className="text-xs text-slate-500 leading-relaxed mb-2 italic">
+      {text}
+    </p>
+  )
+}
+
 /* ── Main component ─────────────────────────────────────────────────────── */
 
 export default function RhinoBattleReport({ report }: Props) {
   const { lang } = useLanguage()
-  const { fundamental, ladder, macro, playbook } = report
+  const { fundamental, ladder, macro, playbook, narrative } = report
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -93,6 +104,7 @@ export default function RhinoBattleReport({ report }: Props) {
               {classLabels[fundamental.classification]?.[lang] ?? fundamental.label}
             </span>
           </div>
+          <NarrativeParagraph text={narrative?.fundamental} />
           {fundamental.lines.length > 0 ? (
             <ul className="space-y-1">
               {fundamental.lines.map((line, i) => (
@@ -111,6 +123,7 @@ export default function RhinoBattleReport({ report }: Props) {
           <div className="text-[11px] text-slate-400 font-medium uppercase mb-2">
             {lang === 'zh' ? '支撑/阻力阶梯' : 'Support / Resistance Ladder'}
           </div>
+          <NarrativeParagraph text={narrative?.battlefield} />
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="text-[10px] text-emerald-600 font-semibold uppercase mb-1">
@@ -168,6 +181,7 @@ export default function RhinoBattleReport({ report }: Props) {
           <div className="text-[11px] text-slate-400 font-medium uppercase mb-2">
             {lang === 'zh' ? '宏观雷达' : 'Macro Radar'}
           </div>
+          <NarrativeParagraph text={narrative?.macro} />
           {macro.risks.length > 0 ? (
             <div className="space-y-1.5">
               {macro.risks.map((r, i) => (
@@ -202,6 +216,7 @@ export default function RhinoBattleReport({ report }: Props) {
               {actionLabels[playbook.action_tag]?.[lang] ?? playbook.action_tag}
             </span>
           </div>
+          <NarrativeParagraph text={narrative?.playbook} />
 
           {/* Dual-track: always show both */}
           <div className="grid grid-cols-2 gap-2 mb-2">

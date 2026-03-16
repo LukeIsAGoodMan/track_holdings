@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from .fundamental_narrative_engine import FundamentalNarrative
 from .playbook_engine import determine_playbook_framing
+from .battle_narrative_engine import build_battle_narrative
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -230,9 +231,19 @@ def build_battle_report(
 
     All inputs are upstream engine outputs — no recomputation.
     """
+    ladder_section = _build_ladder_section(technical, price)
+    macro_section = _build_macro_section(macro, technical)
+    playbook_section = _build_playbook_section(playbook, narrative, technical, price)
+
+    # Build narrative after all structured sections
+    battle_narrative = build_battle_narrative(
+        price, narrative, ladder_section, macro_section, playbook_section,
+    )
+
     return {
         "fundamental": _build_fundamental_section(narrative, price),
-        "ladder": _build_ladder_section(technical, price),
-        "macro": _build_macro_section(macro, technical),
-        "playbook": _build_playbook_section(playbook, narrative, technical, price),
+        "ladder": ladder_section,
+        "macro": macro_section,
+        "playbook": playbook_section,
+        "narrative": battle_narrative._asdict(),
     }

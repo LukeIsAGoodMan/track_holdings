@@ -618,11 +618,19 @@ export interface BattleReportPlaybook {
   risk_rule:  string
 }
 
+export interface BattleNarrative {
+  fundamental: string
+  battlefield: string
+  macro:       string
+  playbook:    string
+}
+
 export interface BattleReport {
   fundamental: BattleReportFundamental
   ladder:      BattleReportLadder
   macro:       BattleReportMacro
   playbook:    BattleReportPlaybook
+  narrative?:  BattleNarrative
 }
 
 export interface AnalysisResult {
