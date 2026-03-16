@@ -1,5 +1,13 @@
 """
 Playbook engine — rule-based bias and action derivation from signals.
+
+Aligned with analysis.py decision logic:
+  - Valuation status drives conviction (±2 for deep, ±1 for moderate)
+  - SMA200 is the bull/bear dividing line
+  - Volume confirmation required for reversal_at_support (analysis.py: "放量止跌")
+  - Dead cat bounce = bearish (analysis.py: "缩量反弹")
+  - VIX crisis = hard risk-off override
+  - Single stock ≤15% portfolio (enforced at report layer)
 """
 from __future__ import annotations
 
@@ -25,14 +33,28 @@ def build_playbook(tech: dict, val: dict, vix_regime: str) -> dict:
         bias_score += 1; rationale.append("Trading above SMA200")
     if "below_sma200" in tags:
         bias_score -= 1; rationale.append("Trading below SMA200")
+
+    # Reversal at support — analysis.py requires volume confirmation
+    # "止跌形态：在关键支撑附近放量，说明有大资金接盘"
     if "reversal_at_support" in tags:
-        bias_score += 1; rationale.append("Reversal at support zone")
+        if "high_volume" in tags:
+            bias_score += 1; rationale.append("Reversal at support with volume confirmation")
+        else:
+            rationale.append("Reversal at support (awaiting volume confirmation)")
+
     if "break_below_support" in tags:
         bias_score -= 1; rationale.append("Broke below support")
+
+    # Dead cat bounce — analysis.py: "缩量反弹，空头回补，买盘缺失"
     if "dead_cat_bounce" in tags:
-        bias_score -= 1; rationale.append("Dead cat bounce pattern")
-    if "high_volume" in tags:
+        bias_score -= 1; rationale.append("Dead cat bounce — low volume recovery")
+
+    if "high_volume" in tags and "reversal_at_support" not in tags:
         rationale.append("High relative volume")
+
+    # Low volume — analysis.py: "严重缩量，买盘缺失"
+    if "low_volume" in tags:
+        rationale.append("Low volume — buyer conviction weak")
 
     # Macro drag
     if vix_regime == "crisis":
@@ -47,10 +69,12 @@ def build_playbook(tech: dict, val: dict, vix_regime: str) -> dict:
 
 
 def _derive_action(bias: str, tags: list[str], vix_regime: str) -> str:
-    if bias == "bullish" and "reversal_at_support" in tags:
+    # analysis.py: reversal at support + volume = left-side defense buy
+    if bias == "bullish" and "reversal_at_support" in tags and "high_volume" in tags:
         return "strong_buy"
     if bias == "bullish":
         return "defensive_buy"
+    # analysis.py: broke support = "挨打立正，严格止损"
     if bias == "bearish" and "break_below_support" in tags:
         return "stop_loss"
     if bias == "bearish":

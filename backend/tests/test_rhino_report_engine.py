@@ -6,7 +6,7 @@ Validates:
   2. Battle report has all 4 sections
   3. Dual-track playbook (upside + downside always present)
   4. Ladder semantic precedence labels
-  5. Macro risk detection rules (VIX>25, yield>4.2, volume_ratio<0.9)
+  5. Macro risk detection rules (VIX>=22, yield>=4.25, volume_ratio<0.8) — analysis.py aligned
   6. Unavailable/degraded inputs produce safe defaults
 """
 from __future__ import annotations
@@ -31,6 +31,7 @@ def _val(
     raw_low=175.0, raw_mid=218.75, raw_high=262.5,
     adj_low=170.0, adj_mid=212.5, adj_high=255.0,
     status="fair_value", available=True,
+    valuation_style="growth",
 ):
     return {
         "available": available,
@@ -40,6 +41,7 @@ def _val(
         "raw_fair_value": {"low": raw_low, "mid": raw_mid, "high": raw_high},
         "adjusted_fair_value": {"low": adj_low, "mid": adj_mid, "high": adj_high},
         "status": status,
+        "valuation_style": valuation_style,
     }
 
 
@@ -274,17 +276,42 @@ class TestMacroRisks:
         assert "high_yield" in signals
 
     def test_weak_volume_detected(self):
+        """Volume ratio < 0.8 triggers weak volume (analysis.py: <0.8x严重缩量)."""
         narrative = build_fundamental_narrative(_val(), 200)
         tech = _tech(volume_ratio=0.7)
         report = build_battle_report(200, tech, _val(), _macro(), _playbook(), narrative)
         signals = [r["signal"] for r in report["macro"]["risks"]]
         assert "weak_volume" in signals
 
+    def test_vix_boundary_22(self):
+        """VIX exactly 22 should trigger (analysis.py: >= 22)."""
+        narrative = build_fundamental_narrative(_val(), 200)
+        macro = _macro(vix=22)
+        report = build_battle_report(200, _tech(), _val(), macro, _playbook(), narrative)
+        signals = [r["signal"] for r in report["macro"]["risks"]]
+        assert "high_vix" in signals
+
+    def test_yield_boundary_425(self):
+        """Treasury exactly 4.25 should trigger (analysis.py: >= 4.25)."""
+        narrative = build_fundamental_narrative(_val(), 200)
+        macro = _macro(us10y=4.25)
+        report = build_battle_report(200, _tech(), _val(), macro, _playbook(), narrative)
+        signals = [r["signal"] for r in report["macro"]["risks"]]
+        assert "high_yield" in signals
+
     def test_no_risks_when_calm(self):
         narrative = build_fundamental_narrative(_val(), 200)
         macro = _macro(vix=15, us10y=3.5)
         report = build_battle_report(200, _tech(), _val(), macro, _playbook(), narrative)
         assert len(report["macro"]["risks"]) == 0
+
+    def test_vix_21_no_trigger(self):
+        """VIX at 21 should NOT trigger (below 22 threshold)."""
+        narrative = build_fundamental_narrative(_val(), 200)
+        macro = _macro(vix=21)
+        report = build_battle_report(200, _tech(), _val(), macro, _playbook(), narrative)
+        signals = [r["signal"] for r in report["macro"]["risks"]]
+        assert "high_vix" not in signals
 
     def test_severity_levels(self):
         narrative = build_fundamental_narrative(_val(), 200)

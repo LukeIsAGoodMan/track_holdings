@@ -65,10 +65,12 @@ def _detect_patterns(
     if sma200 is not None:
         tags.append("above_sma200" if price > sma200 else "below_sma200")
 
+    # Volume thresholds aligned with analysis.py:
+    # >1.5x = extreme volume, <0.8x = severe low volume
     if volume_ratio is not None:
         if volume_ratio >= 1.5:
             tags.append("high_volume")
-        elif volume_ratio <= 0.5:
+        elif volume_ratio < 0.8:
             tags.append("low_volume")
 
     if len(bars) < 10 or not support_zones:
@@ -81,7 +83,10 @@ def _detect_patterns(
         tags.append("break_below_support")
         prev_bars = bars[-5:]
         recent_low = min(b["low"] for b in prev_bars)
-        if price > recent_low and price < nearest["center"]:
+        # analysis.py: dead cat bounce requires no volume confirmation
+        # "缩量反弹：反弹没有大幅放量，说明空头回补停下来了"
+        is_low_vol = volume_ratio is not None and volume_ratio < 1.5
+        if price > recent_low and price < nearest["center"] and is_low_vol:
             tags.append("dead_cat_bounce")
 
     if -0.005 <= dist <= 0.015 and len(bars) >= 2:

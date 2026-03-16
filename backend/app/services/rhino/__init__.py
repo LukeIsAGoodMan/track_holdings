@@ -59,7 +59,8 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     # Run engines
     macro = build_macro(raw_macro)
     technical = build_technical(bars, price)
-    valuation = build_valuation(estimates, price, macro["recommended_haircut_pct"])
+    valuation = build_valuation(estimates, price, macro["recommended_haircut_pct"],
+                                symbol=symbol)
 
     # Pipeline verification — proves estimates reach the valuation engine
     logger.info(
@@ -189,6 +190,7 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "eps_growth_pct": None, "pe_band_low": None, "pe_band_high": None,
         "raw_fair_value": None,
         "adjusted_fair_value": None, "status": "unavailable",
+        "valuation_style": "unknown", "_pe_audit": None,
     }
     playbook = {"bias_tag": "neutral", "action_tag": "hold_watch",
                 "rationale": ["No pricing data available"]}

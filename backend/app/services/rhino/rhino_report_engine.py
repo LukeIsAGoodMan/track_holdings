@@ -70,6 +70,7 @@ def _build_fundamental_section(
         "title": "Fundamental & Valuation Anchor",
         "classification": narrative.classification,
         "label": narrative.label,
+        "valuation_style": narrative.valuation_style,
         "lines": lines,
     }
 
@@ -113,17 +114,17 @@ def _build_macro_section(
     macro: dict,
     technical: dict,
 ) -> dict:
-    """Section 3: Macro radar with specific risk rules.
+    """Section 3: Macro radar with specific risk rules (analysis.py aligned).
 
     Rules:
-      - VIX > 25 → high risk flag
-      - treasury_10y > 4.2 → valuation pressure flag
-      - volume_ratio < 0.9 → weak rally flag
+      - VIX >= 22 → high risk flag (analysis.py: "VIX高达{vix}，大波动系统性风险未解除")
+      - treasury_10y >= 4.25 → valuation pressure flag (analysis.py: "10年期美债收益率突破")
+      - volume_ratio < 0.8 → weak rally flag (analysis.py: "<0.8x严重缩量")
     """
     risks: list[dict] = []
 
     vix = macro.get("vix_level")
-    if vix is not None and vix > 25:
+    if vix is not None and vix >= 22:
         risks.append({
             "signal": "high_vix",
             "label": f"VIX at {vix:.1f} — elevated volatility risk",
@@ -131,7 +132,7 @@ def _build_macro_section(
         })
 
     treasury = macro.get("treasury_10y")
-    if treasury is not None and treasury > 4.2:
+    if treasury is not None and treasury >= 4.25:
         risks.append({
             "signal": "high_yield",
             "label": f"10Y yield at {treasury:.2f}% — valuation pressure",
@@ -139,7 +140,7 @@ def _build_macro_section(
         })
 
     vol_ratio = technical.get("volume_ratio")
-    if vol_ratio is not None and vol_ratio < 0.9:
+    if vol_ratio is not None and vol_ratio < 0.8:
         risks.append({
             "signal": "weak_volume",
             "label": f"Volume ratio {vol_ratio:.1f}x — weak conviction rally",
@@ -177,12 +178,20 @@ def _build_playbook_section(
     elif narrative.raw_high is not None:
         upside_target = narrative.raw_high
 
+    # Defensive/cyclical/financial styles use recovery framing for upside
+    _RECOVERY_STYLES = {"defensive", "cyclical", "financial"}
+    upside_framing = (
+        "recovery" if narrative.valuation_style in _RECOVERY_STYLES
+        else "expansion"
+    )
+
     upside = {
         "scenario": "upside",
         "target": upside_target,
         "target_label": (
             f"${upside_target:.2f}" if upside_target else "—"
         ),
+        "framing": upside_framing,
     }
 
     # Downside script

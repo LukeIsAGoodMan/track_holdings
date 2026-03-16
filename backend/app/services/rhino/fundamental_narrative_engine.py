@@ -23,6 +23,7 @@ class FundamentalNarrative(NamedTuple):
     pe_band_low: float | None
     pe_band_high: float | None
     growth_pct: float | None
+    valuation_style: str         # growth | quality_mega_cap | cyclical | financial | defensive | unknown
 
 
 _LABELS = {
@@ -58,6 +59,7 @@ def build_fundamental_narrative(
             pe_band_low=None,
             pe_band_high=None,
             growth_pct=None,
+            valuation_style=valuation.get("valuation_style", "unknown"),
         )
 
     raw_low = raw["low"]
@@ -86,6 +88,7 @@ def build_fundamental_narrative(
         pe_band_low=valuation.get("pe_band_low"),
         pe_band_high=valuation.get("pe_band_high"),
         growth_pct=valuation.get("eps_growth_pct"),
+        valuation_style=valuation.get("valuation_style", "unknown"),
     )
 
 
