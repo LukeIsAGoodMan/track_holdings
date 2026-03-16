@@ -492,10 +492,16 @@ export interface AnalysisMacro {
   alerts:                  string[]
 }
 
+export interface PlaybookRationale {
+  code: string
+  en:   string
+  zh:   string
+}
+
 export interface AnalysisPlaybook {
   bias_tag:    string   // bullish | neutral | bearish
   action_tag:  string   // strong_buy | defensive_buy | hold_watch | reduce | stop_loss
-  rationale:   string[]
+  rationale:   PlaybookRationale[]
 }
 
 export interface AnalysisConfidence {
@@ -617,10 +623,27 @@ export interface BattleReportPlaybook {
   title:      string
   action_tag: string
   bias_tag:   string
-  rationale:  string[]
-  upside:     { scenario: string; target: number | null; target_label: string; framing: 'expansion' | 'recovery' }
-  downside:   { scenario: string; stop: number | null; stop_label: string }
-  risk_rule:  string
+  rationale:  PlaybookRationale[]
+  upside:     {
+    scenario: string
+    trigger: number | null
+    trigger_label: string
+    target: number | null
+    target_label: string
+    framing: 'expansion' | 'recovery'
+  }
+  downside:   {
+    scenario: string
+    trigger: number | null
+    trigger_label: string
+    target: number | null
+    target_label: string
+    stop: number | null
+    stop_label: string
+  }
+  reversal_confirmation_line: number | null
+  risk_rule:     string
+  risk_rule_zh:  string
 }
 
 export interface BattleNarrative {

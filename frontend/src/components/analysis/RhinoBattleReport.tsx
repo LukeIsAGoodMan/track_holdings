@@ -219,27 +219,39 @@ export default function RhinoBattleReport({ report }: Props) {
           </div>
           <NarrativeParagraph text={narrative?.playbook} />
 
-          {/* Dual-track: always show both */}
+          {/* Scenario tree: trigger → target */}
           <div className="grid grid-cols-2 gap-2 mb-2">
             <div className="p-2 rounded-lg bg-emerald-50/60 border border-emerald-100">
               <div className="text-[10px] text-emerald-600 font-semibold uppercase mb-0.5">
                 {lang === 'zh' ? '上行' : 'Upside'}
               </div>
+              {playbook.upside.trigger != null && (
+                <div className="text-[10px] text-emerald-500 tabular-nums">
+                  {lang === 'zh' ? '触发' : 'Trigger'}: {playbook.upside.trigger_label}
+                </div>
+              )}
               <div className="text-xs text-emerald-700 font-medium tabular-nums">
-                {playbook.upside.target_label}
+                {lang === 'zh' ? '目标' : 'Target'}: {playbook.upside.target_label}
               </div>
             </div>
             <div className="p-2 rounded-lg bg-rose-50/60 border border-rose-100">
               <div className="text-[10px] text-rose-600 font-semibold uppercase mb-0.5">
                 {lang === 'zh' ? '下行' : 'Downside'}
               </div>
+              {playbook.downside.trigger != null && (
+                <div className="text-[10px] text-rose-500 tabular-nums">
+                  {lang === 'zh' ? '触发' : 'Trigger'}: {playbook.downside.trigger_label}
+                </div>
+              )}
               <div className="text-xs text-rose-700 font-medium tabular-nums">
-                {playbook.downside.stop_label}
+                {lang === 'zh' ? '目标' : 'Target'}: {playbook.downside.target_label}
               </div>
             </div>
           </div>
 
-          <div className="text-[10px] text-slate-400 italic">{playbook.risk_rule}</div>
+          <div className="text-[10px] text-slate-400 italic">
+            {lang === 'zh' ? playbook.risk_rule_zh : playbook.risk_rule}
+          </div>
         </div>
       </div>
     </div>

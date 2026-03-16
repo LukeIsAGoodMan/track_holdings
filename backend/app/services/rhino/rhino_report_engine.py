@@ -113,6 +113,7 @@ def _build_ladder_section(
         "title": "Support / Resistance Ladder",
         "support": support_rungs,
         "resistance": resistance_rungs,
+        "pattern_tags": technical.get("pattern_tags", []),
     }
 
 
@@ -176,43 +177,62 @@ def _build_playbook_section(
     technical: dict,
     price: float,
 ) -> dict:
-    """Section 4: Tactical playbook — always dual-track (upside + downside).
+    """Section 4: Tactical playbook — scenario tree with trigger/target distinction.
 
     Risk rule: single stock should be ≤15% of portfolio.
     """
     support_zones = technical.get("support_zones", [])
     resistance_zones = technical.get("resistance_zones", [])
-
-    # Upside script
-    upside_target = None
-    if resistance_zones:
-        upside_target = resistance_zones[0]["center"]
-    elif narrative.raw_high is not None:
-        upside_target = narrative.raw_high
+    pattern_tags = technical.get("pattern_tags", [])
+    is_bearish = "below_sma200" in pattern_tags
 
     upside_framing = determine_playbook_framing(narrative.valuation_style)
 
+    # Upside scenario tree
+    upside_trigger = None
+    upside_target = None
+    if resistance_zones:
+        upside_trigger = resistance_zones[0]["center"]
+        if len(resistance_zones) >= 2:
+            upside_target = resistance_zones[1]["center"]
+        elif narrative.raw_high is not None:
+            upside_target = narrative.raw_high
+    elif narrative.raw_high is not None:
+        upside_target = narrative.raw_high
+
     upside = {
         "scenario": "upside",
+        "trigger": upside_trigger,
+        "trigger_label": f"${upside_trigger:.2f}" if upside_trigger else "\u2014",
         "target": upside_target,
-        "target_label": (
-            f"${upside_target:.2f}" if upside_target else "—"
-        ),
+        "target_label": f"${upside_target:.2f}" if upside_target else "\u2014",
         "framing": upside_framing,
     }
 
-    # Downside script
-    downside_stop = None
+    # Downside scenario tree
+    downside_trigger = None
+    downside_target = None
     if support_zones:
-        downside_stop = support_zones[0]["center"]
+        downside_trigger = support_zones[0]["center"]
+        if len(support_zones) >= 2:
+            downside_target = support_zones[1]["center"]
+    # Backward compat alias
+    downside_stop = downside_trigger
 
     downside = {
         "scenario": "downside",
+        "trigger": downside_trigger,
+        "trigger_label": f"${downside_trigger:.2f}" if downside_trigger else "\u2014",
+        "target": downside_target,
+        "target_label": f"${downside_target:.2f}" if downside_target else "\u2014",
         "stop": downside_stop,
-        "stop_label": (
-            f"${downside_stop:.2f}" if downside_stop else "—"
-        ),
+        "stop_label": f"${downside_stop:.2f}" if downside_stop else "\u2014",
     }
+
+    # Reversal confirmation line — overhead recovery line for bearish setups
+    reversal_line = None
+    if is_bearish and resistance_zones:
+        reversal_line = resistance_zones[0]["center"]
 
     return {
         "title": "Tactical Playbook",
@@ -221,7 +241,9 @@ def _build_playbook_section(
         "rationale": playbook.get("rationale", []),
         "upside": upside,
         "downside": downside,
-        "risk_rule": "Single stock ≤15% of portfolio",
+        "reversal_confirmation_line": reversal_line,
+        "risk_rule": "Single stock \u226415% of portfolio",
+        "risk_rule_zh": "\u5355\u4e00\u4e2a\u80a1\u4e0d\u8d85\u8fc7\u7ec4\u5408\u768415%",
     }
 
 

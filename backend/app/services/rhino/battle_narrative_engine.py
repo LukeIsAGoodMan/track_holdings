@@ -55,6 +55,8 @@ _STYLE_LABELS_ZH = {
     "cyclical":         "cyclical_zh",
     "financial":        "financial_zh",
     "defensive":        "defensive_zh",
+    "hyper_growth":     "hyper_growth_zh",
+    "pre_profit":       "pre_profit_zh",
     "unknown":          "unknown_zh",
 }
 
@@ -64,6 +66,8 @@ _STYLE_EXPLANATION_ZH: dict[str, str] = {
     "cyclical":         "cyclical_expl_zh",
     "financial":        "financial_expl_zh",
     "defensive":        "defensive_expl_zh",
+    "hyper_growth":     "hyper_growth_expl_zh",
+    "pre_profit":       "pre_profit_expl_zh",
 }
 
 # Populated below after Chinese string definitions
@@ -163,6 +167,8 @@ _ZH = {
     "cyclical_zh":        "\u5468\u671f\u578b",
     "financial_zh":       "\u91d1\u878d\u578b",
     "defensive_zh":       "\u9632\u5fa1\u578b",
+    "hyper_growth_zh":    "\u9ad8\u901f\u6210\u957f\u578b",
+    "pre_profit_zh":      "\u672a\u76c8\u5229\u578b",
     "unknown_zh":         "\u901a\u7528\u578b",
 
     # Style explanations — signature voice
@@ -171,6 +177,8 @@ _ZH = {
     "cyclical_expl_zh":   "\u5468\u671f\u80a1\u4f30\u503c\u8d70\u5747\u503c\u56de\u5f52\u903b\u8f91\uff0c\u4e0d\u662f\u6301\u7eed\u6269\u5f20\u3002",
     "financial_expl_zh":  "\u91d1\u878d\u80a1\u7684\u4f30\u503c\u53d7\u5229\u5dee\u548c\u4fe1\u8d37\u5468\u671f\u9a71\u52a8\uff0cPE\u533a\u95f4\u76f8\u5bf9\u7a33\u5b9a\u3002",
     "defensive_expl_zh":  "\u9632\u5fa1\u578b\u8d44\u4ea7\u8d70\u4fee\u590d\u8def\u5f84\uff0c\u4e0d\u662f\u6269\u5f20\u9a71\u52a8\u3002",
+    "hyper_growth_expl_zh": "\u9ad8\u901f\u6210\u957f\u80a1\u7684PE\u4e0d\u80fd\u7528\u6210\u719f\u516c\u53f8\u6807\u51c6\u538b\u7f29\uff0c\u4f30\u503c\u66f4\u591a\u53d6\u51b3\u4e8e\u589e\u901f\u7684\u6301\u7eed\u6027\u3002",
+    "pre_profit_expl_zh": "\u672a\u76c8\u5229\u516c\u53f8\u65e0\u6cd5\u4f7f\u7528PE\u4f30\u503c\u6846\u67b6\uff0c\u5f53\u524d\u5173\u6ce8\u8425\u6536\u589e\u957f\u548c\u73b0\u91d1\u6d41\u8d8b\u52bf\u3002",
 
     # VIX
     "vix_normal":         "\u7a33\u5b9a",
@@ -320,19 +328,31 @@ def _build_battlefield_narrative(
         else:
             parts[-1] += "\u3002"
 
-    # Structural reversal line — key inflection
-    all_levels = support + resistance
-    reversal = [z for z in all_levels if z.get("label") == "Structural Reversal"]
-    if reversal:
-        parts.append(
-            f"${_f(reversal[0]['level'])} \u662f\u8d8b\u52bf\u53cd\u8f6c\u7684\u5173\u952e\u7ebf\u3002"
-        )
+    # Reversal confirmation line — trend-context aware
+    pattern_tags = ladder.get("pattern_tags", [])
+    is_bearish = "below_sma200" in pattern_tags
 
-    # Conclusion — restrained
-    parts.append(
-        "\u53cd\u8f6c\u7ebf\u786e\u8ba4\u524d\uff0c"
-        "\u53cd\u5f39\u5747\u89c6\u4e3a\u7ed3\u6784\u4fee\u590d\u3002"
-    )
+    if is_bearish and resistance:
+        # In bearish setup: the relevant reversal confirmation is overhead,
+        # not a deeper lower support level
+        overhead = resistance[0]
+        parts.append(
+            f"\u5728\u91cd\u65b0\u7ad9\u4e0a ${_f(overhead['level'])} \u4e4b\u524d\uff0c"
+            f"\u53cd\u5f39\u5747\u89c6\u4e3a\u7ed3\u6784\u4fee\u590d\u3002"
+        )
+    else:
+        # Normal/bullish: use structural reversal from support if exists
+        all_levels = support + resistance
+        reversal = [z for z in all_levels if z.get("label") == "Structural Reversal"]
+        if reversal:
+            parts.append(
+                f"${_f(reversal[0]['level'])} \u662f\u8d8b\u52bf\u53cd\u8f6c\u7684\u5173\u952e\u7ebf\u3002"
+            )
+        # Conclusion — restrained
+        parts.append(
+            "\u53cd\u8f6c\u7ebf\u786e\u8ba4\u524d\uff0c"
+            "\u53cd\u5f39\u5747\u89c6\u4e3a\u7ed3\u6784\u4fee\u590d\u3002"
+        )
 
     return "".join(parts)
 
@@ -422,31 +442,59 @@ def _build_playbook_narrative(
     framing = upside.get("framing", "expansion")
     framing_label = _ZH.get(f"framing_{framing}", framing)
 
-    # Upside — conditional via safe_phrase
+    # Reversal confirmation line
+    reversal_line = playbook.get("reversal_confirmation_line")
+
+    # Upside — trigger/target distinction
+    trigger = upside.get("trigger")
     target = upside.get("target")
-    if target is not None:
+    if trigger is not None and target is not None:
         parts.append(
-            f"\u7a81\u7834\u786e\u8ba4\u540e\uff0c{framing_label}\u6307\u5411 ${_f(target)}\u3002"
+            f"\u7a81\u7834 ${_f(trigger)} \u540e\uff0c{framing_label}\u770b\u5411 ${_f(target)}\u3002"
         )
+    elif trigger is not None:
+        if reversal_line is not None:
+            # Bearish: trigger is overhead resistance, framing is repair
+            parts.append(
+                f"\u53cd\u5f39\u4fee\u590d\u76ee\u6807 ${_f(trigger)}\uff0c"
+                f"\u786e\u8ba4\u53cd\u8f6c\u9700\u7ad9\u7a33\u8be5\u4f4d\u3002"
+            )
+        else:
+            parts.append(
+                f"\u7a81\u7834 ${_f(trigger)} \u540e\uff0c{framing_label}\u53ef\u80fd\u6253\u5f00\u3002"
+            )
     else:
         parts.append("\u5f53\u524d\u7ed3\u6784\u672a\u663e\u793a\u660e\u786e\u4e0a\u884c\u76ee\u6807\u3002")
 
-    # Downside — conditional
-    stop = downside.get("stop")
-    if stop is not None:
-        parts.append(f"\u7ed3\u6784\u5931\u5b88\u5219\u98ce\u9669\u6269\u5927\u81f3 ${_f(stop)}\u3002")
+    # Downside — trigger/target distinction
+    down_trigger = downside.get("trigger")
+    down_target = downside.get("target")
+    if down_trigger is not None and down_target is not None:
+        parts.append(
+            f"\u8dcc\u7834 ${_f(down_trigger)} \u5219\u98ce\u9669\u6269\u5927\u81f3 ${_f(down_target)}\u3002"
+        )
+    elif down_trigger is not None:
+        parts.append(f"${_f(down_trigger)} \u4e3a\u5173\u952e\u652f\u6491\uff0c\u5931\u5b88\u9700\u4e25\u683c\u98ce\u63a7\u3002")
     else:
         parts.append("\u65e0\u660e\u786e\u652f\u6491\u4f4d\u4f5c\u4e3a\u6b62\u635f\u53c2\u8003\u3002")
 
-    # Rationale — key factors
+    # Rationale — key factors (bilingual: use zh field if dict, else string)
     rationale = playbook.get("rationale", [])
     if rationale:
-        joined = "\uff1b".join(rationale)
+        zh_items = []
+        for item in rationale:
+            if isinstance(item, dict):
+                zh_items.append(item.get("zh", item.get("en", "")))
+            else:
+                zh_items.append(str(item))
+        joined = "\uff1b".join(zh_items)
         parts.append(f"\u5173\u952e\u56e0\u7d20\uff1a{joined}\u3002")
 
-    # Risk rule — consumed directly from structured output
-    if risk_rule:
-        parts.append(f"\u4ed3\u4f4d\u7eaa\u5f8b\uff1a{risk_rule}\u3002")
+    # Risk rule — prefer zh version, fall back to en
+    risk_rule_zh = playbook.get("risk_rule_zh", "")
+    display_rule = risk_rule_zh or risk_rule
+    if display_rule:
+        parts.append(f"\u4ed3\u4f4d\u7eaa\u5f8b\uff1a{display_rule}\u3002")
 
     return "".join(parts)
 

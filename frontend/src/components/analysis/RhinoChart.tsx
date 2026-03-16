@@ -251,6 +251,18 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
             />
           ))}
 
+          {/* Historical closing price — primary series, visually dominant */}
+          <Line
+            dataKey="close"
+            yAxisId="price"
+            type="monotone"
+            stroke="#334155"
+            strokeWidth={2}
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+
           {/* SMA30 — most subtle (thin dashed, light color) */}
           <Line
             dataKey="sma30"
@@ -312,6 +324,10 @@ export default function RhinoChart({ chart, price: priceProp }: Props) {
 
       {/* Simplified legend */}
       <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-slate-400">
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-[3px] inline-block rounded" style={{ background: '#334155' }} />
+          {lang === 'zh' ? '收盘价' : 'Price'}
+        </span>
         <span className="flex items-center gap-1">
           <span className="w-2 h-2 rounded-full bg-indigo-600 inline-block" />
           {lang === 'zh' ? '当前价' : 'Current'}

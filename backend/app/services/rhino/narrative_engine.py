@@ -589,7 +589,10 @@ def _narrate_playbook(pool: dict, s: int, semantic: dict, playbook: dict) -> str
     # Append rationale from playbook engine
     rationale = playbook.get("rationale", [])
     if rationale:
-        joined = "; ".join(rationale)
+        joined = "; ".join(
+            item.get("en", str(item)) if isinstance(item, dict) else str(item)
+            for item in rationale
+        )
         parts.append(f"({joined})")
 
     return " ".join(parts)

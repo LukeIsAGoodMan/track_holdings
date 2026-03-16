@@ -46,8 +46,10 @@ export default function ValuationCard({ valuation, price }: Props) {
     )
   }
 
-  const band = valuation.adjusted_fair_value
+  const band = valuation.raw_fair_value
+  const adjustedBand = valuation.adjusted_fair_value
   const growth = valuation.eps_growth_pct
+  const hasHaircut = adjustedBand && band && Math.abs(band.mid - adjustedBand.mid) > 0.01
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col">
@@ -60,13 +62,20 @@ export default function ValuationCard({ valuation, price }: Props) {
         </span>
       </div>
 
-      {/* Fair value bar — segmented with price marker */}
+      {/* Fair value bar — uses raw intrinsic band (pre-haircut) */}
       {band && (
         <div className="mb-4">
           <div className="text-[11px] text-slate-400 font-medium mb-2">
-            {lang === 'zh' ? '宏观调整估值区间' : 'Macro-adjusted valuation band'}
+            {lang === 'zh' ? '内在估值区间' : 'Intrinsic valuation band'}
           </div>
           <FairValueBar band={band} price={price} />
+          {hasHaircut && adjustedBand && (
+            <div className="text-[10px] text-amber-600 mt-1.5">
+              {lang === 'zh'
+                ? `宏观折扣后: ${fmtPrice(adjustedBand.low)}–${fmtPrice(adjustedBand.high)}`
+                : `Macro-adjusted: ${fmtPrice(adjustedBand.low)}–${fmtPrice(adjustedBand.high)}`}
+            </div>
+          )}
         </div>
       )}
 

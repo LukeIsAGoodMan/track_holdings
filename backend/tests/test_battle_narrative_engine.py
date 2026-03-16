@@ -216,11 +216,11 @@ class TestRiskRule:
         assert "15%" in text
 
     def test_risk_rule_from_structured_output(self):
-        """Should contain the exact risk rule string from playbook output."""
+        """Should contain the zh risk rule string from playbook output."""
         report = _build_report()
-        risk_rule = report["playbook"]["risk_rule"]
+        risk_rule_zh = report["playbook"]["risk_rule_zh"]
         text = report["narrative"]["playbook"]
-        assert risk_rule in text
+        assert risk_rule_zh in text
 
 
 # ══════════════════════════════════════════════════════════════════════════

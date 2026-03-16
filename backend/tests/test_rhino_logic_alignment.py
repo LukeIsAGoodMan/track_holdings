@@ -169,9 +169,15 @@ class TestValuationStyle:
         style = detect_valuation_style({"eps_growth_pct": 0.05})
         assert style.style == "defensive"
 
-    def test_unknown_fallback(self):
-        style = detect_valuation_style({"eps_growth_pct": None})
+    def test_unknown_fallback_with_eps(self):
+        """No growth data but valid EPS → unknown."""
+        style = detect_valuation_style({"eps_growth_pct": None, "fy1_eps_avg": 5.0, "fy2_eps_avg": 6.0})
         assert style.style == "unknown"
+
+    def test_no_eps_no_growth_pre_profit(self):
+        """No growth + no EPS → pre_profit safety guard."""
+        style = detect_valuation_style({"eps_growth_pct": None})
+        assert style.style == "pre_profit"
 
     def test_moderate_growth_unknown(self):
         """Growth 8-15% with no sector hint → unknown."""
@@ -454,9 +460,9 @@ class TestUpsideFraming:
 class TestTickerSectorOverride:
     """TICKER_SECTOR_OVERRIDE is the highest priority in style detection."""
 
-    def test_nvda_is_growth(self):
+    def test_nvda_is_hyper_growth(self):
         style = detect_valuation_style({"eps_growth_pct": 0.05}, symbol="NVDA")
-        assert style.style == "growth"
+        assert style.style == "hyper_growth"
 
     def test_aapl_is_quality_mega_cap(self):
         style = detect_valuation_style({"eps_growth_pct": 0.05}, symbol="AAPL")
@@ -471,7 +477,7 @@ class TestTickerSectorOverride:
         style = detect_valuation_style(
             {"eps_growth_pct": 0.25}, sector_hint="Financials", symbol="NVDA"
         )
-        assert style.style == "growth"
+        assert style.style == "hyper_growth"
 
     def test_override_beats_ticker_set(self):
         """BRK.B is in _FINANCIAL_TICKERS, but override says defensive."""
@@ -480,7 +486,7 @@ class TestTickerSectorOverride:
 
     def test_all_overrides_valid_styles(self):
         """Every value in TICKER_SECTOR_OVERRIDE maps to a known style."""
-        valid_styles = {"growth", "quality_mega_cap", "cyclical", "financial", "defensive", "unknown"}
+        valid_styles = {"growth", "quality_mega_cap", "cyclical", "financial", "defensive", "hyper_growth", "pre_profit", "unknown"}
         for ticker, style_name in TICKER_SECTOR_OVERRIDE.items():
             assert style_name in valid_styles, f"{ticker} → {style_name} is not a valid style"
 

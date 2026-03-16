@@ -137,7 +137,10 @@ def _macro(t: dict, ctx: dict) -> str:
 def _playbook(t: dict, ctx: dict) -> str:
     pb = ctx["playbook"]
     key = f"playbook_{pb['action_tag']}"
-    rationale = "; ".join(pb["rationale"])
+    rationale = "; ".join(
+        item.get("en", str(item)) if isinstance(item, dict) else str(item)
+        for item in pb["rationale"]
+    )
     return _fmt(t.get(key, rationale), rationale=rationale)
 
 

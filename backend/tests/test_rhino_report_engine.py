@@ -228,11 +228,12 @@ class TestDualTrack:
         assert pb["upside"]["scenario"] == "upside"
         assert pb["downside"]["scenario"] == "downside"
 
-    def test_upside_target_from_resistance(self):
+    def test_upside_trigger_from_resistance(self):
         narrative = build_fundamental_narrative(_val(), 200)
         report = build_battle_report(200, _tech(), _val(), _macro(), _playbook(), narrative)
-        # First resistance center is 220
-        assert report["playbook"]["upside"]["target"] == 220
+        # First resistance center is trigger, second is target
+        assert report["playbook"]["upside"]["trigger"] == 220
+        assert report["playbook"]["upside"]["target"] == 240
 
     def test_downside_stop_from_support(self):
         narrative = build_fundamental_narrative(_val(), 200)

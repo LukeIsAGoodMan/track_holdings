@@ -7,6 +7,9 @@ falling back to (FY2-FY1)/FY1 otherwise.
 
 Style layer: valuation_style_engine adjusts PE bands for non-growth sectors
 (cyclical, financial, defensive) to prevent systematic misclassification.
+
+Regime layer: detect_valuation_regime provides structured metadata including
+pe_applicable flag — pre_profit names skip PE valuation entirely.
 """
 from __future__ import annotations
 
@@ -14,9 +17,11 @@ import logging
 
 from .valuation_style_engine import (
     detect_valuation_style,
+    detect_valuation_regime,
     apply_style_adjustment,
     PeAuditTrail,
     StyleResult,
+    RegimeResult,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,10 +65,26 @@ def build_valuation(
     fy1 = estimates.get("fy1_eps_avg")
     fy2 = estimates.get("fy2_eps_avg")
 
-    if fy1 is None or fy1 <= 0:
-        return _unavailable(estimates)
-
     avg_growth = _compute_avg_growth(fy0, fy1, fy2)
+
+    # Detect regime first — may short-circuit PE valuation
+    regime = detect_valuation_regime(
+        {"eps_growth_pct": avg_growth, **estimates},
+        sector_hint=sector_hint,
+        symbol=symbol,
+    )
+
+    # Pre-profit regime: PE is not applicable
+    if not regime.pe_applicable:
+        logger.info(
+            "Valuation regime [%s]: %s — PE not applicable, skipping PE band",
+            symbol or "?", regime.valuation_regime,
+        )
+        return _pre_profit_result(estimates, avg_growth, regime)
+
+    if fy1 is None or fy1 <= 0:
+        return _unavailable(estimates, regime)
+
     growth = avg_growth if avg_growth is not None else 0.0
 
     # Select base PE band from growth rate (analysis.py discipline)
@@ -74,11 +95,7 @@ def build_valuation(
             break
 
     # Apply valuation style adjustment
-    style = detect_valuation_style(
-        {"eps_growth_pct": avg_growth, **estimates},
-        sector_hint=sector_hint,
-        symbol=symbol,
-    )
+    style = regime.style_result
     pe_low, pe_high = apply_style_adjustment(base_pe_low, base_pe_high, style)
 
     # Audit trail for debugging
@@ -90,8 +107,8 @@ def build_valuation(
         adjusted_pe_high=pe_high,
     )
     logger.info(
-        "Valuation PE audit [%s]: style=%s, base=%.1f-%.1f, adjusted=%.1f-%.1f",
-        symbol or "?", audit.valuation_style,
+        "Valuation PE audit [%s]: regime=%s, style=%s, base=%.1f-%.1f, adjusted=%.1f-%.1f",
+        symbol or "?", regime.valuation_regime, audit.valuation_style,
         audit.base_pe_low, audit.base_pe_high,
         audit.adjusted_pe_low, audit.adjusted_pe_high,
     )
@@ -135,8 +152,12 @@ def build_valuation(
         "raw_fair_value": raw,
         "adjusted_fair_value": adjusted,
         "status": status,
-        "valuation_style": style.style,
+        "valuation_style": regime.valuation_style,
         "valuation_confidence": valuation_confidence,
+        "valuation_regime": regime.valuation_regime,
+        "valuation_method": regime.valuation_method,
+        "pe_applicable": regime.pe_applicable,
+        "anchor_metric_label": regime.anchor_metric_label,
         "_pe_audit": audit._asdict(),
     }
 
@@ -153,7 +174,30 @@ def _classify(price: float, band: dict) -> str:
     return "deeply_overvalued"
 
 
-def _unavailable(estimates: dict) -> dict:
+def _pre_profit_result(estimates: dict, growth: float | None, regime: RegimeResult) -> dict:
+    """Result for pre-profit companies where PE valuation is not applicable."""
+    return {
+        "available": False,
+        "fy0_eps_avg": estimates.get("fy0_eps_avg"),
+        "fy1_eps_avg": estimates.get("fy1_eps_avg"),
+        "fy2_eps_avg": estimates.get("fy2_eps_avg"),
+        "eps_growth_pct": growth,
+        "pe_band_low": None,
+        "pe_band_high": None,
+        "raw_fair_value": None,
+        "adjusted_fair_value": None,
+        "status": "unavailable",
+        "valuation_style": regime.valuation_style,
+        "valuation_confidence": "low",
+        "valuation_regime": regime.valuation_regime,
+        "valuation_method": regime.valuation_method,
+        "pe_applicable": False,
+        "anchor_metric_label": regime.anchor_metric_label,
+        "_pe_audit": None,
+    }
+
+
+def _unavailable(estimates: dict, regime: RegimeResult | None = None) -> dict:
     return {
         "available": False,
         "fy0_eps_avg": estimates.get("fy0_eps_avg"),
@@ -165,6 +209,11 @@ def _unavailable(estimates: dict) -> dict:
         "raw_fair_value": None,
         "adjusted_fair_value": None,
         "status": "unavailable",
-        "valuation_style": "unknown",
+        "valuation_style": regime.valuation_style if regime else "unknown",
+        "valuation_confidence": "low",
+        "valuation_regime": regime.valuation_regime if regime else "unknown",
+        "valuation_method": regime.valuation_method if regime else "forward_pe",
+        "pe_applicable": regime.pe_applicable if regime else True,
+        "anchor_metric_label": regime.anchor_metric_label if regime else "Forward EPS",
         "_pe_audit": None,
     }

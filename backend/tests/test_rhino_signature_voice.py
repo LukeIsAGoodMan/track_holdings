@@ -352,11 +352,11 @@ class TestOneWayFlow:
             assert f"{stop:.2f}" in text
 
     def test_risk_rule_exact_match(self):
-        """Risk rule string in narrative matches structured output exactly."""
+        """Risk rule zh string in narrative matches structured output exactly."""
         report = _build_report()
-        risk_rule = report["playbook"]["risk_rule"]
+        risk_rule_zh = report["playbook"]["risk_rule_zh"]
         text = report["narrative"]["playbook"]
-        assert risk_rule in text
+        assert risk_rule_zh in text
 
     def test_no_analytical_imports(self):
         """Narrative engine must not import any analytical engines."""

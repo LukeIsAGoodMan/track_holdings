@@ -44,7 +44,11 @@ export default function SymbolSearchBar({ onSearch, loading }: Props) {
           className="w-full pl-10 pr-4 py-2.5 text-sm rounded-xl border border-slate-200
                      bg-white text-slate-800 placeholder:text-slate-400
                      focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
-                     transition-shadow"
+                     transition-shadow appearance-none
+                     [&::-webkit-search-decoration]:hidden
+                     [&::-webkit-search-cancel-button]:hidden
+                     [&::-webkit-search-results-button]:hidden
+                     [&::-webkit-search-results-decoration]:hidden"
           disabled={loading}
         />
       </div>
