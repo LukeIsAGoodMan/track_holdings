@@ -73,6 +73,10 @@ def _build_fundamental_section(
         "classification": narrative.classification,
         "label": narrative.label,
         "valuation_style": narrative.valuation_style,
+        "eps_anchor": narrative.anchor_eps,
+        "pe_low": narrative.pe_band_low,
+        "pe_high": narrative.pe_band_high,
+        "midpoint": narrative.raw_mid,
         "lines": lines,
     }
 
@@ -142,7 +146,13 @@ def _build_macro_section(
         })
 
     vol_ratio = technical.get("volume_ratio")
-    if vol_ratio is not None and vol_ratio < 0.8:
+    if vol_ratio is not None and vol_ratio >= 1.5:
+        risks.append({
+            "signal": "strong_volume",
+            "label": f"Volume ratio {vol_ratio:.1f}x — strong volume confirmation",
+            "severity": "info",
+        })
+    elif vol_ratio is not None and vol_ratio < 0.8:
         risks.append({
             "signal": "weak_volume",
             "label": f"Volume ratio {vol_ratio:.1f}x — weak conviction rally",

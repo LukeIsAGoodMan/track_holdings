@@ -1,16 +1,16 @@
 """
-Tests for battle_narrative_engine — validates narrative generation
-from structured battle report data.
+Tests for battle_narrative_engine -- Chinese Rhino War Report.
 
 Validates:
-  1. All four sections generate non-empty text
-  2. Narrative does not crash on edge cases
+  1. All four Chinese sections generate non-empty text
+  2. Narrative does not crash on edge cases / missing fields
   3. Valuation style influences wording
-  4. Playbook framing respected (expansion vs recovery)
-  5. Classification labels appear in narrative
-  6. Unavailable data produces safe defaults
-  7. Macro risks reflected in narrative
-  8. Ladder structure described correctly
+  4. Playbook framing consumed from structured output (not recomputed)
+  5. Risk rule propagated from structured output
+  6. Volume label mapper consistent with technical_engine thresholds
+  7. Graceful degradation when optional fields are absent
+  8. Safety rules: no speculative/emotional language
+  9. Structured data unchanged by narrative addition
 """
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ import pytest
 from app.services.rhino.battle_narrative_engine import (
     build_battle_narrative,
     BattleNarrativeReport,
+    VolumeLabelMapper,
 )
 from app.services.rhino.fundamental_narrative_engine import (
     build_fundamental_narrative,
@@ -84,10 +85,12 @@ def _playbook(action="hold_watch", bias="neutral"):
 
 
 def _build_report(price=200, valuation_style="growth", vix=18.0, us10y=4.0,
-                   support_zones=None, resistance_zones=None):
+                   support_zones=None, resistance_zones=None,
+                   volume_ratio=None, haircut=4):
     val = _val(valuation_style=valuation_style)
-    tech = _tech(support_zones=support_zones, resistance_zones=resistance_zones)
-    macro = _macro(vix=vix, us10y=us10y)
+    tech = _tech(support_zones=support_zones, resistance_zones=resistance_zones,
+                 volume_ratio=volume_ratio)
+    macro = _macro(vix=vix, us10y=us10y, haircut=haircut)
     playbook = _playbook()
     narrative = build_fundamental_narrative(val, price)
     return build_battle_report(price, tech, val, macro, playbook, narrative)
@@ -103,58 +106,155 @@ class TestNarrativeStructure:
         assert "narrative" in report
 
     def test_narrative_has_four_sections(self):
-        report = _build_report()
-        n = report["narrative"]
+        n = _build_report()["narrative"]
         assert "fundamental" in n
         assert "battlefield" in n
         assert "macro" in n
         assert "playbook" in n
 
     def test_all_sections_non_empty(self):
-        report = _build_report()
-        n = report["narrative"]
-        assert len(n["fundamental"]) > 0
-        assert len(n["battlefield"]) > 0
-        assert len(n["macro"]) > 0
-        assert len(n["playbook"]) > 0
-
-    def test_narrative_is_dict(self):
-        report = _build_report()
-        assert isinstance(report["narrative"], dict)
+        n = _build_report()["narrative"]
+        for key in ("fundamental", "battlefield", "macro", "playbook"):
+            assert len(n[key]) > 0, f"{key} is empty"
 
     def test_sections_are_strings(self):
-        report = _build_report()
-        n = report["narrative"]
+        n = _build_report()["narrative"]
         for key in ("fundamental", "battlefield", "macro", "playbook"):
             assert isinstance(n[key], str)
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PART 2: FUNDAMENTAL NARRATIVE
+# PART 2: CHINESE CONTENT VERIFICATION
 # ══════════════════════════════════════════════════════════════════════════
 
-class TestFundamentalNarrative:
-    def test_contains_eps(self):
-        report = _build_report()
-        assert "EPS" in report["narrative"]["fundamental"]
+class TestChineseContent:
+    def test_fundamental_contains_chinese(self):
+        text = _build_report()["narrative"]["fundamental"]
+        # Should contain Chinese characters
+        assert any("\u4e00" <= c <= "\u9fff" for c in text)
 
-    def test_contains_pe_range(self):
-        report = _build_report()
-        assert "PE range" in report["narrative"]["fundamental"]
+    def test_battlefield_contains_chinese(self):
+        text = _build_report()["narrative"]["battlefield"]
+        assert any("\u4e00" <= c <= "\u9fff" for c in text)
 
-    def test_contains_fair_value(self):
-        report = _build_report()
-        assert "fair value" in report["narrative"]["fundamental"].lower()
+    def test_macro_contains_chinese(self):
+        text = _build_report()["narrative"]["macro"]
+        assert any("\u4e00" <= c <= "\u9fff" for c in text)
 
-    def test_contains_classification(self):
-        report = _build_report()
-        text = report["narrative"]["fundamental"].lower()
-        assert any(c in text for c in ["fair value", "discount", "premium", "deep"])
+    def test_playbook_contains_chinese(self):
+        text = _build_report()["narrative"]["playbook"]
+        assert any("\u4e00" <= c <= "\u9fff" for c in text)
 
-    def test_contains_style(self):
-        report = _build_report()
-        assert "growth" in report["narrative"]["fundamental"].lower()
+    def test_fundamental_contains_eps(self):
+        text = _build_report()["narrative"]["fundamental"]
+        assert "EPS" in text
 
+    def test_fundamental_contains_pe(self):
+        text = _build_report()["narrative"]["fundamental"]
+        assert "PE" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 3: VALUATION STYLE INFLUENCE
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestStyleInfluence:
+    def test_growth_style_explanation(self):
+        text = _build_report(valuation_style="growth")["narrative"]["fundamental"]
+        # Should contain growth explanation about valuation expansion
+        assert "\u6269\u5f20" in text  # expansion
+
+    def test_cyclical_style_explanation(self):
+        text = _build_report(valuation_style="cyclical")["narrative"]["fundamental"]
+        assert "\u5747\u503c\u56de\u5f52" in text  # mean reversion
+
+    def test_defensive_style_explanation(self):
+        text = _build_report(valuation_style="defensive")["narrative"]["fundamental"]
+        assert "\u4fee\u590d" in text  # recovery
+
+    def test_financial_style_explanation(self):
+        text = _build_report(valuation_style="financial")["narrative"]["fundamental"]
+        assert "\u5229\u5dee" in text  # spread
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 4: PLAYBOOK FRAMING — consumed from structured output
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestPlaybookFraming:
+    def test_growth_expansion_framing(self):
+        text = _build_report(valuation_style="growth")["narrative"]["playbook"]
+        assert "\u6269\u5f20" in text  # expansion
+
+    def test_defensive_recovery_framing(self):
+        text = _build_report(valuation_style="defensive")["narrative"]["playbook"]
+        assert "\u4fee\u590d" in text  # recovery
+
+    def test_financial_recovery_framing(self):
+        text = _build_report(valuation_style="financial")["narrative"]["playbook"]
+        assert "\u4fee\u590d" in text
+
+    def test_cyclical_recovery_framing(self):
+        text = _build_report(valuation_style="cyclical")["narrative"]["playbook"]
+        assert "\u4fee\u590d" in text
+
+    def test_no_determine_playbook_framing_import(self):
+        """Narrative engine must NOT import determine_playbook_framing."""
+        import inspect
+        from app.services.rhino import battle_narrative_engine as bne
+        source = inspect.getsource(bne)
+        assert "determine_playbook_framing" not in source
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 5: RISK RULE FROM STRUCTURED OUTPUT
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestRiskRule:
+    def test_risk_rule_propagated(self):
+        text = _build_report()["narrative"]["playbook"]
+        assert "15%" in text
+
+    def test_risk_rule_from_structured_output(self):
+        """Should contain the exact risk rule string from playbook output."""
+        report = _build_report()
+        risk_rule = report["playbook"]["risk_rule"]
+        text = report["narrative"]["playbook"]
+        assert risk_rule in text
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 6: VOLUME LABEL MAPPER
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestVolumeLabelMapper:
+    def test_weak_volume_label(self):
+        risks = [{"signal": "weak_volume", "label": "...", "severity": "low"}]
+        label = VolumeLabelMapper.label(risks)
+        assert "\u7f29\u91cf" in label  # shrinking volume
+
+    def test_no_weak_volume_label(self):
+        risks = [{"signal": "high_vix", "label": "...", "severity": "high"}]
+        label = VolumeLabelMapper.label(risks)
+        assert "\u89c2\u671b" in label  # on sidelines
+
+    def test_empty_risks_label(self):
+        label = VolumeLabelMapper.label([])
+        assert "\u89c2\u671b" in label
+
+    def test_macro_narrative_uses_volume_label(self):
+        """Macro narrative should use centralized volume mapping."""
+        report = _build_report()
+        text = report["narrative"]["macro"]
+        # Should contain volume state description
+        assert "\u6210\u4ea4\u91cf" in text  # volume
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 7: GRACEFUL DEGRADATION
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestGracefulDegradation:
     def test_unavailable_valuation(self):
         val = {"available": False, "raw_fair_value": None,
                "fy0_eps_avg": None, "fy1_eps_avg": None, "fy2_eps_avg": None,
@@ -165,96 +265,78 @@ class TestFundamentalNarrative:
         playbook = _playbook()
         report = build_battle_report(100, tech, val, macro, playbook, narrative)
         text = report["narrative"]["fundamental"]
-        assert "insufficient" in text.lower()
+        assert len(text) > 0
+        assert "\u4e0d\u8db3" in text  # insufficient
 
-
-# ══════════════════════════════════════════════════════════════════════════
-# PART 3: VALUATION STYLE INFLUENCE
-# ══════════════════════════════════════════════════════════════════════════
-
-class TestStyleInfluence:
-    def test_growth_style_mentioned(self):
-        report = _build_report(valuation_style="growth")
-        assert "growth" in report["narrative"]["fundamental"].lower()
-
-    def test_defensive_style_mentioned(self):
-        report = _build_report(valuation_style="defensive")
-        assert "defensive" in report["narrative"]["fundamental"].lower()
-
-    def test_financial_style_mentioned(self):
-        report = _build_report(valuation_style="financial")
-        assert "financial" in report["narrative"]["fundamental"].lower()
-
-    def test_cyclical_style_mentioned(self):
-        report = _build_report(valuation_style="cyclical")
-        assert "cyclical" in report["narrative"]["fundamental"].lower()
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PART 4: PLAYBOOK FRAMING
-# ══════════════════════════════════════════════════════════════════════════
-
-class TestPlaybookFraming:
-    def test_growth_expansion_framing(self):
-        report = _build_report(valuation_style="growth")
-        assert "expansion" in report["narrative"]["playbook"].lower()
-
-    def test_defensive_recovery_framing(self):
-        report = _build_report(valuation_style="defensive")
-        assert "recovery" in report["narrative"]["playbook"].lower()
-
-    def test_financial_recovery_framing(self):
-        report = _build_report(valuation_style="financial")
-        assert "recovery" in report["narrative"]["playbook"].lower()
-
-    def test_cyclical_recovery_framing(self):
-        report = _build_report(valuation_style="cyclical")
-        assert "recovery" in report["narrative"]["playbook"].lower()
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# PART 5: BATTLEFIELD NARRATIVE
-# ══════════════════════════════════════════════════════════════════════════
-
-class TestBattlefieldNarrative:
-    def test_mentions_support(self):
-        report = _build_report()
-        assert "support" in report["narrative"]["battlefield"].lower()
-
-    def test_mentions_resistance(self):
-        report = _build_report()
-        assert "resistance" in report["narrative"]["battlefield"].lower()
-
-    def test_empty_zones_graceful(self):
+    def test_empty_zones(self):
         report = _build_report(support_zones=[], resistance_zones=[])
         text = report["narrative"]["battlefield"]
         assert len(text) > 0
-        assert "lacks" in text.lower()
+        assert "\u7f3a\u4e4f" in text  # lacks
 
-    def test_level_values_appear(self):
-        report = _build_report()
+    def test_no_zones_playbook(self):
+        report = _build_report(support_zones=[], resistance_zones=[])
+        text = report["narrative"]["playbook"]
+        assert len(text) > 0
+
+    def test_single_support_no_r2(self):
+        """Single resistance should not break the narrative."""
+        report = _build_report(
+            resistance_zones=[{"center": 220, "lower": 218, "upper": 222, "strength": 0.85, "sources": []}],
+        )
         text = report["narrative"]["battlefield"]
-        # Support at 190 and resistance at 220 should appear
-        assert "190" in text
         assert "220" in text
+        assert len(text) > 0
+
+    def test_single_support_no_s2(self):
+        """Single support should not break the narrative."""
+        report = _build_report(
+            support_zones=[{"center": 190, "lower": 188, "upper": 192, "strength": 0.75, "sources": []}],
+        )
+        text = report["narrative"]["battlefield"]
+        assert "190" in text
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PART 6: MACRO NARRATIVE
+# PART 8: BATTLEFIELD LEVEL VALUES
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestBattlefieldLevels:
+    def test_support_level_appears(self):
+        text = _build_report()["narrative"]["battlefield"]
+        assert "190" in text
+
+    def test_resistance_level_appears(self):
+        text = _build_report()["narrative"]["battlefield"]
+        assert "220" in text
+
+    def test_secondary_resistance_appears(self):
+        text = _build_report()["narrative"]["battlefield"]
+        assert "240" in text
+
+    def test_secondary_support_appears(self):
+        text = _build_report()["narrative"]["battlefield"]
+        assert "180" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PART 9: MACRO NARRATIVE
 # ══════════════════════════════════════════════════════════════════════════
 
 class TestMacroNarrative:
-    def test_calm_regime(self):
-        report = _build_report(vix=15, us10y=3.5)
-        text = report["narrative"]["macro"]
-        assert "favorable" in text.lower()
+    def test_calm_regime_favorable(self):
+        text = _build_report(vix=15, us10y=3.5, haircut=0)["narrative"]["macro"]
+        assert "\u8fdb\u653b" in text  # offensive/favorable
 
-    def test_elevated_regime(self):
-        report = _build_report(vix=28, us10y=4.5)
-        text = report["narrative"]["macro"]
-        assert "elevated" in text.lower() or "defensive" in text.lower()
+    def test_elevated_regime_defensive(self):
+        text = _build_report(vix=28, us10y=4.5)["narrative"]["macro"]
+        assert "\u9632\u5b88" in text  # defensive
 
-    def test_weak_volume_mentioned(self):
+    def test_haircut_mentioned(self):
+        text = _build_report(haircut=7)["narrative"]["macro"]
+        assert "7%" in text
+
+    def test_weak_volume_reflected(self):
         val = _val()
         tech = _tech(volume_ratio=0.5)
         macro = _macro()
@@ -262,97 +344,78 @@ class TestMacroNarrative:
         narrative = build_fundamental_narrative(val, 200)
         report = build_battle_report(200, tech, val, macro, playbook, narrative)
         text = report["narrative"]["macro"]
-        assert "weak" in text.lower()
-
-    def test_haircut_mentioned(self):
-        val = _val()
-        tech = _tech()
-        macro = _macro(haircut=7)
-        playbook = _playbook()
-        narrative = build_fundamental_narrative(val, 200)
-        report = build_battle_report(200, tech, val, macro, playbook, narrative)
-        text = report["narrative"]["macro"]
-        assert "7%" in text
+        assert "\u7f29\u91cf" in text  # shrinking volume
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PART 7: PLAYBOOK NARRATIVE
+# PART 10: PLAYBOOK NARRATIVE
 # ══════════════════════════════════════════════════════════════════════════
 
 class TestPlaybookNarrative:
     def test_contains_bias(self):
-        report = _build_report()
-        assert "neutral" in report["narrative"]["playbook"].lower()
+        text = _build_report()["narrative"]["playbook"]
+        assert "\u89c2\u671b" in text  # neutral = observation
 
-    def test_contains_risk_rule(self):
-        report = _build_report()
-        assert "15%" in report["narrative"]["playbook"]
+    def test_upside_target(self):
+        text = _build_report()["narrative"]["playbook"]
+        assert "220" in text
 
-    def test_contains_rationale(self):
-        report = _build_report()
-        assert "SMA200" in report["narrative"]["playbook"]
+    def test_downside_stop(self):
+        text = _build_report()["narrative"]["playbook"]
+        assert "190" in text
 
-    def test_upside_target_mentioned(self):
-        report = _build_report()
-        assert "220" in report["narrative"]["playbook"]
-
-    def test_downside_stop_mentioned(self):
-        report = _build_report()
-        assert "190" in report["narrative"]["playbook"]
-
-    def test_no_zones_graceful(self):
-        report = _build_report(support_zones=[], resistance_zones=[])
-        text = report["narrative"]["playbook"]
-        assert len(text) > 0
-        assert "no clear" in text.lower() or "no defined" in text.lower()
+    def test_rationale_propagated(self):
+        text = _build_report()["narrative"]["playbook"]
+        assert "SMA200" in text
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PART 8: SAFETY RULES
+# PART 11: SAFETY RULES
 # ══════════════════════════════════════════════════════════════════════════
 
 class TestNarrativeSafety:
-    """Narrative must not contain speculative, promotional, or emotional language."""
-
-    _BANNED_WORDS = [
-        "guaranteed", "guarantee", "definitely", "surely",
-        "amazing", "incredible", "fantastic", "exciting",
-        "buy now", "sell now", "act fast", "don't miss",
+    _BANNED = [
+        "\u4fdd\u8bc1\u6536\u76ca",  # guaranteed returns
+        "\u5fc5\u5b9a\u4e0a\u6da8",  # will definitely rise
+        "\u4e0d\u4f1a\u4e0b\u8dcc",  # will not fall
+        "guaranteed", "definitely",
         "moonshot", "skyrocket", "crash", "explode",
     ]
 
     def test_no_banned_words(self):
-        report = _build_report()
-        n = report["narrative"]
-        full_text = " ".join([n["fundamental"], n["battlefield"], n["macro"], n["playbook"]])
-        lower = full_text.lower()
-        for word in self._BANNED_WORDS:
-            assert word not in lower, f"Banned word '{word}' found in narrative"
+        n = _build_report()["narrative"]
+        full = "".join([n["fundamental"], n["battlefield"], n["macro"], n["playbook"]])
+        for word in self._BANNED:
+            assert word not in full, f"Banned word '{word}' found"
 
     def test_no_exclamation_marks(self):
-        report = _build_report()
-        n = report["narrative"]
-        full_text = " ".join([n["fundamental"], n["battlefield"], n["macro"], n["playbook"]])
-        assert "!" not in full_text
+        n = _build_report()["narrative"]
+        full = "".join([n["fundamental"], n["battlefield"], n["macro"], n["playbook"]])
+        assert "!" not in full
+        assert "\uff01" not in full  # fullwidth exclamation
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# PART 9: EXISTING REPORT UNMODIFIED
+# PART 12: STRUCTURED DATA PRESERVED
 # ══════════════════════════════════════════════════════════════════════════
 
-class TestExistingReportPreserved:
-    """Narrative addition must not break existing structured data."""
-
-    def test_structured_sections_unchanged(self):
+class TestStructuredPreserved:
+    def test_four_sections_exist(self):
         report = _build_report()
-        assert "fundamental" in report
-        assert "ladder" in report
-        assert "macro" in report
-        assert "playbook" in report
+        for key in ("fundamental", "ladder", "macro", "playbook"):
+            assert key in report
 
     def test_fundamental_has_classification(self):
         report = _build_report()
         assert report["fundamental"]["classification"] in ("deep_value", "discount", "fair", "premium")
+
+    def test_fundamental_has_valuation_style(self):
+        report = _build_report()
+        assert "valuation_style" in report["fundamental"]
+
+    def test_playbook_has_framing(self):
+        report = _build_report()
+        assert report["playbook"]["upside"]["framing"] in ("expansion", "recovery")
 
     def test_ladder_has_support_resistance(self):
         report = _build_report()

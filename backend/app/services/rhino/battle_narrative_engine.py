@@ -1,26 +1,33 @@
 """
-Battle narrative engine — converts structured battle report data into
-readable analyst-style prose paragraphs.
+Battle narrative engine -- Chinese Rhino War Report generator.
 
-Pure presentation layer. No analytical logic. Reads upstream outputs only.
+Pure presentation layer. Reads structured battle report output only.
+NEVER recomputes analytical logic. NEVER calls upstream engines.
+
+Voice: 像一个老交易员在写盘前备忘录 — calm, restrained, direct, opinionated.
+Tone: 冷静, 克制, 直接, 有判断.
 
 Sections:
-  1. Fundamental anchor — EPS, growth, PE discipline, fair value, classification
-  2. Battlefield structure — support/resistance ladder as tactical description
-  3. Macro radar — risk regime interpretation
-  4. Tactical playbook — dual-track actionable explanation
+  1. Valuation anchor (估值锚点)
+  2. Battlefield structure (市场战场结构)
+  3. Macro radar + volume mirror (宏观雷达与成交量照妖镜)
+  4. Rhino tactical playbook (犀牛哥执行剧本)
 
 Safety rules:
-  - No speculative claims or investment guarantees
-  - No emotional or promotional language
-  - Analytical, neutral, professional tone throughout
+  - No guaranteed returns
+  - No emotional language
+  - No exaggeration
+  - No uncalculated inferences
+
+Graceful degradation:
+  - Missing fields produce natural shorter sentences via safe_phrase helper
+  - Never broken placeholders, never N/A in final output
 """
 from __future__ import annotations
 
 from typing import NamedTuple
 
 from .fundamental_narrative_engine import FundamentalNarrative
-from .playbook_engine import determine_playbook_framing
 
 
 class BattleNarrativeReport(NamedTuple):
@@ -31,80 +38,177 @@ class BattleNarrativeReport(NamedTuple):
     playbook: str
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# LABEL MAPS
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
+# CENTRALIZED LABEL MAPS — read-only consumption of structured data
+# =====================================================================
 
-_CLASS_LABELS = {
-    "deep_value": "deeply discounted relative to its fair value band",
-    "discount":   "trading at a discount to fair value",
-    "fair":       "trading within the fair value range",
-    "premium":    "trading at a premium above the fair value band",
+_CLASS_LABELS_ZH = {
+    "deep_value": "deep_value_zh",
+    "discount":   "discount_zh",
+    "fair":       "fair_zh",
+    "premium":    "premium_zh",
 }
 
-_STYLE_LABELS = {
-    "growth":           "growth",
-    "quality_mega_cap": "quality mega-cap",
-    "cyclical":         "cyclical",
-    "financial":        "financial",
-    "defensive":        "defensive",
-    "unknown":          "general",
+_STYLE_LABELS_ZH = {
+    "growth":           "growth_zh",
+    "quality_mega_cap": "quality_mega_cap_zh",
+    "cyclical":         "cyclical_zh",
+    "financial":        "financial_zh",
+    "defensive":        "defensive_zh",
+    "unknown":          "unknown_zh",
 }
 
-_LADDER_LABEL_DESC = {
-    "Structural Reversal": "a structural reversal threshold where market sentiment would shift decisively",
-    "Regime Line":         "a regime line where sustained acceptance would signal trend expansion",
-    "Major":               "a major level with significant historical price memory",
-    "Structural":          "a structural level with moderate historical significance",
-    "Weak":                "a minor level with limited structural importance",
+_STYLE_EXPLANATION_ZH: dict[str, str] = {
+    "growth":           "growth_expl_zh",
+    "quality_mega_cap": "qmc_expl_zh",
+    "cyclical":         "cyclical_expl_zh",
+    "financial":        "financial_expl_zh",
+    "defensive":        "defensive_expl_zh",
 }
 
-_VIX_DESC = {
-    "normal":   "calm",
-    "elevated": "elevated",
-    "crisis":   "stressed",
-}
-
-_RATE_DESC = {
-    "neutral":     "neutral",
-    "restrictive": "restrictive",
-    "supportive":  "supportive",
-}
-
-_ACTION_DESC = {
-    "strong_buy":    "strongly bullish",
-    "defensive_buy": "cautiously bullish",
-    "hold_watch":    "neutral, favoring observation",
-    "reduce":        "defensive, favoring reduction",
-    "stop_loss":     "risk-off, requiring strict stop-loss discipline",
-}
-
-_BIAS_DESC = {
-    "bullish": "bullish",
-    "bearish": "bearish",
-    "neutral": "neutral",
-}
+# Populated below after Chinese string definitions
+_ZH: dict[str, str] = {}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
+# VOLUME LABEL MAPPER — centralized, consistent with technical_engine
+# thresholds: >= 1.5 high, < 0.8 low, else normal
+# =====================================================================
+
+class VolumeLabelMapper:
+    """Maps volume risk signals to Chinese war-report labels.
+
+    Three states aligned with technical_engine thresholds:
+      - strong_volume (>= 1.5x): 放量确认
+      - weak_volume   (< 0.8x):  缩量反弹
+      - normal        (else):    资金观望
+
+    Consumes structured macro.risks[] signal names only.
+    Never reads raw volume_ratio directly.
+    """
+
+    @staticmethod
+    def label(risks: list[dict]) -> str:
+        has_strong = any(r.get("signal") == "strong_volume" for r in risks)
+        if has_strong:
+            return "\u653e\u91cf\u786e\u8ba4"  # volume confirmation
+        has_weak = any(r.get("signal") == "weak_volume" for r in risks)
+        if has_weak:
+            return "\u7f29\u91cf\u53cd\u5f39"  # shrinking volume bounce
+        return "\u8d44\u91d1\u89c2\u671b"  # capital on sidelines
+
+
+# =====================================================================
+# GRACEFUL DEGRADATION — safe_phrase helper
+# =====================================================================
+
+def safe_phrase(
+    template: str,
+    **kwargs: float | str | None,
+) -> str:
+    """Build a phrase only if ALL required values are non-None.
+
+    Returns the formatted string if all kwargs are valid,
+    or empty string if any value is None.
+
+    Usage:
+        safe_phrase("EPS锚定 ${eps}", eps=narrative.anchor_eps)
+        → "EPS锚定 $5.00" or ""
+    """
+    for v in kwargs.values():
+        if v is None:
+            return ""
+    # Format numeric values
+    formatted: dict[str, str] = {}
+    for k, v in kwargs.items():
+        if isinstance(v, float):
+            formatted[k] = f"{v:,.2f}"
+        elif isinstance(v, int):
+            formatted[k] = str(v)
+        else:
+            formatted[k] = str(v)
+    return template.format(**formatted)
+
+
+# =====================================================================
 # FORMATTING HELPERS
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
 
-def _fmt(n: float | None, decimals: int = 2) -> str:
+def _f(n: float | None, d: int = 2) -> str:
     if n is None:
-        return "N/A"
-    return f"{n:,.{decimals}f}"
+        return ""
+    return f"{n:,.{d}f}"
 
 
 def _pct(n: float | None) -> str:
     if n is None:
-        return "N/A"
+        return ""
     return f"{n * 100:.1f}%"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# SECTION 1: FUNDAMENTAL ANCHOR
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
+# CHINESE STRING POOL
+# =====================================================================
+
+_ZH = {
+    # Classification
+    "deep_value_zh":      "\u6df1\u5ea6\u6298\u4ef7",
+    "discount_zh":        "\u6298\u4ef7",
+    "fair_zh":            "\u5408\u7406\u4f30\u503c",
+    "premium_zh":         "\u6ea2\u4ef7",
+
+    # Style
+    "growth_zh":          "\u6210\u957f\u578b",
+    "quality_mega_cap_zh": "\u8d28\u91cf\u578b\u5927\u76d8\u80a1",
+    "cyclical_zh":        "\u5468\u671f\u578b",
+    "financial_zh":       "\u91d1\u878d\u578b",
+    "defensive_zh":       "\u9632\u5fa1\u578b",
+    "unknown_zh":         "\u901a\u7528\u578b",
+
+    # Style explanations — signature voice
+    "growth_expl_zh":     "\u5e02\u573a\u613f\u610f\u4e3a\u7a33\u5b9a\u6210\u957f\u652f\u4ed8\u6ea2\u4ef7\uff0c\u4e0a\u884c\u7a7a\u95f4\u66f4\u591a\u6765\u81ea\u4f30\u503c\u6269\u5f20\u3002",
+    "qmc_expl_zh":        "\u8d28\u91cf\u578b\u5927\u76d8\u80a1\u7684\u6ea2\u4ef7\u53ef\u4ee5\u6301\u7eed\u66f4\u4e45\uff0c\u4f46\u589e\u901f\u653e\u7f13\u65f6\u4f1a\u91cd\u65b0\u5b9a\u4ef7\u3002",
+    "cyclical_expl_zh":   "\u5468\u671f\u80a1\u4f30\u503c\u8d70\u5747\u503c\u56de\u5f52\u903b\u8f91\uff0c\u4e0d\u662f\u6301\u7eed\u6269\u5f20\u3002",
+    "financial_expl_zh":  "\u91d1\u878d\u80a1\u7684\u4f30\u503c\u53d7\u5229\u5dee\u548c\u4fe1\u8d37\u5468\u671f\u9a71\u52a8\uff0cPE\u533a\u95f4\u76f8\u5bf9\u7a33\u5b9a\u3002",
+    "defensive_expl_zh":  "\u9632\u5fa1\u578b\u8d44\u4ea7\u8d70\u4fee\u590d\u8def\u5f84\uff0c\u4e0d\u662f\u6269\u5f20\u9a71\u52a8\u3002",
+
+    # VIX
+    "vix_normal":         "\u7a33\u5b9a",
+    "vix_elevated":       "\u8b66\u60d5",
+    "vix_crisis":         "\u7d27\u5f20",
+
+    # Rate
+    "rate_neutral":       "\u4e2d\u6027",
+    "rate_restrictive":   "\u538b\u529b",
+    "rate_supportive":    "\u652f\u6301",
+
+    # Bias
+    "bias_bullish":       "\u770b\u591a",
+    "bias_bearish":       "\u9632\u5b88",
+    "bias_neutral":       "\u89c2\u671b",
+
+    # Action
+    "action_strong_buy":    "\u5f3a\u70c8\u770b\u591a",
+    "action_defensive_buy": "\u8c28\u614e\u770b\u591a",
+    "action_hold_watch":    "\u4e2d\u6027\u89c2\u671b",
+    "action_reduce":        "\u9632\u5b88\u51cf\u4ed3",
+    "action_stop_loss":     "\u98ce\u63a7\u4f18\u5148\uff0c\u4e25\u683c\u6b62\u635f",
+
+    # Framing
+    "framing_expansion":  "\u4f30\u503c\u6269\u5f20\u8def\u5f84",
+    "framing_recovery":   "\u4fee\u590d\u8def\u5f84",
+
+    # Macro conclusion
+    "macro_favorable":    "\u8fdb\u653b",
+    "macro_defensive":    "\u9632\u5b88",
+    "macro_mixed":        "\u8c28\u614e",
+}
+
+
+# =====================================================================
+# SECTION 1 — Valuation Anchor (估值锚点)
+# Voice: 老交易员盘前备忘录 — direct anchor, no fluff
+# =====================================================================
 
 def _build_fundamental_narrative(
     narrative: FundamentalNarrative,
@@ -112,58 +216,64 @@ def _build_fundamental_narrative(
 ) -> str:
     if narrative.raw_mid is None:
         return (
-            "Valuation data is currently insufficient to establish a forward "
-            "PE-based fair value range. The stock is classified as fair value "
-            "by default due to limited data availability."
+            "\u4f30\u503c\u6570\u636e\u4e0d\u8db3\uff0c\u65e0\u6cd5\u5efa\u7acb\u524d\u77bbPE\u5b9a\u4ef7\u6846\u67b6\u3002"
+            "\u9ed8\u8ba4\u5f52\u7c7b\u4e3a\u5408\u7406\u4f30\u503c\uff0c\u5f85\u6570\u636e\u5145\u5206\u540e\u91cd\u65b0\u5ba1\u89c6\u3002"
         )
 
     parts: list[str] = []
 
-    # EPS anchor
-    if narrative.anchor_eps is not None:
-        parts.append(
-            f"The valuation anchors on forward EPS of ${_fmt(narrative.anchor_eps)}."
-        )
+    # EPS anchor — direct statement
+    eps_phrase = safe_phrase(
+        "\u5b9a\u4ef7\u951a\uff1a\u524d\u77bb EPS ${eps}\u3002",
+        eps=narrative.anchor_eps,
+    )
+    if eps_phrase:
+        parts.append(eps_phrase)
 
-    # Growth outlook
-    if narrative.growth_pct is not None:
+    # Growth + PE band
+    if narrative.growth_pct is not None and narrative.pe_band_low is not None:
         parts.append(
-            f"Based on a projected growth rate of {_pct(narrative.growth_pct)}, "
-            f"the valuation discipline assigns a PE range of "
-            f"{_fmt(narrative.pe_band_low, 1)}x\u2013{_fmt(narrative.pe_band_high, 1)}x."
+            f"\u589e\u901f {_pct(narrative.growth_pct)}\uff0c"
+            f"\u7eaa\u5f8b\u7ed9\u51fa PE {_f(narrative.pe_band_low, 1)}\u2013{_f(narrative.pe_band_high, 1)} \u500d\u3002"
         )
     elif narrative.pe_band_low is not None and narrative.pe_band_high is not None:
         parts.append(
-            f"The valuation discipline assigns a PE range of "
-            f"{_fmt(narrative.pe_band_low, 1)}x\u2013{_fmt(narrative.pe_band_high, 1)}x."
+            f"\u7eaa\u5f8b\u7ed9\u51fa PE {_f(narrative.pe_band_low, 1)}\u2013{_f(narrative.pe_band_high, 1)} \u500d\u3002"
         )
 
     # Fair value band
-    if narrative.raw_low is not None and narrative.raw_high is not None:
-        parts.append(
-            f"This implies a fair value band between "
-            f"${_fmt(narrative.raw_low)} and ${_fmt(narrative.raw_high)}."
-        )
+    fv_phrase = safe_phrase(
+        "\u5408\u7406\u4ef7\u683c\u533a\u95f4 ${low}\u2013${high}\u3002",
+        low=narrative.raw_low,
+        high=narrative.raw_high,
+    )
+    if fv_phrase:
+        parts.append(fv_phrase)
 
-    # Classification
-    class_desc = _CLASS_LABELS.get(narrative.classification, narrative.classification)
+    # Classification — direct positioning
+    class_label = _ZH.get(_CLASS_LABELS_ZH.get(narrative.classification, ""), narrative.classification)
     parts.append(
-        f"With the current price at ${_fmt(price)}, the stock is classified as "
-        f"{class_desc}."
+        f"\u5f53\u524d ${_f(price)} \u5904\u4e8e{class_label}\u4f4d\u7f6e\u3002"
     )
 
-    # Valuation style
-    style_label = _STYLE_LABELS.get(narrative.valuation_style, narrative.valuation_style)
-    parts.append(
-        f"The valuation style is identified as {style_label}."
-    )
+    # Style — concise
+    style_label = _ZH.get(_STYLE_LABELS_ZH.get(narrative.valuation_style, ""), narrative.valuation_style)
+    parts.append(f"\u98ce\u683c\u5f52\u7c7b\uff1a{style_label}\u3002")
 
-    return " ".join(parts)
+    # Style explanation
+    expl_key = _STYLE_EXPLANATION_ZH.get(narrative.valuation_style)
+    if expl_key:
+        expl = _ZH.get(expl_key)
+        if expl:
+            parts.append(expl)
+
+    return "".join(parts)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# SECTION 2: BATTLEFIELD STRUCTURE
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
+# SECTION 2 — Battlefield Structure (市场战场结构)
+# Voice: tactical terrain reading
+# =====================================================================
 
 def _build_battlefield_narrative(
     ladder: dict,
@@ -174,123 +284,126 @@ def _build_battlefield_narrative(
 
     if not support and not resistance:
         return (
-            "The battlefield structure currently lacks defined support and "
-            "resistance levels, limiting the ability to identify tactical "
-            "inflection points."
+            "\u5f53\u524d\u7f3a\u4e4f\u660e\u786e\u652f\u6491\u548c\u538b\u529b\u4f4d\uff0c"
+            "\u65e0\u6cd5\u8bc6\u522b\u6218\u672f\u62d0\u70b9\u3002"
         )
 
     parts: list[str] = []
+
+    # Resistance — overhead terrain
+    if resistance:
+        r1 = resistance[0]
+        parts.append(
+            f"\u4e0a\u65b9\u538b\u529b ${_f(r1['level'])}"
+            f"\uff08+{_f(r1.get('dist_pct', 0), 1)}%\uff09"
+        )
+        if len(resistance) >= 2:
+            r2 = resistance[1]
+            parts[-1] += (
+                f"\uff0c\u7a81\u7834\u540e\u770b\u5411 ${_f(r2['level'])}\u3002"
+            )
+        else:
+            parts[-1] += "\u3002"
+
+    # Support — floor terrain
+    if support:
+        s1 = support[0]
+        parts.append(
+            f"\u4e0b\u65b9\u652f\u6491 ${_f(s1['level'])}"
+            f"\uff08-{_f(s1.get('dist_pct', 0), 1)}%\uff09"
+        )
+        if len(support) >= 2:
+            s2 = support[1]
+            parts[-1] += (
+                f"\uff0c\u5931\u5b88\u5219\u56de\u6d4b ${_f(s2['level'])}\u3002"
+            )
+        else:
+            parts[-1] += "\u3002"
+
+    # Structural reversal line — key inflection
+    all_levels = support + resistance
+    reversal = [z for z in all_levels if z.get("label") == "Structural Reversal"]
+    if reversal:
+        parts.append(
+            f"${_f(reversal[0]['level'])} \u662f\u8d8b\u52bf\u53cd\u8f6c\u7684\u5173\u952e\u7ebf\u3002"
+        )
+
+    # Conclusion — restrained
     parts.append(
-        "The battlefield structure currently centers around several key levels."
+        "\u53cd\u8f6c\u7ebf\u786e\u8ba4\u524d\uff0c"
+        "\u53cd\u5f39\u5747\u89c6\u4e3a\u7ed3\u6784\u4fee\u590d\u3002"
     )
 
-    # Resistance description (strongest first, then others)
-    if resistance:
-        for i, r in enumerate(resistance[:3]):
-            label_desc = _LADDER_LABEL_DESC.get(r.get("label", ""), "a notable level")
-            level = r["level"]
-            dist = r.get("dist_pct", 0)
-            if i == 0:
-                parts.append(
-                    f"The nearest overhead resistance sits at ${_fmt(level)} "
-                    f"(+{_fmt(dist, 1)}% from current price), representing {label_desc}."
-                )
-            else:
-                parts.append(
-                    f"Above that, ${_fmt(level)} (+{_fmt(dist, 1)}%) represents {label_desc}."
-                )
-
-    # Support description
-    if support:
-        for i, s in enumerate(support[:3]):
-            label_desc = _LADDER_LABEL_DESC.get(s.get("label", ""), "a notable level")
-            level = s["level"]
-            dist = s.get("dist_pct", 0)
-            if i == 0:
-                parts.append(
-                    f"On the downside, the nearest support is identified at ${_fmt(level)} "
-                    f"(-{_fmt(dist, 1)}% below current price), representing {label_desc}."
-                )
-            else:
-                parts.append(
-                    f"Deeper support sits at ${_fmt(level)} (-{_fmt(dist, 1)}%), "
-                    f"representing {label_desc}."
-                )
-
-    return " ".join(parts)
+    return "".join(parts)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# SECTION 3: MACRO RADAR
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
+# SECTION 3 — Macro Radar + Volume Mirror (宏观雷达与成交量照妖镜)
+# Voice: environmental scan, no speculation
+# =====================================================================
 
 def _build_macro_narrative(macro: dict) -> str:
     parts: list[str] = []
-
+    risks = macro.get("risks", [])
     vix_regime = macro.get("vix_regime", "unavailable")
     rate_regime = macro.get("rate_regime", "unavailable")
-    risks = macro.get("risks", [])
     haircut = macro.get("haircut_pct", 0)
 
-    # Overall regime
-    if risks:
-        risk_signals = [r["signal"] for r in risks]
-        if "high_vix" in risk_signals:
-            parts.append("Macro conditions currently show an elevated risk regime.")
-        elif "high_yield" in risk_signals or "weak_volume" in risk_signals:
-            parts.append("Macro conditions currently show a mixed risk regime.")
-        else:
-            parts.append("Macro conditions currently show a cautious risk regime.")
+    # VIX — direct read
+    vix_label = _ZH.get(f"vix_{vix_regime}", vix_regime)
+    vix_val = None
+    for r in risks:
+        if r["signal"] == "high_vix":
+            try:
+                vix_val = r["label"].split("VIX at ")[1].split(" ")[0]
+            except (IndexError, KeyError):
+                pass
+    if vix_val:
+        parts.append(f"VIX {vix_val}\uff0c\u60c5\u7eea{vix_label}\u3002")
     else:
-        parts.append("Macro conditions currently show a favorable risk regime.")
+        parts.append(f"\u5e02\u573a\u60c5\u7eea{vix_label}\u3002")
 
-    # VIX
-    vix_desc = _VIX_DESC.get(vix_regime, "uncertain")
-    parts.append(f"Volatility levels indicate {vix_desc} conditions.")
-
-    # Rates
-    rate_desc = _RATE_DESC.get(rate_regime, "uncertain")
-    parts.append(
-        f"Interest rate pressure from the 10-year yield remains {rate_desc}."
-    )
-
-    # Volume
-    has_weak_vol = any(r["signal"] == "weak_volume" for r in risks)
-    if has_weak_vol:
-        parts.append("Volume behavior suggests a weak rally with limited conviction.")
+    # Rates — direct read
+    rate_label = _ZH.get(f"rate_{rate_regime}", rate_regime)
+    treasury_val = None
+    for r in risks:
+        if r["signal"] == "high_yield":
+            try:
+                treasury_val = r["label"].split("yield at ")[1].split("%")[0]
+            except (IndexError, KeyError):
+                pass
+    if treasury_val:
+        parts.append(f"10\u5e74\u671f {treasury_val}%\uff0c\u5229\u7387{rate_label}\u3002")
     else:
-        parts.append("Volume behavior does not signal distribution or weakness.")
+        parts.append(f"\u5229\u7387\u73af\u5883{rate_label}\u3002")
 
-    # Overall conclusion
+    # Volume — centralized 3-state mapper
+    vol_label = VolumeLabelMapper.label(risks)
+    parts.append(f"\u6210\u4ea4\u91cf\u4fe1\u53f7\uff1a{vol_label}\u3002")
+
+    # Conclusion — concise
     if not risks:
-        parts.append(
-            "Overall, the macro radar indicates favorable trading conditions."
-        )
-    elif any(r["severity"] == "high" for r in risks):
-        parts.append(
-            "Overall, the macro radar indicates defensive trading conditions."
-        )
+        conclusion = _ZH["macro_favorable"]
+    elif any(r.get("severity") == "high" for r in risks):
+        conclusion = _ZH["macro_defensive"]
     else:
-        parts.append(
-            "Overall, the macro radar indicates mixed trading conditions."
-        )
+        conclusion = _ZH["macro_mixed"]
+    parts.append(f"\u7efc\u5408\u7b56\u7565\uff1a{conclusion}\u3002")
 
-    # Haircut
+    # Haircut — only if applied
     if haircut > 0:
-        parts.append(
-            f"A {haircut}% valuation haircut has been applied to reflect macro headwinds."
-        )
+        parts.append(f"\u5df2\u5e94\u7528 {haircut}% \u4f30\u503c\u6298\u6263\u3002")
 
-    return " ".join(parts)
+    return "".join(parts)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# SECTION 4: TACTICAL PLAYBOOK
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
+# SECTION 4 — Rhino Tactical Playbook (犀牛哥执行剧本)
+# Voice: 执行备忘 — direct orders, no hand-wringing
+# =====================================================================
 
 def _build_playbook_narrative(
     playbook: dict,
-    narrative: FundamentalNarrative,
 ) -> str:
     parts: list[str] = []
 
@@ -300,61 +413,47 @@ def _build_playbook_narrative(
     downside = playbook.get("downside", {})
     risk_rule = playbook.get("risk_rule", "")
 
-    # Bias
-    bias_desc = _BIAS_DESC.get(bias, bias)
-    action_desc = _ACTION_DESC.get(action, action)
-    parts.append(f"The current tactical stance is {bias_desc}, with the action bias {action_desc}.")
+    # Bias + action — direct
+    bias_label = _ZH.get(f"bias_{bias}", bias)
+    action_label = _ZH.get(f"action_{action}", action)
+    parts.append(f"\u504f\u5411{bias_label}\uff0c\u64cd\u4f5c\u5efa\u8bae{action_label}\u3002")
 
-    # Framing
-    framing = determine_playbook_framing(narrative.valuation_style)
+    # Framing — consumed from structured output, NOT recomputed
+    framing = upside.get("framing", "expansion")
+    framing_label = _ZH.get(f"framing_{framing}", framing)
 
-    # Upside
+    # Upside — conditional via safe_phrase
     target = upside.get("target")
     if target is not None:
-        if framing == "recovery":
-            parts.append(
-                f"If the price confirms strength, the recovery path opens toward "
-                f"${_fmt(target)}."
-            )
-        else:
-            parts.append(
-                f"If the price confirms strength, the expansion path opens toward "
-                f"${_fmt(target)}."
-            )
+        parts.append(
+            f"\u7a81\u7834\u786e\u8ba4\u540e\uff0c{framing_label}\u6307\u5411 ${_f(target)}\u3002"
+        )
     else:
-        parts.append("No clear upside target is currently identifiable from the structure.")
+        parts.append("\u5f53\u524d\u7ed3\u6784\u672a\u663e\u793a\u660e\u786e\u4e0a\u884c\u76ee\u6807\u3002")
 
-    # Downside
+    # Downside — conditional
     stop = downside.get("stop")
     if stop is not None:
-        parts.append(
-            f"However, failure to hold the current structure may expose "
-            f"downside risk toward ${_fmt(stop)}."
-        )
+        parts.append(f"\u7ed3\u6784\u5931\u5b88\u5219\u98ce\u9669\u6269\u5927\u81f3 ${_f(stop)}\u3002")
     else:
-        parts.append(
-            "No defined support level is available to anchor a downside stop."
-        )
+        parts.append("\u65e0\u660e\u786e\u652f\u6491\u4f4d\u4f5c\u4e3a\u6b62\u635f\u53c2\u8003\u3002")
 
-    # Rationale
+    # Rationale — key factors
     rationale = playbook.get("rationale", [])
     if rationale:
-        joined = "; ".join(rationale)
-        parts.append(f"Key factors: {joined}.")
+        joined = "\uff1b".join(rationale)
+        parts.append(f"\u5173\u952e\u56e0\u7d20\uff1a{joined}\u3002")
 
-    # Risk rule
+    # Risk rule — consumed directly from structured output
     if risk_rule:
-        parts.append(
-            "Position sizing should remain disciplined, with no single position "
-            "exceeding 15% of portfolio exposure."
-        )
+        parts.append(f"\u4ed3\u4f4d\u7eaa\u5f8b\uff1a{risk_rule}\u3002")
 
-    return " ".join(parts)
+    return "".join(parts)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
 # PUBLIC API
-# ═══════════════════════════════════════════════════════════════════════════
+# =====================================================================
 
 def build_battle_narrative(
     price: float,
@@ -363,13 +462,15 @@ def build_battle_narrative(
     macro: dict,
     playbook: dict,
 ) -> BattleNarrativeReport:
-    """Build four-section narrative from structured battle report data.
+    """Build four-section Chinese war report from structured battle report data.
 
-    Pure presentation — no analytical recomputation.
+    Pure presentation -- no analytical recomputation.
+    All data consumed from structured upstream outputs.
+    Voice: 老交易员盘前备忘录.
     """
     return BattleNarrativeReport(
         fundamental=_build_fundamental_narrative(narrative, price),
         battlefield=_build_battlefield_narrative(ladder, price),
         macro=_build_macro_narrative(macro),
-        playbook=_build_playbook_narrative(playbook, narrative),
+        playbook=_build_playbook_narrative(playbook),
     )

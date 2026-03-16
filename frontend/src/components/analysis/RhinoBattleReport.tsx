@@ -1,11 +1,12 @@
 /**
- * Rhino Battle Report — 4-section structured analysis summary with narrative.
+ * Rhino Battle Report — 4-section structured analysis with Chinese war report narrative.
  *
  * Sections:
- *   1. Fundamental & valuation anchor (narrative + classification + key metrics)
- *   2. Support/resistance ladder (narrative + semantic-labeled price levels)
- *   3. Macro radar (narrative + risk flags)
- *   4. Tactical playbook (narrative + dual-track: upside + downside)
+ *   1. Valuation Anchor (narrative + classification + key metrics)
+ *   2. Battlefield Structure (narrative + semantic-labeled price levels)
+ *   3. Macro Radar + Volume Mirror (narrative + risk flags)
+ *   4. Rhino Tactical Playbook (narrative + dual-track: upside + downside)
+ *      — visually emphasized as the final action layer
  */
 import type { BattleReport } from '@/types'
 import { useLanguage } from '@/context/LanguageContext'
@@ -71,7 +72,7 @@ const actionLabels: Record<string, { en: string; zh: string }> = {
 function NarrativeParagraph({ text }: { text?: string }) {
   if (!text) return null
   return (
-    <p className="text-xs text-slate-500 leading-relaxed mb-2 italic">
+    <p className="text-xs text-slate-500 leading-relaxed mb-2">
       {text}
     </p>
   )
@@ -87,16 +88,16 @@ export default function RhinoBattleReport({ report }: Props) {
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="px-5 py-3 border-b border-slate-100">
         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-          {lang === 'zh' ? '犀牛作战报告' : 'Rhino Battle Report'}
+          {lang === 'zh' ? '犀牛哥战报' : 'Rhino Battle Report'}
         </h3>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-slate-100">
-        {/* Section 1: Fundamental */}
+        {/* Section 1: Valuation Anchor */}
         <div className="p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="text-[11px] text-slate-400 font-medium uppercase">
-              {lang === 'zh' ? '估值锚定' : 'Valuation Anchor'}
+              {lang === 'zh' ? '估值锚点' : 'Valuation Anchor'}
             </div>
             <span className={`px-2 py-0.5 rounded-md border text-[11px] font-bold ${
               classColors[fundamental.classification] ?? 'text-slate-500 bg-slate-50 border-slate-200'
@@ -118,10 +119,10 @@ export default function RhinoBattleReport({ report }: Props) {
           )}
         </div>
 
-        {/* Section 2: Ladder */}
+        {/* Section 2: Battlefield Structure */}
         <div className="p-4">
           <div className="text-[11px] text-slate-400 font-medium uppercase mb-2">
-            {lang === 'zh' ? '支撑/阻力阶梯' : 'Support / Resistance Ladder'}
+            {lang === 'zh' ? '市场战场结构' : 'Battlefield Structure'}
           </div>
           <NarrativeParagraph text={narrative?.battlefield} />
           <div className="grid grid-cols-2 gap-3">
@@ -176,10 +177,10 @@ export default function RhinoBattleReport({ report }: Props) {
           </div>
         </div>
 
-        {/* Section 3: Macro Radar */}
+        {/* Section 3: Macro Radar + Volume Mirror */}
         <div className="p-4">
           <div className="text-[11px] text-slate-400 font-medium uppercase mb-2">
-            {lang === 'zh' ? '宏观雷达' : 'Macro Radar'}
+            {lang === 'zh' ? '宏观雷达与成交量照妖镜' : 'Macro Radar'}
           </div>
           <NarrativeParagraph text={narrative?.macro} />
           {macro.risks.length > 0 ? (
@@ -204,11 +205,11 @@ export default function RhinoBattleReport({ report }: Props) {
           )}
         </div>
 
-        {/* Section 4: Tactical Playbook */}
-        <div className="p-4">
+        {/* Section 4: Rhino Tactical Playbook — visually emphasized */}
+        <div className="p-4 bg-slate-50/70 border-l-4 border-indigo-500">
           <div className="flex items-center justify-between mb-2">
-            <div className="text-[11px] text-slate-400 font-medium uppercase">
-              {lang === 'zh' ? '战术手册' : 'Tactical Playbook'}
+            <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+              {lang === 'zh' ? '犀牛哥执行剧本' : 'Tactical Playbook'}
             </div>
             <span className={`px-2 py-0.5 rounded-md border text-[11px] font-bold ${
               actionColors[playbook.action_tag] ?? 'text-slate-600 bg-slate-50 border-slate-200'

@@ -575,10 +575,15 @@ export interface AnalysisNarrative {
 
 // ── Battle Report (Phase 6.2) ───────────────────────────────────────────────
 export interface BattleReportFundamental {
-  title:          string
-  classification: string   // deep_value | discount | fair | premium
-  label:          string
-  lines:          string[]
+  title:            string
+  classification:   string   // deep_value | discount | fair | premium
+  label:            string
+  valuation_style:  string   // growth | quality_mega_cap | cyclical | financial | defensive | unknown
+  eps_anchor:       number | null
+  pe_low:           number | null
+  pe_high:          number | null
+  midpoint:         number | null
+  lines:            string[]
 }
 
 export interface BattleReportLadderRung {
@@ -613,7 +618,7 @@ export interface BattleReportPlaybook {
   action_tag: string
   bias_tag:   string
   rationale:  string[]
-  upside:     { scenario: string; target: number | null; target_label: string }
+  upside:     { scenario: string; target: number | null; target_label: string; framing: 'expansion' | 'recovery' }
   downside:   { scenario: string; stop: number | null; stop_label: string }
   risk_rule:  string
 }
