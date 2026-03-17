@@ -137,25 +137,31 @@ def compute_zones(
     half_width = max(last_price * 0.008, atr20 * 0.5)
     zones: list[dict] = []
 
-    def _add(center: float, hw: float, strength: float, sources: list[str]):
+    def _add(
+        center: float, hw: float, strength: float,
+        sources: list[str], zone_type: str = "consolidation",
+        validity_days: int = 0,
+    ):
         zones.append({
             "center": center,
             "lower": center - hw,
             "upper": center + hw,
             "strength": strength,
             "sources": sources,
+            "zone_type": zone_type,
+            "validity_days": validity_days,
         })
 
     if poc is not None:
-        _add(poc, half_width, 0.9, ["volume_profile"])
+        _add(poc, half_width, 0.9, ["volume_profile"], zone_type="consolidation")
 
     for lvl in hvn_levels:
         if poc is not None and abs(lvl - poc) < half_width:
             continue
-        _add(lvl, half_width, 0.75, ["volume_profile"])
+        _add(lvl, half_width, 0.75, ["volume_profile"], zone_type="consolidation")
 
     if sma200 is not None:
-        _add(sma200, half_width * 0.8, 0.6, ["sma200"])
+        _add(sma200, half_width * 0.8, 0.6, ["sma200"], zone_type="MA")
 
     # Swing pivots from last 60 bars
     pivots = _find_swing_pivots(bars[-60:] if len(bars) >= 60 else bars)
@@ -164,7 +170,10 @@ def compute_zones(
             continue
         source = "pivot_high" if p["type"] == "high" else "pivot_low"
         strength = min(p["touches"] / 4, 1.0) * 0.7
-        _add(p["price"], half_width, strength, [source])
+        _add(
+            p["price"], half_width, strength, [source],
+            zone_type="pivot", validity_days=p.get("validity_days", 0),
+        )
 
     zones.sort(key=lambda z: z["strength"], reverse=True)
     return zones
@@ -175,10 +184,12 @@ def _find_swing_pivots(bars: list[dict]) -> list[dict]:
         return []
     tolerance = bars[-1]["close"] * 0.005
     pivots: list[dict] = []
+    last_date = bars[-1].get("date", "")
 
     for i in range(2, len(bars) - 2):
         low = bars[i]["low"]
         high = bars[i]["high"]
+        bar_date = bars[i].get("date", "")
 
         is_swing_low = all(low <= bars[i + d]["low"] for d in (-2, -1, 1, 2))
         is_swing_high = all(high >= bars[i + d]["high"] for d in (-2, -1, 1, 2))
@@ -191,8 +202,12 @@ def _find_swing_pivots(bars: list[dict]) -> list[dict]:
             if existing:
                 existing["touches"] += 1
                 existing["price"] = (existing["price"] + low) / 2
+                # Keep earliest date for validity tracking
             else:
-                pivots.append({"price": low, "type": "low", "touches": 1})
+                pivots.append({
+                    "price": low, "type": "low", "touches": 1,
+                    "first_date": bar_date,
+                })
 
         if is_swing_high:
             existing = next(
@@ -203,6 +218,28 @@ def _find_swing_pivots(bars: list[dict]) -> list[dict]:
                 existing["touches"] += 1
                 existing["price"] = (existing["price"] + high) / 2
             else:
-                pivots.append({"price": high, "type": "high", "touches": 1})
+                pivots.append({
+                    "price": high, "type": "high", "touches": 1,
+                    "first_date": bar_date,
+                })
+
+    # Compute validity_days from first_date to last bar date
+    for p in pivots:
+        p["validity_days"] = _date_diff_days(p.get("first_date", ""), last_date)
 
     return pivots
+
+
+def _date_diff_days(d1: str, d2: str) -> int:
+    """Simple date diff for YYYY-MM-DD strings. Returns 0 on parse failure."""
+    try:
+        parts1 = d1.split("-")
+        parts2 = d2.split("-")
+        if len(parts1) < 3 or len(parts2) < 3:
+            return 0
+        from datetime import date
+        dt1 = date(int(parts1[0]), int(parts1[1]), int(parts1[2]))
+        dt2 = date(int(parts2[0]), int(parts2[1]), int(parts2[2]))
+        return max(0, (dt2 - dt1).days)
+    except (ValueError, IndexError):
+        return 0

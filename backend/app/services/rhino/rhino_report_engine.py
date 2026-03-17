@@ -99,6 +99,8 @@ def _build_ladder_section(
             "label": lbl["en"],
             "label_zh": lbl["zh"],
             "strength": z.get("strength", 0),
+            "zone_type": z.get("zone_type", "consolidation"),
+            "validity_days": z.get("validity_days", 0),
         })
 
     for z in technical.get("resistance_zones", [])[:5]:
@@ -111,6 +113,8 @@ def _build_ladder_section(
             "label": lbl["en"],
             "label_zh": lbl["zh"],
             "strength": z.get("strength", 0),
+            "zone_type": z.get("zone_type", "consolidation"),
+            "validity_days": z.get("validity_days", 0),
         })
 
     return {
@@ -119,6 +123,62 @@ def _build_ladder_section(
         "resistance": resistance_rungs,
         "pattern_tags": technical.get("pattern_tags", []),
     }
+
+
+def _classify_market_state(
+    technical: dict,
+    semantic: dict | None,
+) -> str:
+    """Derive top-level market state: TRENDING | RANGE | BREAKDOWN_RISK.
+
+    Uses scenario engine output + price location for classification.
+    """
+    if semantic is None:
+        return "RANGE"
+
+    price_location = semantic.get("price_location", "mid_range")
+    risk_state = semantic.get("risk_state", "moderate")
+    trend_state = semantic.get("trend_state", "unavailable")
+    ma_alignment = semantic.get("ma_alignment", "unavailable")
+
+    # Breakdown risk: high risk + breakdown location
+    if risk_state == "high" or price_location == "breakdown_risk":
+        return "BREAKDOWN_RISK"
+
+    # Trending: bullish alignment above SMA200, or bearish alignment below
+    if ma_alignment == "bullish_alignment" and trend_state == "above_sma200":
+        return "TRENDING"
+    if ma_alignment == "bearish_alignment" and trend_state == "below_sma200":
+        return "TRENDING"
+
+    # Breakout zone is trending
+    if price_location == "breakout_zone":
+        return "TRENDING"
+
+    return "RANGE"
+
+
+def _compute_space_awareness(
+    support_zones: list[dict],
+    resistance_zones: list[dict],
+    price: float,
+) -> tuple[float | None, float | None]:
+    """Compute upside_pct and downside_pct to next major levels.
+
+    Returns (upside_pct, downside_pct) — both positive percentages.
+    """
+    upside_pct = None
+    downside_pct = None
+
+    if resistance_zones and price > 0:
+        next_resistance = resistance_zones[0]["center"]
+        upside_pct = round((next_resistance - price) / price * 100, 1)
+
+    if support_zones and price > 0:
+        next_support = support_zones[0]["center"]
+        downside_pct = round((price - next_support) / price * 100, 1)
+
+    return upside_pct, downside_pct
 
 
 def _build_macro_section(
@@ -197,13 +257,17 @@ def _pick_structural_level(zones: list[dict]) -> float | None:
     return zones[0]["center"]
 
 
+# Minimum distance from current price for reversal lines (fraction, 5%)
+_REVERSAL_MIN_DISTANCE = 0.05
+
+
 def _get_reversal_line(
     is_bearish: bool,
     support_zones: list[dict],
     resistance_zones: list[dict],
     price: float,
 ) -> dict | None:
-    """Structure-aware reversal line state machine.
+    """Structure-aware reversal line state machine (legacy single-line).
 
     Returns {"value": float, "type": str} or None.
     Types: "breakout" | "reversal" | "invalidation"
@@ -212,7 +276,6 @@ def _get_reversal_line(
     has_resistance = len(resistance_zones) > 0
 
     if is_bearish:
-        # BEAR_REPAIR: overhead regime/recovery line
         if has_resistance:
             level = _pick_structural_level(resistance_zones)
             if level is not None:
@@ -221,22 +284,111 @@ def _get_reversal_line(
         s_top = support_zones[0]["center"]
         r_bottom = resistance_zones[0]["center"]
         if s_top < price < r_bottom:
-            # RANGE: box upper boundary = breakout confirmation
             level = _pick_structural_level(resistance_zones)
             if level is not None:
                 return {"value": level, "type": "breakout"}
         else:
-            # BULL_PULLBACK: major support = failure boundary
             level = _pick_structural_level(support_zones)
             if level is not None:
                 return {"value": level, "type": "invalidation"}
     elif has_support:
-        # BULL_PULLBACK with no overhead: support failure
         level = _pick_structural_level(support_zones)
         if level is not None:
             return {"value": level, "type": "invalidation"}
 
     return None
+
+
+def _find_reversal_level(
+    zones: list[dict],
+    price: float,
+    direction: str,
+) -> float | None:
+    """Find a structurally significant reversal level at least 5% away from price.
+
+    direction: "up" — looks in zones above price (resistance-side)
+               "down" — looks in zones below price (support-side)
+
+    Must NOT overlap with box support/resistance (nearest zone).
+    Derived from swing pivots / major pivot structure (strength >= 0.5).
+    """
+    if not zones or price <= 0:
+        return None
+
+    # Filter to structural levels only (strength >= 0.5)
+    structural = [z for z in zones if z.get("strength", 0) >= 0.5]
+    if not structural:
+        return None
+
+    candidates: list[tuple[float, float]] = []  # (distance_pct, level)
+    for z in structural:
+        center = z["center"]
+        if direction == "up":
+            dist_pct = (center - price) / price
+            if dist_pct >= _REVERSAL_MIN_DISTANCE:
+                candidates.append((dist_pct, center))
+        else:
+            dist_pct = (price - center) / price
+            if dist_pct >= _REVERSAL_MIN_DISTANCE:
+                candidates.append((dist_pct, center))
+
+    if not candidates:
+        return None
+
+    # Pick the candidate with highest strength among qualifying levels
+    # Re-lookup strength for tie-breaking
+    best_level = None
+    best_strength = -1.0
+    for _, level in candidates:
+        for z in structural:
+            if abs(z["center"] - level) < 0.01:
+                s = z.get("strength", 0)
+                if s > best_strength:
+                    best_strength = s
+                    best_level = level
+                break
+
+    return best_level
+
+
+def _get_reversal_lines(
+    support_zones: list[dict],
+    resistance_zones: list[dict],
+    price: float,
+) -> tuple[dict | None, dict | None]:
+    """Compute dual reversal lines (up + down) for regime change detection.
+
+    Returns (reversal_line_up, reversal_line_down).
+    Each is {"value": float, "type": "reversal_up"|"reversal_down"} or None.
+
+    Rules:
+      - Must be >= 5% away from current price
+      - Must NOT overlap with nearest box support/resistance
+      - Derived from structural levels (strength >= 0.5)
+      - If no valid structure exists, returns None for that side
+    """
+    # Nearest box boundaries to exclude overlap
+    nearest_support = support_zones[0]["center"] if support_zones else None
+    nearest_resistance = resistance_zones[0]["center"] if resistance_zones else None
+
+    # Upside reversal: structural resistance far above price
+    up_level = _find_reversal_level(resistance_zones, price, "up")
+    # Exclude if it overlaps with box resistance (nearest resistance)
+    if up_level is not None and nearest_resistance is not None:
+        if abs(up_level - nearest_resistance) / price < 0.02:
+            up_level = None
+
+    # Downside reversal: structural support far below price
+    down_level = _find_reversal_level(support_zones, price, "down")
+    # Exclude if it overlaps with box support (nearest support)
+    if down_level is not None and nearest_support is not None:
+        if abs(down_level - nearest_support) / price < 0.02:
+            down_level = None
+
+    reversal_up = {"value": up_level, "type": "reversal_up"} if up_level is not None else None
+    reversal_down = {"value": down_level, "type": "reversal_down"} if down_level is not None else None
+
+    return reversal_up, reversal_down
 
 
 def _build_playbook_section(
@@ -247,7 +399,7 @@ def _build_playbook_section(
 ) -> dict:
     """Section 4: Tactical playbook — scenario tree with trigger/target distinction.
 
-    Risk rule: single stock should be ≤15% of portfolio.
+    Risk rule: single stock should be <=15% of portfolio.
     """
     support_zones = technical.get("support_zones", [])
     resistance_zones = technical.get("resistance_zones", [])
@@ -297,11 +449,14 @@ def _build_playbook_section(
         "stop_label": f"${downside_stop:.2f}" if downside_stop else "\u2014",
     }
 
-    # Reversal line — structure-aware invalidation boundary
-    # State machine picks structurally meaningful level, not nearest-level heuristic.
-    # Types: "breakout" | "reversal" | "invalidation"
+    # Legacy reversal line (backward compat)
     reversal_line = _get_reversal_line(
         is_bearish, support_zones, resistance_zones, price,
+    )
+
+    # Dual reversal lines — true regime change signals (>= 5% from price)
+    reversal_line_up, reversal_line_down = _get_reversal_lines(
+        support_zones, resistance_zones, price,
     )
 
     return {
@@ -312,6 +467,8 @@ def _build_playbook_section(
         "upside": upside,
         "downside": downside,
         "reversal_line": reversal_line,
+        "reversal_line_up": reversal_line_up,
+        "reversal_line_down": reversal_line_down,
         "risk_rule": "Single stock \u226415% of portfolio",
         "risk_rule_zh": "\u5355\u4e00\u4e2a\u80a1\u4e0d\u8d85\u8fc7\u7ec4\u5408\u768415%",
     }
@@ -329,6 +486,7 @@ def build_battle_report(
     playbook: dict,
     narrative: FundamentalNarrative,
     lang: str = "zh",
+    semantic: dict | None = None,
 ) -> dict:
     """Build the 4-section Rhino Battle Report.
 
@@ -337,6 +495,18 @@ def build_battle_report(
     ladder_section = _build_ladder_section(technical, price)
     macro_section = _build_macro_section(macro, technical)
     playbook_section = _build_playbook_section(playbook, narrative, technical, price)
+
+    # Market state + space awareness
+    market_state = _classify_market_state(technical, semantic)
+    support_zones = technical.get("support_zones", [])
+    resistance_zones = technical.get("resistance_zones", [])
+    upside_pct, downside_pct = _compute_space_awareness(
+        support_zones, resistance_zones, price,
+    )
+
+    # Inject reversal lines into ladder for narrative consumption
+    ladder_section["reversal_line_up"] = playbook_section.get("reversal_line_up")
+    ladder_section["reversal_line_down"] = playbook_section.get("reversal_line_down")
 
     # Build narrative after all structured sections
     battle_narrative = build_battle_narrative(
@@ -349,4 +519,7 @@ def build_battle_report(
         "macro": macro_section,
         "playbook": playbook_section,
         "narrative": battle_narrative._asdict(),
+        "market_state": market_state,
+        "upside_pct": upside_pct,
+        "downside_pct": downside_pct,
     }

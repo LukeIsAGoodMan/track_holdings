@@ -83,6 +83,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     fundamental_narrative = build_fundamental_narrative(valuation, price)
     battle_report = build_battle_report(
         price, technical, valuation, macro, playbook, fundamental_narrative, lang,
+        semantic=semantic,
     )
 
     # Data quality + confidence
@@ -129,6 +130,9 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "resistance_zones": technical["resistance_zones"],
         "current_price": float(price),
         "analysis_close": float(price),
+        "reversal_line_up": battle_report.get("playbook", {}).get("reversal_line_up"),
+        "reversal_line_down": battle_report.get("playbook", {}).get("reversal_line_down"),
+        "market_state": battle_report.get("market_state"),
     }
 
     # Build quote from EOD bars — fully self-contained, no intraday quote.
@@ -234,5 +238,7 @@ def _degraded(symbol: str, lang: str, raw_macro: dict, estimates: dict) -> dict:
         "text": text,
         "chart": {"candles": [], "sma30": [], "sma100": [], "sma200": [],
                   "support_zones": [], "resistance_zones": [],
-                  "current_price": 0.0, "analysis_close": 0.0},
+                  "current_price": 0.0, "analysis_close": 0.0,
+                  "reversal_line_up": None, "reversal_line_down": None,
+                  "market_state": "RANGE"},
     }

@@ -469,6 +469,20 @@ def _build_battlefield_narrative(
             parts.append(
                 f"\u8dcc\u7834 ${_f(support[0]['level'])} \u540e\uff0c\u5f53\u524d\u4fee\u590d\u7ed3\u6784\u5931\u6548\u3002"
             )
+
+        # ZH: reversal line context
+        reversal_up = ladder.get("reversal_line_up")
+        reversal_down = ladder.get("reversal_line_down")
+        if reversal_up is not None:
+            parts.append(
+                f"\u4e0a\u65b9\u8d8b\u52bf\u53cd\u8f6c\u4f4d ${_f(reversal_up['value'])}\uff0c"
+                f"\u53ea\u6709\u6301\u7eed\u7ad9\u7a33\u8be5\u4f4d\u624d\u786e\u8ba4\u7ed3\u6784\u6027\u8f6c\u53d8\u3002"
+            )
+        if reversal_down is not None:
+            parts.append(
+                f"\u4e0b\u65b9\u8d8b\u52bf\u5931\u8d25\u4f4d ${_f(reversal_down['value'])}\uff0c"
+                f"\u8dcc\u7834\u8be5\u4f4d\u610f\u5473\u7740\u66f4\u5927\u7ea7\u522b\u7684\u7a7a\u5934\u8d8b\u52bf\u3002"
+            )
     else:
         # EN: Resistance
         if resistance:
@@ -494,7 +508,7 @@ def _build_battlefield_narrative(
             else:
                 parts[-1] += "."
 
-        # EN: Structure-aware reversal
+        # EN: Structure-aware reversal + range logic
         pattern_tags = ladder.get("pattern_tags", [])
         is_bearish = "below_sma200" in pattern_tags
 
@@ -509,8 +523,8 @@ def _build_battlefield_narrative(
             r_bottom = resistance[0]["level"]
             if s_top < price < r_bottom:
                 parts.append(
-                    f"Until ${_f(r_bottom)} breaks out, "
-                    f"current action is range-bound consolidation."
+                    f"Until price breaks above ${_f(r_bottom)} or below ${_f(s_top)}, "
+                    f"market remains range-bound."
                 )
             else:
                 parts.append(
@@ -519,6 +533,20 @@ def _build_battlefield_narrative(
         elif support:
             parts.append(
                 f"A break below ${_f(support[0]['level'])} invalidates the current repair structure."
+            )
+
+        # Reversal line context — distinguish local breakout vs regime event
+        reversal_up = ladder.get("reversal_line_up")
+        reversal_down = ladder.get("reversal_line_down")
+        if reversal_up is not None:
+            parts.append(
+                f"Upside trend reversal level: ${_f(reversal_up['value'])} "
+                f"-- only a sustained break above this level signals structural regime change."
+            )
+        if reversal_down is not None:
+            parts.append(
+                f"Downside trend failure level: ${_f(reversal_down['value'])} "
+                f"-- a break below this level signals a larger bearish regime shift."
             )
 
     return " ".join(parts) if lang == "en" else "".join(parts)

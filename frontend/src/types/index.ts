@@ -450,11 +450,13 @@ export interface SymbolSuggestion {
 
 // ── Rhino Analysis (Phase 15) ──────────────────────────────────────────────
 export interface AnalysisPriceZone {
-  center:   number
-  lower:    number
-  upper:    number
-  strength: number
-  sources:  string[]
+  center:          number
+  lower:           number
+  upper:           number
+  strength:        number
+  sources:         string[]
+  zone_type?:      string   // pivot | MA | consolidation | breakout
+  validity_days?:  number   // how long the level has held
 }
 
 export interface AnalysisTechnical {
@@ -528,15 +530,23 @@ export interface AnalysisCandle {
   volume: number
 }
 
+export interface ReversalLineData {
+  value: number
+  type:  string   // reversal_up | reversal_down
+}
+
 export interface AnalysisChart {
-  candles:          AnalysisCandle[]
-  sma30:            { date: string; value: number }[]
-  sma100:           { date: string; value: number }[]
-  sma200:           { date: string; value: number }[]
-  support_zones:    AnalysisPriceZone[]
-  resistance_zones: AnalysisPriceZone[]
-  current_price:    number
-  analysis_close:   number
+  candles:            AnalysisCandle[]
+  sma30:              { date: string; value: number }[]
+  sma100:             { date: string; value: number }[]
+  sma200:             { date: string; value: number }[]
+  support_zones:      AnalysisPriceZone[]
+  resistance_zones:   AnalysisPriceZone[]
+  current_price:      number
+  analysis_close:     number
+  reversal_line_up?:  ReversalLineData | null
+  reversal_line_down?: ReversalLineData | null
+  market_state?:      string   // TRENDING | RANGE | BREAKDOWN_RISK
 }
 
 export interface AnalysisTextSections {
@@ -593,11 +603,13 @@ export interface BattleReportFundamental {
 }
 
 export interface BattleReportLadderRung {
-  level:      number
-  dist_pct:   number
-  label:      string        // Structural Reversal | Regime Line | Major | Structural | Weak
-  label_zh?:  string        // bilingual: 结构反转 | 趋势线 | 主要 | 结构 | 弱
-  strength:   number
+  level:           number
+  dist_pct:        number
+  label:           string        // Structural Reversal | Regime Line | Major | Structural | Weak
+  label_zh?:       string        // bilingual: 结构反转 | 趋势线 | 主要 | 结构 | 弱
+  strength:        number
+  zone_type?:      string        // pivot | MA | consolidation | breakout
+  validity_days?:  number        // how long the level has held
 }
 
 export interface BattleReportLadder {
@@ -644,6 +656,8 @@ export interface BattleReportPlaybook {
     stop_label: string
   }
   reversal_line: { value: number; type: 'breakout' | 'reversal' | 'invalidation' } | null
+  reversal_line_up?:   ReversalLineData | null
+  reversal_line_down?: ReversalLineData | null
   risk_rule:     string
   risk_rule_zh:  string
 }
@@ -656,11 +670,14 @@ export interface BattleNarrative {
 }
 
 export interface BattleReport {
-  fundamental: BattleReportFundamental
-  ladder:      BattleReportLadder
-  macro:       BattleReportMacro
-  playbook:    BattleReportPlaybook
-  narrative?:  BattleNarrative
+  fundamental:    BattleReportFundamental
+  ladder:         BattleReportLadder
+  macro:          BattleReportMacro
+  playbook:       BattleReportPlaybook
+  narrative?:     BattleNarrative
+  market_state?:  string        // TRENDING | RANGE | BREAKDOWN_RISK
+  upside_pct?:    number | null // % to next major resistance
+  downside_pct?:  number | null // % to next major support
 }
 
 export interface AnalysisResult {

@@ -97,7 +97,6 @@ export default function AnalysisPage() {
             chart={result.chart}
             price={price}
             fairValue={result.valuation.raw_fair_value ?? undefined}
-            reversalLine={result.battle_report?.playbook?.reversal_line ?? undefined}
           />
 
           <NarrativeSection narrative={result.narrative} sections={result.text.sections} />

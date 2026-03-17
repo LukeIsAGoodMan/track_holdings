@@ -1,22 +1,26 @@
 /**
- * Rhino chart — Recharts OHLC visualization with full chart spec v1.
+ * Rhino chart — Recharts OHLC visualization with layered market structure.
  *
- * Layer order (back → front):
- *   1. Fair Value Band (emerald, translucent)
- *   2. Support / Resistance zones
- *   3. Moving Averages (SMA30, SMA100, SMA200)
- *   4. Price Line (close series, dominant)
- *   5. Candle bodies
- *   6. Volume bars (green=up, red=down)
- *   7. Current price marker + guide line
- *   8. Reversal confirmation line (if present)
+ * Layer order (back -> front):
+ *   1. Support / Resistance zones (tiered by strength)
+ *   2. Moving Averages (SMA30, SMA100, SMA200) — Trend Layer
+ *   3. Price Line (close series, dominant)
+ *   4. Candle bodies (10D/30D only)
+ *   5. Volume bars (green=up, red=down)
+ *   6. Current price marker + guide line
+ *   7. Reversal lines (up/down, regime change signals)
+ *   8. Fair value reference line (thin, replaces shaded band)
+ *
+ * Label collision system:
+ *   Priority: Current Price > Reversal Lines > Box Boundary > S/R Levels
+ *   Auto-offset when labels overlap (within 3% threshold)
  */
 import { useState, useMemo, useCallback } from 'react'
 import {
   ComposedChart, Line, Bar, XAxis, YAxis, Tooltip, ReferenceArea,
   ReferenceLine, ResponsiveContainer, Cell,
 } from 'recharts'
-import type { AnalysisChart } from '@/types'
+import type { AnalysisChart, AnalysisPriceZone } from '@/types'
 import { useLanguage } from '@/context/LanguageContext'
 import { fmtPrice } from '@/utils/format'
 
@@ -25,10 +29,11 @@ interface Props {
   /** @deprecated pass via chart.current_price instead */
   price?: number
   fairValue?: { low: number; mid: number; high: number }
+  /** Legacy single reversal line */
   reversalLine?: { value: number; type: 'breakout' | 'reversal' | 'invalidation' }
 }
 
-/* ── Timeframe options ─────────────────────────────────────────────────── */
+/* -- Timeframe options --------------------------------------------------- */
 
 const TIMEFRAMES = [
   { label: '10D', days: 10 },
@@ -38,7 +43,7 @@ const TIMEFRAMES = [
 
 type Timeframe = typeof TIMEFRAMES[number]['days']
 
-/* ── Custom candle shape ────────────────────────────────────────────────── */
+/* -- Custom candle shape ------------------------------------------------- */
 
 interface CandleShapeProps {
   x?: number
@@ -82,69 +87,112 @@ function CandleShape(props: CandleShapeProps) {
   )
 }
 
-/* ── Current price label (TradingView-style right-edge badge) ─────────── */
+/* -- Label collision resolver -------------------------------------------- */
 
-function CurrentPriceLabel({ viewBox, value }: { viewBox?: { x?: number; y?: number; width?: number }; value?: string }) {
+interface LabelEntry {
+  value: number
+  priority: number    // lower = higher priority
+  text: string
+  color: string
+  bgColor: string
+}
+
+function resolveLabels(entries: LabelEntry[], yMin: number, yMax: number): (LabelEntry & { offset: number })[] {
+  // Sort by priority (highest first = lowest number)
+  const sorted = [...entries].sort((a, b) => a.priority - b.priority)
+  const placed: { y: number; height: number }[] = []
+  const LABEL_HEIGHT = 20
+  const range = yMax - yMin
+
+  return sorted.map((entry) => {
+    // Normalize to pixel-like space (0-400)
+    const normY = ((entry.value - yMin) / range) * 400
+    let offset = 0
+
+    // Check for overlaps with already-placed labels
+    for (const p of placed) {
+      if (Math.abs(normY + offset - p.y) < LABEL_HEIGHT) {
+        // Shift down (positive offset moves label down)
+        offset += LABEL_HEIGHT - Math.abs(normY + offset - p.y)
+      }
+    }
+
+    placed.push({ y: normY + offset, height: LABEL_HEIGHT })
+    return { ...entry, offset }
+  })
+}
+
+/* -- Right-edge label component ------------------------------------------ */
+
+function RightEdgeLabel({ viewBox, value, bgColor, textColor, offset }: {
+  viewBox?: { x?: number; y?: number; width?: number }
+  value?: string
+  bgColor: string
+  textColor: string
+  offset: number
+}) {
   if (!viewBox) return null
   const x = (viewBox.x ?? 0) + (viewBox.width ?? 0) + 2
-  const y = viewBox.y ?? 0
+  const y = (viewBox.y ?? 0) + offset
   return (
     <g>
-      <rect x={x} y={y - 10} width={72} height={20} rx={4} fill="#4f46e5" />
-      <circle cx={x + 8} cy={y} r={2.5} fill="#fff" />
-      <text x={x + 14} y={y + 4} fill="#fff" fontSize={11} fontWeight={700}>
+      <rect x={x} y={y - 10} width={72} height={20} rx={4} fill={bgColor} />
+      <text x={x + 36} y={y + 4} textAnchor="middle" fill={textColor} fontSize={10} fontWeight={700}>
         {value}
       </text>
     </g>
   )
 }
 
-/* ── Reversal line label ─────────────────────────────────────────────── */
+/* -- Market state badge colors ------------------------------------------- */
 
-function ReversalLabel({ viewBox, value }: { viewBox?: { x?: number; y?: number; width?: number }; value?: string }) {
-  if (!viewBox) return null
-  const x = (viewBox.x ?? 0) + (viewBox.width ?? 0) + 2
-  const y = viewBox.y ?? 0
-  return (
-    <g>
-      <rect x={x} y={y - 9} width={68} height={18} rx={3} fill="#6366f1" fillOpacity={0.9} />
-      <text x={x + 34} y={y + 4} textAnchor="middle" fill="#fff" fontSize={9} fontWeight={600}>
-        {value}
-      </text>
-    </g>
-  )
-}
-
-/* ── Reversal label text (structure-aware) ────────────────────────────── */
-
-function _reversalLabel(lang: string, type?: string): string {
-  if (lang === 'zh') {
-    if (type === 'breakout') return '\u7bb1\u4f53\u7a81\u7834\u7ebf'
-    if (type === 'invalidation') return '\u7ed3\u6784\u5931\u6548\u7ebf'
-    return '\u7ed3\u6784\u53cd\u8f6c\u7ebf'
+function marketStateBadge(state?: string, lang?: string): { text: string; color: string; bg: string } {
+  switch (state) {
+    case 'TRENDING':
+      return { text: lang === 'zh' ? '趋势' : 'TRENDING', color: '#059669', bg: '#ecfdf5' }
+    case 'BREAKDOWN_RISK':
+      return { text: lang === 'zh' ? '破位风险' : 'BREAKDOWN RISK', color: '#dc2626', bg: '#fef2f2' }
+    default:
+      return { text: lang === 'zh' ? '震荡' : 'RANGE', color: '#d97706', bg: '#fffbeb' }
   }
-  if (type === 'breakout') return 'Breakout'
-  if (type === 'invalidation') return 'Invalidation'
-  return 'Reversal'
 }
 
-function _reversalColor(type?: string): string {
-  if (type === 'invalidation') return '#ef4444'  // red
-  if (type === 'reversal') return '#f97316'       // orange
-  return '#6366f1'                                 // indigo (breakout)
+/* -- Zone strength visual properties ------------------------------------- */
+
+function zoneStyle(zone: AnalysisPriceZone, isSupport: boolean) {
+  const color = isSupport ? '#10b981' : '#ef4444'
+  const s = zone.strength
+  if (s >= 0.7) return { fillOpacity: 0.08, strokeOpacity: 0.3, strokeWidth: 1, dash: undefined, color }
+  if (s >= 0.4) return { fillOpacity: 0.04, strokeOpacity: 0.2, strokeWidth: 0.5, dash: undefined, color }
+  return { fillOpacity: 0, strokeOpacity: 0.12, strokeWidth: 0.5, dash: '4 4', color }
 }
 
-function _reversalDash(type?: string): string {
-  if (type === 'reversal') return '8 4'  // solid-ish
-  return '6 4'                            // dashed (breakout, invalidation)
+/* -- Zone type label for tooltips ---------------------------------------- */
+
+function zoneTypeLabel(zone: AnalysisPriceZone, lang: string): string {
+  const t = zone.zone_type ?? 'consolidation'
+  const labels: Record<string, { en: string; zh: string }> = {
+    pivot: { en: 'Pivot', zh: '枢轴' },
+    MA: { en: 'Moving Average', zh: '均线' },
+    consolidation: { en: 'Consolidation', zh: '整理区间' },
+    breakout: { en: 'Breakout', zh: '突破' },
+  }
+  return labels[t]?.[lang === 'zh' ? 'zh' : 'en'] ?? t
 }
 
-/* ── Main component ─────────────────────────────────────────────────────── */
+function strengthLabel(s: number, lang: string): string {
+  if (s >= 0.7) return lang === 'zh' ? '强' : 'Strong'
+  if (s >= 0.4) return lang === 'zh' ? '中' : 'Medium'
+  return lang === 'zh' ? '弱' : 'Weak'
+}
 
-export default function RhinoChart({ chart, price: priceProp, fairValue, reversalLine }: Props) {
+/* -- Main component ------------------------------------------------------ */
+
+export default function RhinoChart({ chart, price: priceProp, fairValue, reversalLine: _legacyReversalLine }: Props) {
   const price = chart.current_price ?? priceProp ?? 0
   const { lang, t } = useLanguage()
   const [timeframe, setTimeframe] = useState<Timeframe>(200)
+  const [hoverZone, setHoverZone] = useState<AnalysisPriceZone | null>(null)
 
   const data = useMemo(() => {
     const sma30Map  = new Map((chart.sma30 ?? []).map((s) => [s.date, s.value]))
@@ -168,7 +216,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleMouseMove = useCallback((_state: any) => {}, [])
-  const handleMouseLeave = useCallback(() => {}, [])
+  const handleMouseLeave = useCallback(() => { setHoverZone(null) }, [])
 
   if (data.length === 0) {
     return (
@@ -181,10 +229,21 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
     )
   }
 
+  // Collect all rendered line values for dynamic Y-axis breathing
   const allLows = data.map((d) => d.low)
   const allHighs = data.map((d) => d.high)
-  const yMin = Math.min(...allLows) * 0.98
-  const yMax = Math.max(...allHighs) * 1.02
+  const lineValues: number[] = [price]
+  if (chart.reversal_line_up?.value) lineValues.push(chart.reversal_line_up.value)
+  if (chart.reversal_line_down?.value) lineValues.push(chart.reversal_line_down.value)
+  if (fairValue?.mid) lineValues.push(fairValue.mid)
+
+  // Dynamic Y-axis with breathing room (Task 7)
+  const dataMin = Math.min(...allLows, ...lineValues)
+  const dataMax = Math.max(...allHighs, ...lineValues)
+  const dataRange = dataMax - dataMin
+  const yPadding = Math.max(dataRange * 0.06, dataMax * 0.015) // at least 1.5%
+  const yMin = dataMin - yPadding
+  const yMax = dataMax + yPadding
 
   // Volume Y-axis domain
   const maxVol = Math.max(...data.map((d) => d.volume ?? 0))
@@ -194,20 +253,71 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
     return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : d ?? ''
   }
 
-  // Limit zones to top 3 for cleaner visual
-  const supportZones = chart.support_zones.slice(0, 3)
-  const resistanceZones = chart.resistance_zones.slice(0, 3)
+  // Limit zones: top 5 per side, tiered by strength
+  const supportZones = chart.support_zones.slice(0, 5)
+  const resistanceZones = chart.resistance_zones.slice(0, 5)
 
-  // Fair value band visible only if within Y range
-  const showFairValue = fairValue && fairValue.low > 0 && fairValue.low < yMax && fairValue.high > yMin
+  // Dual reversal lines from chart data (new) or legacy prop
+  const reversalUp = chart.reversal_line_up ?? null
+  const reversalDown = chart.reversal_line_down ?? null
+
+  // Fair value: thin reference line only (Task 4 — no shaded band)
+  const fairMid = fairValue?.mid
+  const showFairLine = fairMid != null && fairMid > 0 && fairMid > yMin && fairMid < yMax
+
+  // Label collision resolver (Task 5)
+  const labelEntries: LabelEntry[] = [
+    { value: price, priority: 0, text: `$${price.toFixed(2)}`, color: '#fff', bgColor: '#4f46e5' },
+  ]
+  if (reversalUp) {
+    labelEntries.push({
+      value: reversalUp.value, priority: 1,
+      text: lang === 'zh' ? '上方反转' : 'Rev Up',
+      color: '#fff', bgColor: '#059669',
+    })
+  }
+  if (reversalDown) {
+    labelEntries.push({
+      value: reversalDown.value, priority: 2,
+      text: lang === 'zh' ? '下方反转' : 'Rev Down',
+      color: '#fff', bgColor: '#dc2626',
+    })
+  }
+  if (resistanceZones.length > 0) {
+    labelEntries.push({
+      value: resistanceZones[0].center, priority: 3,
+      text: `R $${resistanceZones[0].center.toFixed(0)}`,
+      color: '#fff', bgColor: '#ef4444cc',
+    })
+  }
+  if (supportZones.length > 0) {
+    labelEntries.push({
+      value: supportZones[0].center, priority: 4,
+      text: `S $${supportZones[0].center.toFixed(0)}`,
+      color: '#fff', bgColor: '#10b981cc',
+    })
+  }
+  const resolvedLabels = resolveLabels(labelEntries, yMin, yMax)
+
+  // Market state badge
+  const badge = marketStateBadge(chart.market_state, lang)
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-      {/* Header with timeframe selector */}
+      {/* Header with timeframe selector + market state badge */}
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
-          {t('analysis_chart')}
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
+            {t('analysis_chart')}
+          </h3>
+          {/* Task 9: Market state badge */}
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+            style={{ color: badge.color, backgroundColor: badge.bg, borderColor: badge.color + '33' }}
+          >
+            {badge.text}
+          </span>
+        </div>
         <div className="flex items-center gap-0.5 bg-slate-100 rounded-lg p-0.5">
           {TIMEFRAMES.map(({ label, days }) => (
             <button
@@ -228,7 +338,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
       <ResponsiveContainer width="100%" height={400}>
         <ComposedChart
           data={data}
-          margin={{ top: 10, right: 75, bottom: 0, left: 0 }}
+          margin={{ top: 10, right: 85, bottom: 0, left: 0 }}
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         >
@@ -255,6 +365,8 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
             domain={[0, maxVol * 6]}
             hide
           />
+
+          {/* -- Tooltip with hover semantics (Task 8) -- */}
           <Tooltip
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null
@@ -262,7 +374,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
               if (!d) return null
               const is200 = timeframe >= 200
               return (
-                <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs min-w-[140px] min-h-[60px] transition-all duration-150">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px] transition-all duration-150">
                   <div className="font-semibold text-slate-600 mb-1">{formatDate(String(label ?? ''))}</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums text-slate-700">
                     {!is200 && <><span className="text-slate-400">O</span><span>{fmtPrice(d.open)}</span></>}
@@ -271,68 +383,67 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
                     <span className="text-slate-400">{is200 ? 'Close' : 'C'}</span>
                     <span className={d.bullish ? 'text-emerald-600' : 'text-rose-600'}>{fmtPrice(d.close)}</span>
                     <span className="text-slate-400">Vol</span>
-                    <span>{d.volume ? (d.volume / 1e6).toFixed(1) + 'M' : '—'}</span>
+                    <span>{d.volume ? (d.volume / 1e6).toFixed(1) + 'M' : '\u2014'}</span>
                   </div>
+                  {/* Hover zone info (Task 8) */}
+                  {hoverZone && (
+                    <div className="mt-2 pt-2 border-t border-slate-100 text-[10px] text-slate-500 space-y-0.5">
+                      <div className="font-semibold text-slate-700">
+                        {zoneTypeLabel(hoverZone, lang)} {lang === 'zh' ? '' : ''} {strengthLabel(hoverZone.strength, lang)}
+                      </div>
+                      <div>${hoverZone.center.toFixed(2)} ({((Math.abs(price - hoverZone.center) / price) * 100).toFixed(1)}% {hoverZone.center < price ? (lang === 'zh' ? '低于' : 'below') : (lang === 'zh' ? '高于' : 'above')})</div>
+                      {(hoverZone.validity_days ?? 0) > 0 && (
+                        <div>{lang === 'zh' ? '有效' : 'Held'} {hoverZone.validity_days} {lang === 'zh' ? '天' : 'days'}</div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             }}
           />
 
-          {/* ═══ LAYER 1: Fair Value Band ═══ */}
-          {showFairValue && (
-            <ReferenceArea
-              yAxisId="price"
-              y1={fairValue.low}
-              y2={fairValue.high}
-              fill="#10b981"
-              fillOpacity={0.08}
-              stroke="#10b981"
-              strokeOpacity={0.2}
-              strokeWidth={0.5}
-              ifOverflow="extendDomain"
-              label={{
-                value: lang === 'zh' ? '内在价值' : 'Intrinsic Value',
-                position: 'insideTopLeft',
-                fill: '#10b981',
-                fontSize: 9,
-                fontWeight: 600,
-              }}
-            />
-          )}
+          {/* === LAYER 1: Support / Resistance Zones (tiered by strength) === */}
+          {supportZones.map((z, i) => {
+            const style = zoneStyle(z, true)
+            return (
+              <ReferenceArea
+                key={`s-${i}`}
+                yAxisId="price"
+                y1={z.lower}
+                y2={z.upper}
+                fill={style.color}
+                fillOpacity={style.fillOpacity}
+                stroke={style.color}
+                strokeOpacity={style.strokeOpacity}
+                strokeDasharray={style.dash}
+                strokeWidth={style.strokeWidth}
+                onMouseEnter={() => setHoverZone(z)}
+                onMouseLeave={() => setHoverZone(null)}
+              />
+            )
+          })}
 
-          {/* ═══ LAYER 2: Support zones ═══ */}
-          {supportZones.map((z, i) => (
-            <ReferenceArea
-              key={`s-${i}`}
-              yAxisId="price"
-              y1={z.lower}
-              y2={z.upper}
-              fill="#10b981"
-              fillOpacity={z.strength >= 0.6 ? 0.10 : 0}
-              stroke="#10b981"
-              strokeOpacity={z.strength >= 0.6 ? 0.2 : 0.15}
-              strokeDasharray={z.strength < 0.6 ? '4 4' : undefined}
-              strokeWidth={z.strength >= 0.6 ? 0.5 : 0.5}
-            />
-          ))}
+          {resistanceZones.map((z, i) => {
+            const style = zoneStyle(z, false)
+            return (
+              <ReferenceArea
+                key={`r-${i}`}
+                yAxisId="price"
+                y1={z.lower}
+                y2={z.upper}
+                fill={style.color}
+                fillOpacity={style.fillOpacity}
+                stroke={style.color}
+                strokeOpacity={style.strokeOpacity}
+                strokeDasharray={style.dash}
+                strokeWidth={style.strokeWidth}
+                onMouseEnter={() => setHoverZone(z)}
+                onMouseLeave={() => setHoverZone(null)}
+              />
+            )
+          })}
 
-          {/* Resistance zones */}
-          {resistanceZones.map((z, i) => (
-            <ReferenceArea
-              key={`r-${i}`}
-              yAxisId="price"
-              y1={z.lower}
-              y2={z.upper}
-              fill="#ef4444"
-              fillOpacity={z.strength >= 0.6 ? 0.10 : 0}
-              stroke="#ef4444"
-              strokeOpacity={z.strength >= 0.6 ? 0.2 : 0.15}
-              strokeDasharray={z.strength < 0.6 ? '4 4' : undefined}
-              strokeWidth={z.strength >= 0.6 ? 0.5 : 0.5}
-            />
-          ))}
-
-          {/* ═══ LAYER 3: Moving Averages ═══ */}
+          {/* === LAYER 2: Moving Averages (Trend Layer) === */}
           <Line
             dataKey="sma30"
             yAxisId="price"
@@ -368,7 +479,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
             isAnimationActive={false}
           />
 
-          {/* ═══ LAYER 4: Price Line (dominant) ═══ */}
+          {/* === LAYER 3: Price Line (dominant) === */}
           <Line
             dataKey="close"
             yAxisId="price"
@@ -380,7 +491,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
             isAnimationActive={false}
           />
 
-          {/* ═══ LAYER 5: Candle bodies (hidden in 200D for readability) ═══ */}
+          {/* === LAYER 4: Candle bodies (10D/30D only) === */}
           {timeframe <= 30 && (
             <Bar
               dataKey="_candle"
@@ -391,7 +502,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
             />
           )}
 
-          {/* ═══ LAYER 6: Volume bars — subdued, green/red ═══ */}
+          {/* === LAYER 5: Volume bars === */}
           <Bar
             dataKey="volume"
             yAxisId="volume"
@@ -404,26 +515,70 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
             ))}
           </Bar>
 
-          {/* ═══ LAYER 7: Current Price ═══ */}
+          {/* === LAYER 6: Current Price with collision-resolved label === */}
           <ReferenceLine
             yAxisId="price"
             y={price}
             stroke="#4f46e5"
             strokeWidth={1.5}
             strokeDasharray="4 4"
-            label={<CurrentPriceLabel value={`$${price.toFixed(2)}`} />}
+            label={
+              <RightEdgeLabel
+                value={resolvedLabels.find(l => l.priority === 0)?.text ?? `$${price.toFixed(2)}`}
+                bgColor="#4f46e5"
+                textColor="#fff"
+                offset={resolvedLabels.find(l => l.priority === 0)?.offset ?? 0}
+              />
+            }
           />
 
-          {/* ═══ LAYER 8: Reversal / Invalidation Line ═══ */}
-          {reversalLine != null && (
+          {/* === LAYER 7: Dual Reversal Lines === */}
+          {reversalUp && (
             <ReferenceLine
               yAxisId="price"
-              y={reversalLine.value}
-              stroke={_reversalColor(reversalLine.type)}
+              y={reversalUp.value}
+              stroke="#059669"
               strokeWidth={2}
-              strokeDasharray={_reversalDash(reversalLine.type)}
+              strokeDasharray="8 4"
               ifOverflow="extendDomain"
-              label={<ReversalLabel value={_reversalLabel(lang, reversalLine.type)} />}
+              label={
+                <RightEdgeLabel
+                  value={resolvedLabels.find(l => l.priority === 1)?.text ?? 'Rev Up'}
+                  bgColor="#059669"
+                  textColor="#fff"
+                  offset={resolvedLabels.find(l => l.priority === 1)?.offset ?? 0}
+                />
+              }
+            />
+          )}
+          {reversalDown && (
+            <ReferenceLine
+              yAxisId="price"
+              y={reversalDown.value}
+              stroke="#dc2626"
+              strokeWidth={2}
+              strokeDasharray="8 4"
+              ifOverflow="extendDomain"
+              label={
+                <RightEdgeLabel
+                  value={resolvedLabels.find(l => l.priority === 2)?.text ?? 'Rev Down'}
+                  bgColor="#dc2626"
+                  textColor="#fff"
+                  offset={resolvedLabels.find(l => l.priority === 2)?.offset ?? 0}
+                />
+              }
+            />
+          )}
+
+          {/* === LAYER 8: Fair value thin reference line (Task 4) === */}
+          {showFairLine && (
+            <ReferenceLine
+              yAxisId="price"
+              y={fairMid}
+              stroke="#10b981"
+              strokeWidth={1}
+              strokeDasharray="6 6"
+              strokeOpacity={0.5}
             />
           )}
         </ComposedChart>
@@ -455,6 +610,24 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
           <span className="w-2 h-2 inline-block rounded-sm" style={{ background: '#ef4444', opacity: 0.4 }} />
           {lang === 'zh' ? '压力' : 'Resistance'}
         </span>
+        {reversalUp && (
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-[2px] inline-block rounded" style={{ background: '#059669' }} />
+            {lang === 'zh' ? '上方反转' : 'Rev Up'}
+          </span>
+        )}
+        {reversalDown && (
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-[2px] inline-block rounded" style={{ background: '#dc2626' }} />
+            {lang === 'zh' ? '下方反转' : 'Rev Down'}
+          </span>
+        )}
+        {showFairLine && (
+          <span className="flex items-center gap-1">
+            <span className="w-3 h-0.5 inline-block rounded opacity-50" style={{ background: '#10b981', borderTop: '1px dashed #10b981' }} />
+            {lang === 'zh' ? '公允价值' : 'Fair Value'}
+          </span>
+        )}
       </div>
     </div>
   )

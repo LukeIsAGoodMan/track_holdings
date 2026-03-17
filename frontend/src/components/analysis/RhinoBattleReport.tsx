@@ -94,16 +94,44 @@ function l(lang: string, en: string, zh: string): string {
 
 /* -- Main component -------------------------------------------------------- */
 
+const marketStateStyle: Record<string, { en: string; zh: string; color: string; bg: string }> = {
+  TRENDING:       { en: 'TRENDING',       zh: '\u8d8b\u52bf', color: '#059669', bg: '#ecfdf5' },
+  RANGE:          { en: 'RANGE',          zh: '\u9707\u8361', color: '#d97706', bg: '#fffbeb' },
+  BREAKDOWN_RISK: { en: 'BREAKDOWN RISK', zh: '\u7834\u4f4d\u98ce\u9669', color: '#dc2626', bg: '#fef2f2' },
+}
+
 export default function RhinoBattleReport({ report }: Props) {
   const { lang } = useLanguage()
   const { fundamental, ladder, macro, playbook, narrative } = report
 
+  const ms = marketStateStyle[report.market_state ?? 'RANGE'] ?? marketStateStyle.RANGE
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100">
+      <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wide">
           {l(lang, 'Rhino Battle Report', '\u7280\u725b\u54e5\u6218\u62a5')}
         </h3>
+        <div className="flex items-center gap-3">
+          {/* Market state badge */}
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+            style={{ color: ms.color, backgroundColor: ms.bg, borderColor: ms.color + '33' }}
+          >
+            {lang === 'zh' ? ms.zh : ms.en}
+          </span>
+          {/* Space awareness */}
+          {report.upside_pct != null && (
+            <span className="text-[10px] text-emerald-600 font-medium tabular-nums">
+              {'\u25b2'} {report.upside_pct}%
+            </span>
+          )}
+          {report.downside_pct != null && (
+            <span className="text-[10px] text-rose-600 font-medium tabular-nums">
+              {'\u25bc'} {report.downside_pct}%
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-slate-100">
