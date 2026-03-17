@@ -593,10 +593,11 @@ export interface BattleReportFundamental {
 }
 
 export interface BattleReportLadderRung {
-  level:     number
-  dist_pct:  number
-  label:     string        // Structural Reversal | Regime Line | Major | Structural | Weak
-  strength:  number
+  level:      number
+  dist_pct:   number
+  label:      string        // Structural Reversal | Regime Line | Major | Structural | Weak
+  label_zh?:  string        // bilingual: 结构反转 | 趋势线 | 主要 | 结构 | 弱
+  strength:   number
 }
 
 export interface BattleReportLadder {
@@ -606,9 +607,10 @@ export interface BattleReportLadder {
 }
 
 export interface BattleReportMacroRisk {
-  signal:   string
-  label:    string
-  severity: string   // high | medium | low
+  signal:    string
+  label:     string
+  label_zh?: string
+  severity:  string   // high | medium | low | info
 }
 
 export interface BattleReportMacro {
@@ -642,6 +644,7 @@ export interface BattleReportPlaybook {
     stop_label: string
   }
   reversal_confirmation_line: number | null
+  reversal_type?: string | null  // recovery_line | breakout_confirmation | failure_boundary
   risk_rule:     string
   risk_rule_zh:  string
 }

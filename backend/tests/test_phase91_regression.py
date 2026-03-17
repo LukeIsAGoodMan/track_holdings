@@ -409,9 +409,12 @@ class TestScenarioTree:
         report = _build_report(pattern_tags=["below_sma200"])
         assert report["playbook"]["reversal_confirmation_line"] == 220
 
-    def test_reversal_confirmation_line_bullish_is_none(self):
+    def test_reversal_confirmation_line_bullish_range(self):
+        """Bullish range-bound: reversal line = upper boundary (breakout confirmation)."""
         report = _build_report(pattern_tags=["above_sma200"])
-        assert report["playbook"]["reversal_confirmation_line"] is None
+        # Price 200 between support 190 and resistance 220 -> RANGE
+        assert report["playbook"]["reversal_confirmation_line"] == 220
+        assert report["playbook"]["reversal_type"] == "breakout_confirmation"
 
     def test_narrative_distinguishes_trigger_target(self):
         report = _build_report()
@@ -457,3 +460,158 @@ class TestOneWayFlowPreserved:
         assert "\u653e\u91cf" in VolumeLabelMapper.label([{"signal": "strong_volume"}])
         assert "\u7f29\u91cf" in VolumeLabelMapper.label([{"signal": "weak_volume"}])
         assert "\u89c2\u671b" in VolumeLabelMapper.label([])
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 9. PHASE 9.2a — REVERSAL LINE STRUCTURE-AWARE STATE MACHINE
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestReversalLineStateMachine:
+    """Reversal line uses structure-aware invalidation, not nearest tagged level."""
+
+    def test_bear_repair_recovery_line(self):
+        """Bearish + resistance -> recovery_line at overhead resistance."""
+        report = _build_report(pattern_tags=["below_sma200"])
+        assert report["playbook"]["reversal_confirmation_line"] == 220
+        assert report["playbook"]["reversal_type"] == "recovery_line"
+
+    def test_range_breakout_confirmation(self):
+        """Price between S/R -> breakout_confirmation at upper boundary."""
+        report = _build_report(pattern_tags=["above_sma200"])
+        # Price 200 between support 190 and resistance 220
+        assert report["playbook"]["reversal_confirmation_line"] == 220
+        assert report["playbook"]["reversal_type"] == "breakout_confirmation"
+
+    def test_bull_pullback_failure_boundary(self):
+        """Price above resistance (no box) -> failure_boundary at support."""
+        report = _build_report(
+            price=250,
+            pattern_tags=["above_sma200"],
+        )
+        # Price 250 > resistance 220, so not range-bound -> failure at support
+        assert report["playbook"]["reversal_confirmation_line"] == 190
+        assert report["playbook"]["reversal_type"] == "failure_boundary"
+
+    def test_no_support_no_reversal(self):
+        """No support, no resistance -> no reversal line."""
+        report = _build_report(
+            pattern_tags=["above_sma200"],
+            support_zones=[], resistance_zones=[],
+        )
+        assert report["playbook"]["reversal_confirmation_line"] is None
+        assert report["playbook"]["reversal_type"] is None
+
+    def test_support_only_failure_boundary(self):
+        """Only support zones, no resistance -> failure_boundary."""
+        report = _build_report(
+            pattern_tags=["above_sma200"],
+            resistance_zones=[],
+        )
+        assert report["playbook"]["reversal_confirmation_line"] == 190
+        assert report["playbook"]["reversal_type"] == "failure_boundary"
+
+    def test_bear_narrative_mentions_overhead(self):
+        """Bear repair narrative references overhead recovery level."""
+        report = _build_report(pattern_tags=["below_sma200"])
+        text = report["narrative"]["battlefield"]
+        assert "220" in text
+        assert "\u7ed3\u6784\u4fee\u590d" in text  # structural repair
+
+    def test_range_narrative_mentions_box(self):
+        """Range-bound narrative references box consolidation."""
+        report = _build_report(pattern_tags=["above_sma200"])
+        text = report["narrative"]["battlefield"]
+        assert "\u7bb1\u4f53\u4e0a\u6cbf" in text or "\u533a\u95f4\u9707\u8361" in text
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 10. PHASE 9.2a — BILINGUAL NARRATIVE + LABELS
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestBilingualNarrative:
+    """Narrative engine produces clean English and Chinese depending on lang."""
+
+    def test_zh_narrative_has_chinese(self):
+        report = _build_report()
+        text = report["narrative"]["fundamental"]
+        assert "\u5b9a\u4ef7\u951a" in text  # pricing anchor in ZH
+
+    def test_en_fundamental_narrative(self):
+        val = _val()
+        narrative = build_fundamental_narrative(val, 200)
+        report = build_battle_report(200, _tech(), val, _macro(), _playbook(), narrative, lang="en")
+        text = report["narrative"]["fundamental"]
+        assert "Pricing anchor" in text
+        assert "forward EPS" in text
+        # No Chinese characters
+        for ch in text:
+            assert ord(ch) < 0x4E00 or ord(ch) > 0x9FFF, f"Found Chinese char in EN: {ch}"
+
+    def test_en_battlefield_narrative(self):
+        val = _val()
+        narrative = build_fundamental_narrative(val, 200)
+        report = build_battle_report(200, _tech(), val, _macro(), _playbook(), narrative, lang="en")
+        text = report["narrative"]["battlefield"]
+        assert "resistance" in text.lower() or "support" in text.lower()
+
+    def test_en_macro_narrative(self):
+        val = _val()
+        narrative = build_fundamental_narrative(val, 200)
+        report = build_battle_report(200, _tech(), val, _macro(), _playbook(), narrative, lang="en")
+        text = report["narrative"]["macro"]
+        assert "sentiment" in text.lower() or "stable" in text.lower()
+        assert "Volume signal" in text
+
+    def test_en_playbook_narrative(self):
+        val = _val()
+        narrative = build_fundamental_narrative(val, 200)
+        report = build_battle_report(200, _tech(), val, _macro(), _playbook(), narrative, lang="en")
+        text = report["narrative"]["playbook"]
+        assert "Bias" in text
+        assert "Recommendation" in text
+        assert "Position discipline" in text
+
+    def test_en_no_chinese_in_any_narrative_section(self):
+        """English mode must have zero Chinese characters in narrative."""
+        val = _val()
+        narrative = build_fundamental_narrative(val, 200)
+        report = build_battle_report(200, _tech(), val, _macro(), _playbook(), narrative, lang="en")
+        for section in ("fundamental", "battlefield", "macro", "playbook"):
+            text = report["narrative"][section]
+            for ch in text:
+                assert ord(ch) < 0x4E00 or ord(ch) > 0x9FFF, \
+                    f"Chinese char '{ch}' in EN {section}: ...{text[max(0,text.index(ch)-10):text.index(ch)+10]}..."
+
+
+class TestBilingualLabels:
+    """Zone labels and risk labels have bilingual fields."""
+
+    def test_ladder_rungs_have_label_zh(self):
+        report = _build_report()
+        for rung in report["ladder"]["support"]:
+            assert "label_zh" in rung
+            assert len(rung["label_zh"]) > 0
+        for rung in report["ladder"]["resistance"]:
+            assert "label_zh" in rung
+            assert len(rung["label_zh"]) > 0
+
+    def test_ladder_en_labels_unchanged(self):
+        """English labels still match original naming convention."""
+        report = _build_report()
+        labels = {r["label"] for r in report["ladder"]["support"] + report["ladder"]["resistance"]}
+        valid = {"Structural Reversal", "Regime Line", "Major", "Structural", "Weak"}
+        assert labels.issubset(valid)
+
+    def test_macro_risks_have_label_zh(self):
+        """Macro risks include bilingual labels."""
+        report = _build_report(vix=28.0, us10y=4.5)
+        for risk in report["macro"]["risks"]:
+            assert "label_zh" in risk
+            assert len(risk["label_zh"]) > 0
+
+    def test_volume_mapper_bilingual(self):
+        """VolumeLabelMapper returns correct labels for both languages."""
+        assert "confirmation" in VolumeLabelMapper.label([{"signal": "strong_volume"}], "en")
+        assert "\u653e\u91cf" in VolumeLabelMapper.label([{"signal": "strong_volume"}], "zh")
+        assert "sidelines" in VolumeLabelMapper.label([], "en")
+        assert "\u89c2\u671b" in VolumeLabelMapper.label([], "zh")

@@ -25,20 +25,20 @@ from .battle_narrative_engine import build_battle_narrative
 # Higher precedence wins when assigning labels to zones.
 # Structural Reversal > Regime Line > Major > Structural > Weak
 _ZONE_LABELS = [
-    (0.90, "Structural Reversal"),
-    (0.70, "Regime Line"),
-    (0.50, "Major"),
-    (0.30, "Structural"),
-    (0.00, "Weak"),
+    (0.90, {"en": "Structural Reversal", "zh": "\u7ed3\u6784\u53cd\u8f6c"}),
+    (0.70, {"en": "Regime Line",         "zh": "\u8d8b\u52bf\u7ebf"}),
+    (0.50, {"en": "Major",               "zh": "\u4e3b\u8981"}),
+    (0.30, {"en": "Structural",          "zh": "\u7ed3\u6784"}),
+    (0.00, {"en": "Weak",                "zh": "\u5f31"}),
 ]
 
 
-def _label_zone(strength: float) -> str:
-    """Assign semantic label based on zone strength (0–1)."""
+def _label_zone(strength: float) -> dict:
+    """Assign bilingual semantic label based on zone strength (0-1)."""
     for threshold, label in _ZONE_LABELS:
         if strength >= threshold:
             return label
-    return "Weak"
+    return {"en": "Weak", "zh": "\u5f31"}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -92,20 +92,24 @@ def _build_ladder_section(
     for z in technical.get("support_zones", [])[:5]:
         center = z["center"]
         dist_pct = (price - center) / price * 100 if price > 0 else 0
+        lbl = _label_zone(z.get("strength", 0))
         support_rungs.append({
             "level": center,
             "dist_pct": round(dist_pct, 1),
-            "label": _label_zone(z.get("strength", 0)),
+            "label": lbl["en"],
+            "label_zh": lbl["zh"],
             "strength": z.get("strength", 0),
         })
 
     for z in technical.get("resistance_zones", [])[:5]:
         center = z["center"]
         dist_pct = (center - price) / price * 100 if price > 0 else 0
+        lbl = _label_zone(z.get("strength", 0))
         resistance_rungs.append({
             "level": center,
             "dist_pct": round(dist_pct, 1),
-            "label": _label_zone(z.get("strength", 0)),
+            "label": lbl["en"],
+            "label_zh": lbl["zh"],
             "strength": z.get("strength", 0),
         })
 
@@ -134,7 +138,8 @@ def _build_macro_section(
     if vix is not None and vix >= 22:
         risks.append({
             "signal": "high_vix",
-            "label": f"VIX at {vix:.1f} — elevated volatility risk",
+            "label": f"VIX at {vix:.1f} \u2014 elevated volatility risk",
+            "label_zh": f"VIX {vix:.1f}\uff0c\u6ce2\u52a8\u7387\u504f\u9ad8",
             "severity": "high",
         })
 
@@ -142,7 +147,8 @@ def _build_macro_section(
     if treasury is not None and treasury >= 4.25:
         risks.append({
             "signal": "high_yield",
-            "label": f"10Y yield at {treasury:.2f}% — valuation pressure",
+            "label": f"10Y yield at {treasury:.2f}% \u2014 valuation pressure",
+            "label_zh": f"10\u5e74\u671f\u6536\u76ca\u7387 {treasury:.2f}%\uff0c\u4f30\u503c\u627f\u538b",
             "severity": "medium",
         })
 
@@ -150,13 +156,15 @@ def _build_macro_section(
     if vol_ratio is not None and vol_ratio >= 1.5:
         risks.append({
             "signal": "strong_volume",
-            "label": f"Volume ratio {vol_ratio:.1f}x — strong volume confirmation",
+            "label": f"Volume ratio {vol_ratio:.1f}x \u2014 strong confirmation",
+            "label_zh": f"\u6210\u4ea4\u91cf\u6bd4 {vol_ratio:.1f}x\uff0c\u653e\u91cf\u786e\u8ba4",
             "severity": "info",
         })
     elif vol_ratio is not None and vol_ratio < 0.8:
         risks.append({
             "signal": "weak_volume",
-            "label": f"Volume ratio {vol_ratio:.1f}x — weak conviction rally",
+            "label": f"Volume ratio {vol_ratio:.1f}x \u2014 weak conviction",
+            "label_zh": f"\u6210\u4ea4\u91cf\u6bd4 {vol_ratio:.1f}x\uff0c\u7f29\u91cf\u53cd\u5f39",
             "severity": "low",
         })
 
@@ -229,10 +237,33 @@ def _build_playbook_section(
         "stop_label": f"${downside_stop:.2f}" if downside_stop else "\u2014",
     }
 
-    # Reversal confirmation line — overhead recovery line for bearish setups
+    # Reversal confirmation line — structure-aware invalidation boundary
+    # State machine: BEAR_REPAIR / RANGE / BULL_PULLBACK / UNKNOWN
     reversal_line = None
-    if is_bearish and resistance_zones:
-        reversal_line = resistance_zones[0]["center"]
+    reversal_type = None  # "recovery_line" | "breakout_confirmation" | "failure_boundary"
+    has_support = len(support_zones) > 0
+    has_resistance = len(resistance_zones) > 0
+
+    if is_bearish:
+        # BEAR_REPAIR: overhead resistance is recovery line
+        if has_resistance:
+            reversal_line = resistance_zones[0]["center"]
+            reversal_type = "recovery_line"
+    elif has_support and has_resistance:
+        s_top = support_zones[0]["center"]
+        r_bottom = resistance_zones[0]["center"]
+        if s_top < price < r_bottom:
+            # RANGE / box consolidation: upper boundary = breakout confirmation
+            reversal_line = r_bottom
+            reversal_type = "breakout_confirmation"
+        else:
+            # BULL_PULLBACK: nearest support = failure boundary
+            reversal_line = support_zones[0]["center"]
+            reversal_type = "failure_boundary"
+    elif has_support:
+        # BULL_PULLBACK with no resistance: support failure
+        reversal_line = support_zones[0]["center"]
+        reversal_type = "failure_boundary"
 
     return {
         "title": "Tactical Playbook",
@@ -242,6 +273,7 @@ def _build_playbook_section(
         "upside": upside,
         "downside": downside,
         "reversal_confirmation_line": reversal_line,
+        "reversal_type": reversal_type,
         "risk_rule": "Single stock \u226415% of portfolio",
         "risk_rule_zh": "\u5355\u4e00\u4e2a\u80a1\u4e0d\u8d85\u8fc7\u7ec4\u5408\u768415%",
     }
@@ -258,10 +290,11 @@ def build_battle_report(
     macro: dict,
     playbook: dict,
     narrative: FundamentalNarrative,
+    lang: str = "zh",
 ) -> dict:
     """Build the 4-section Rhino Battle Report.
 
-    All inputs are upstream engine outputs — no recomputation.
+    All inputs are upstream engine outputs -- no recomputation.
     """
     ladder_section = _build_ladder_section(technical, price)
     macro_section = _build_macro_section(macro, technical)
@@ -269,7 +302,7 @@ def build_battle_report(
 
     # Build narrative after all structured sections
     battle_narrative = build_battle_narrative(
-        price, narrative, ladder_section, macro_section, playbook_section,
+        price, narrative, ladder_section, macro_section, playbook_section, lang,
     )
 
     return {

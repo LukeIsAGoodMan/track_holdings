@@ -154,22 +154,34 @@ class TestFundamentalNarrative:
 
 class TestLadderLabels:
     def test_structural_reversal(self):
-        assert _label_zone(0.95) == "Structural Reversal"
+        lbl = _label_zone(0.95)
+        assert lbl["en"] == "Structural Reversal"
+        assert lbl["zh"] == "\u7ed3\u6784\u53cd\u8f6c"
 
     def test_regime_line(self):
-        assert _label_zone(0.75) == "Regime Line"
+        lbl = _label_zone(0.75)
+        assert lbl["en"] == "Regime Line"
+        assert lbl["zh"] == "\u8d8b\u52bf\u7ebf"
 
     def test_major(self):
-        assert _label_zone(0.55) == "Major"
+        lbl = _label_zone(0.55)
+        assert lbl["en"] == "Major"
+        assert lbl["zh"] == "\u4e3b\u8981"
 
     def test_structural(self):
-        assert _label_zone(0.35) == "Structural"
+        lbl = _label_zone(0.35)
+        assert lbl["en"] == "Structural"
+        assert lbl["zh"] == "\u7ed3\u6784"
 
     def test_weak(self):
-        assert _label_zone(0.10) == "Weak"
+        lbl = _label_zone(0.10)
+        assert lbl["en"] == "Weak"
+        assert lbl["zh"] == "\u5f31"
 
     def test_zero(self):
-        assert _label_zone(0.0) == "Weak"
+        lbl = _label_zone(0.0)
+        assert lbl["en"] == "Weak"
+        assert lbl["zh"] == "\u5f31"
 
 
 # ══════════════════════════════════════════════════════════════════════════

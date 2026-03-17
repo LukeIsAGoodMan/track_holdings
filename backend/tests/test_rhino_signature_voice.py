@@ -204,9 +204,11 @@ class TestSignatureVoice:
         assert "\u652f\u6491" in text  # support
 
     def test_battlefield_reversal_restrained(self):
-        """Reversal conclusion is restrained."""
+        """Reversal conclusion is restrained — range-bound says box consolidation."""
         text = _build_report()["narrative"]["battlefield"]
-        assert "\u7ed3\u6784\u4fee\u590d" in text  # structural repair
+        # Default setup: above_sma200, price 200 between support 190 and resistance 220
+        # -> RANGE -> "箱体上沿...区间震荡"
+        assert "\u7bb1\u4f53\u4e0a\u6cbf" in text or "\u533a\u95f4\u9707\u8361" in text
 
     def test_macro_direct_reading(self):
         """Macro section reads signals directly."""

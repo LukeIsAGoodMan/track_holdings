@@ -1,7 +1,7 @@
 /**
  * Symbol search bar with dropdown autocomplete for the Analysis page.
- * Mirrors the SymbolAutocomplete pattern from TradeEntryForm:
- *   debounced search → dropdown suggestions → keyboard nav → onSearch(symbol).
+ * Strict selection: only symbols from suggestions can be analyzed.
+ * No freeform text submission.
  */
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useLanguage } from '@/context/LanguageContext'
@@ -27,6 +27,7 @@ interface Props {
 export default function SymbolSearchBar({ onSearch, loading }: Props) {
   const { t } = useLanguage()
   const [value, setValue] = useState('')
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null)
   const [suggestions, setSuggestions] = useState<SymbolSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(-1)
@@ -36,6 +37,7 @@ export default function SymbolSearchBar({ onSearch, loading }: Props) {
   const handleInput = useCallback((raw: string) => {
     const upper = raw.toUpperCase()
     setValue(upper)
+    setSelectedSymbol(null)
     setHighlighted(-1)
 
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -54,6 +56,7 @@ export default function SymbolSearchBar({ onSearch, loading }: Props) {
 
   const select = useCallback((sym: string) => {
     setValue(sym)
+    setSelectedSymbol(sym)
     setSuggestions([])
     setOpen(false)
     onSearch(sym)
@@ -65,12 +68,11 @@ export default function SymbolSearchBar({ onSearch, loading }: Props) {
       select(suggestions[highlighted].symbol)
       return
     }
-    const sym = value.trim().toUpperCase()
-    if (sym) {
-      setOpen(false)
-      onSearch(sym)
+    // Only resubmit if a previously selected symbol matches current value
+    if (selectedSymbol && value.trim().toUpperCase() === selectedSymbol) {
+      onSearch(selectedSymbol)
     }
-  }, [value, onSearch, open, highlighted, suggestions, select])
+  }, [value, onSearch, open, highlighted, suggestions, select, selectedSymbol])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!open || suggestions.length === 0) return
@@ -86,6 +88,18 @@ export default function SymbolSearchBar({ onSearch, loading }: Props) {
     }
   }, [open, suggestions.length])
 
+  const handleBlur = useCallback(() => {
+    setTimeout(() => {
+      setOpen(false)
+      // Revert to last valid selection or clear
+      if (selectedSymbol && value !== selectedSymbol) {
+        setValue(selectedSymbol)
+      } else if (!selectedSymbol) {
+        setValue('')
+      }
+    }, 150)
+  }, [selectedSymbol, value])
+
   // Close dropdown on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
@@ -100,24 +114,15 @@ export default function SymbolSearchBar({ onSearch, loading }: Props) {
   return (
     <form onSubmit={handleSubmit} className="flex items-center gap-3">
       <div className="relative flex-1 max-w-md" ref={containerRef}>
-        {/* Search icon */}
-        <svg
-          className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none"
-          viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"
-        >
-          <path
-            fillRule="evenodd" clipRule="evenodd"
-            d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
-          />
-        </svg>
         <input
           type="text"
           value={value}
           onChange={(e) => handleInput(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setOpen(true)}
+          onBlur={handleBlur}
           placeholder={t('analysis_search_ph')}
-          className="w-full pl-10 pr-4 py-2.5 sm:py-3 text-sm rounded-xl border border-slate-200
+          className="w-full px-4 py-2.5 sm:py-3 text-sm rounded-xl border border-slate-200
                      bg-white text-slate-800 placeholder:text-slate-400 font-mono uppercase
                      focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
                      transition-shadow appearance-none"
@@ -157,7 +162,7 @@ export default function SymbolSearchBar({ onSearch, loading }: Props) {
 
       <button
         type="submit"
-        disabled={loading || !value.trim()}
+        disabled={loading || !selectedSymbol}
         className="px-5 py-2.5 sm:py-3 rounded-xl text-sm font-semibold text-white bg-primary
                    hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed
                    transition-colors shadow-sm"

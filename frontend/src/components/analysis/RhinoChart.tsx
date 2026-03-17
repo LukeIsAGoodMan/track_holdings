@@ -26,6 +26,7 @@ interface Props {
   price?: number
   fairValue?: { low: number; mid: number; high: number }
   reversalLine?: number
+  reversalType?: string | null  // recovery_line | breakout_confirmation | failure_boundary
 }
 
 /* ── Timeframe options ─────────────────────────────────────────────────── */
@@ -115,9 +116,22 @@ function ReversalLabel({ viewBox, value }: { viewBox?: { x?: number; y?: number;
   )
 }
 
+/* ── Reversal label text (structure-aware) ────────────────────────────── */
+
+function _reversalLabel(lang: string, type?: string | null): string {
+  if (lang === 'zh') {
+    if (type === 'breakout_confirmation') return '\u7bb1\u4f53\u7a81\u7834\u7ebf'
+    if (type === 'failure_boundary') return '\u7ed3\u6784\u5931\u6548\u7ebf'
+    return '\u7ed3\u6784\u53cd\u8f6c\u7ebf'
+  }
+  if (type === 'breakout_confirmation') return 'Breakout'
+  if (type === 'failure_boundary') return 'Invalidation'
+  return 'Reversal'
+}
+
 /* ── Main component ─────────────────────────────────────────────────────── */
 
-export default function RhinoChart({ chart, price: priceProp, fairValue, reversalLine }: Props) {
+export default function RhinoChart({ chart, price: priceProp, fairValue, reversalLine, reversalType }: Props) {
   const price = chart.current_price ?? priceProp ?? 0
   const { lang, t } = useLanguage()
   const [timeframe, setTimeframe] = useState<Timeframe>(200)
@@ -228,7 +242,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
           <YAxis
             yAxisId="volume"
             orientation="right"
-            domain={[0, maxVol * 4]}
+            domain={[0, maxVol * 6]}
             hide
           />
           <Tooltip
@@ -355,22 +369,24 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
             isAnimationActive={false}
           />
 
-          {/* ═══ LAYER 5: Candle bodies ═══ */}
-          <Bar
-            dataKey="_candle"
-            yAxisId="price"
-            isAnimationActive={false}
-            barSize={6}
-            shape={<CandleShape />}
-          />
+          {/* ═══ LAYER 5: Candle bodies (hidden in 200D for readability) ═══ */}
+          {timeframe <= 30 && (
+            <Bar
+              dataKey="_candle"
+              yAxisId="price"
+              isAnimationActive={false}
+              barSize={6}
+              shape={<CandleShape />}
+            />
+          )}
 
-          {/* ═══ LAYER 6: Volume bars ═══ */}
+          {/* ═══ LAYER 6: Volume bars — subdued, green/red ═══ */}
           <Bar
             dataKey="volume"
             yAxisId="volume"
             isAnimationActive={false}
-            barSize={4}
-            opacity={0.35}
+            barSize={timeframe >= 200 ? 2 : 4}
+            opacity={timeframe >= 200 ? 0.15 : 0.25}
           >
             {data.map((d, i) => (
               <Cell key={i} fill={d.bullish ? '#10b981' : '#ef4444'} />
@@ -387,16 +403,16 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
             label={<CurrentPriceLabel value={`$${price.toFixed(2)}`} />}
           />
 
-          {/* ═══ LAYER 8: Reversal Confirmation Line ═══ */}
+          {/* ═══ LAYER 8: Reversal / Invalidation Line ═══ */}
           {reversalLine != null && (
             <ReferenceLine
               yAxisId="price"
               y={reversalLine}
-              stroke="#6366f1"
+              stroke={reversalType === 'failure_boundary' ? '#ef4444' : '#6366f1'}
               strokeWidth={2}
               strokeDasharray="6 4"
               ifOverflow="extendDomain"
-              label={<ReversalLabel value={lang === 'zh' ? '结构反转线' : 'Reversal'} />}
+              label={<ReversalLabel value={_reversalLabel(lang, reversalType)} />}
             />
           )}
         </ComposedChart>

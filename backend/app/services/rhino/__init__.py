@@ -82,7 +82,7 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
     )
     fundamental_narrative = build_fundamental_narrative(valuation, price)
     battle_report = build_battle_report(
-        price, technical, valuation, macro, playbook, fundamental_narrative,
+        price, technical, valuation, macro, playbook, fundamental_narrative, lang,
     )
 
     # Data quality + confidence
