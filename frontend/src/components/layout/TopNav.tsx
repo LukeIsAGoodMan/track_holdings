@@ -52,7 +52,7 @@ const OTHER_NAV = [
 export default function TopNav() {
   const { lang, toggle } = useLanguage()
   const { user, logout } = useAuth()
-  const { connected }    = useWebSocket()
+  const { connected, socketState } = useWebSocket()
   const location         = useLocation()
 
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -175,17 +175,21 @@ export default function TopNav() {
         <div
           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
                      border border-chrome-border bg-chrome-subtle"
-          title={connected ? 'WebSocket connected' : 'WebSocket disconnected'}
+          title={`WebSocket: ${socketState}`}
         >
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              connected
+              socketState === 'ready'
                 ? 'bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.7)] animate-pulse'
-                : 'bg-red-400'
+                : socketState === 'reconnecting' || socketState === 'connecting'
+                  ? 'bg-amber-400 animate-pulse'
+                  : connected
+                    ? 'bg-green-400'
+                    : 'bg-red-400'
             }`}
           />
-          <span className={connected ? 'text-green-600' : 'text-red-500'}>
-            {connected ? 'Live' : 'Offline'}
+          <span className={connected ? 'text-green-600' : socketState === 'reconnecting' ? 'text-amber-600' : 'text-red-500'}>
+            {socketState === 'ready' ? 'Live' : socketState === 'reconnecting' ? 'Reconnecting' : connected ? 'Syncing' : 'Offline'}
           </span>
         </div>
 

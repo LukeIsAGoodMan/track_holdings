@@ -11,9 +11,10 @@ import { useLanguage } from '@/context/LanguageContext'
 import type { PortfolioHistoryPoint } from '@/types'
 
 function fmtDate(iso: string): string {
-  const [, m, d] = iso.split('-')
+  const parts = iso?.split('-') ?? []
+  if (parts.length < 3) return iso ?? ''
   const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${months[parseInt(m) - 1]} ${parseInt(d)}`
+  return `${months[parseInt(parts[1]) - 1] ?? 'N/A'} ${parseInt(parts[2])}`
 }
 
 function fmtNlv(val: string | number): string {

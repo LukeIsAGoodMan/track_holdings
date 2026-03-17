@@ -190,8 +190,8 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
   const maxVol = Math.max(...data.map((d) => d.volume ?? 0))
 
   const formatDate = (d: string) => {
-    const parts = d.split('-')
-    return `${parts[1]}/${parts[2]}`
+    const parts = d?.split('-') ?? []
+    return parts.length >= 3 ? `${parts[1]}/${parts[2]}` : d ?? ''
   }
 
   // Limit zones to top 3 for cleaner visual

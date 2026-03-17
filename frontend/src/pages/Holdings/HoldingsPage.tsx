@@ -1873,8 +1873,8 @@ export default function HoldingsPage() {
         <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-xs">
           <span className="text-amber-700 font-semibold">{t('lifecycle_notice')}</span>
           <span className="text-slate-500">
-            {lifecycleResult!.expired  > 0 && <span className="mr-3">{lifecycleResult!.expired} expired</span>}
-            {lifecycleResult!.assigned > 0 && <span className="text-amber-700 font-semibold">{lifecycleResult!.assigned} assigned</span>}
+            {(lifecycleResult?.expired ?? 0) > 0 && <span className="mr-3">{lifecycleResult?.expired} expired</span>}
+            {(lifecycleResult?.assigned ?? 0) > 0 && <span className="text-amber-700 font-semibold">{lifecycleResult?.assigned} assigned</span>}
           </span>
         </div>
       )}

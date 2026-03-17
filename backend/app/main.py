@@ -42,6 +42,8 @@ from app.services.macro_service import MacroService
 from app.services.scanner_service import MarketScannerService
 from app.services.seed import run_seed
 from app.services.ws_manager import ConnectionManager
+from app.services.ws_broadcast_service import WSBroadcastService
+from app.services.ws_snapshot_service import WSSnapshotService
 from app.services.yfinance_client import prewarm as prewarm_prices
 
 logger = logging.getLogger(__name__)
@@ -102,8 +104,19 @@ async def lifespan(_app: FastAPI):
 
     asyncio.create_task(_bg_prewarm(), name="prewarm_prices")
 
+    # ── Phase 10: Snapshot + Broadcast services ──────────────────────────
+    ws_broadcast = WSBroadcastService(ws_manager)
+    ws_snapshot = WSSnapshotService(
+        manager=ws_manager, cache=price_cache,
+        macro_service=macro_service, price_feed=price_feed,
+    )
+
     # ── Start real-time price feed ────────────────────────────────────────
-    ws_router.init_ws_globals(ws_manager, price_cache, macro_service=macro_service, price_feed=price_feed)
+    ws_router.init_ws_globals(
+        ws_manager, price_cache,
+        macro_service=macro_service, price_feed=price_feed,
+        snapshot_service=ws_snapshot,
+    )
     alerts_router.init_alert_globals(price_cache, price_feed)
     price_feed.start()
     logger.info("Real-time price feed started (poll every %ds)", settings.ws_price_poll_interval)

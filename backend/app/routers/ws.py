@@ -1,6 +1,17 @@
 """
 WebSocket endpoint: /api/ws?token=<JWT>
 
+Phase 10 — thin router layer.
+
+This module ONLY:
+  - authenticates the JWT
+  - opens a session
+  - delegates message handling to session service
+  - runs heartbeat with pong timeout
+
+Heavy computation (holdings, risk, snapshots) is delegated
+to ws_snapshot_service.py via background tasks.
+
 Protocol:
   Client → Server:
     {"type": "subscribe",   "portfolio_id": 1}
@@ -8,12 +19,15 @@ Protocol:
     {"type": "pong"}
 
   Server → Client:
+    {"type": "subscribed_ack",   "portfolio_id": 1}
+    {"type": "snapshot_status",  "portfolio_id": 1, "status": "starting"|"complete"}
     {"type": "spot_update",      "data": {"NVDA": "135.42", ...}}
     {"type": "holdings_update",  "portfolio_id": 1, "data": [...]}
+    {"type": "risk_update",      "portfolio_id": 1, "data": {...}}
+    {"type": "macro_ticker",     "data": {...}}
+    {"type": "subscribed",       "portfolio_id": 1, "symbols": [...]}
     {"type": "ping"}
     {"type": "error",            "message": "..."}
-
-Authentication: JWT via ?token= query parameter (WebSocket cannot set headers).
 """
 from __future__ import annotations
 
@@ -23,35 +37,40 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import AsyncSessionLocal
 from app.models import Instrument, TradeEvent
-from app.services import position_engine, yfinance_client
 from app.services.auth import decode_access_token
-from app.services.holdings_engine import compute_holding_groups
 from app.services.portfolio_resolver import resolve_portfolio_ids
-from app.services.risk_engine import compute_risk_summary
+from app.services.ws_session import (
+    WSSession, WSSessionState, create_session,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# These are set by main.py at startup
-_manager = None        # type: ignore
-_cache = None          # type: ignore
-_macro_service = None  # type: ignore
-_price_feed = None     # type: ignore
+# Injected by main.py at startup
+_manager = None          # type: ignore
+_cache = None            # type: ignore
+_macro_service = None    # type: ignore
+_price_feed = None       # type: ignore
+_snapshot_service = None  # type: ignore
 
 
-def init_ws_globals(manager, cache, macro_service=None, price_feed=None):
+def init_ws_globals(
+    manager, cache, macro_service=None, price_feed=None, snapshot_service=None,
+):
     """Called from main.py to inject shared singletons."""
-    global _manager, _cache, _macro_service, _price_feed
+    global _manager, _cache, _macro_service, _price_feed, _snapshot_service
     _manager = manager
     _cache = cache
     _macro_service = macro_service
     _price_feed = price_feed
+    _snapshot_service = snapshot_service
 
+
+# ── Authentication ────────────────────────────────────────────────────────
 
 async def _authenticate_ws(token: str | None) -> int | None:
     """Validate JWT and return user_id, or None on failure."""
@@ -64,14 +83,12 @@ async def _authenticate_ws(token: str | None) -> int | None:
         return None
 
 
-async def _get_portfolio_symbols(
-    user_id: int, portfolio_id: int
-) -> set[str]:
+# ── Symbol resolution (lightweight DB query) ──────────────────────────────
+
+async def _get_portfolio_symbols(user_id: int, portfolio_id: int) -> set[str]:
     """Resolve a portfolio's active symbols for subscription."""
     async with AsyncSessionLocal() as db:
         pids = await resolve_portfolio_ids(db, user_id, portfolio_id)
-
-        # Get all symbols from active trades in these portfolios
         result = await db.execute(
             select(Instrument.symbol)
             .join(TradeEvent, TradeEvent.instrument_id == Instrument.id)
@@ -81,23 +98,144 @@ async def _get_portfolio_symbols(
         return {row[0] for row in result.all()}
 
 
+# ── Heartbeat with pong timeout ──────────────────────────────────────────
+
+PING_INTERVAL = 20.0    # seconds between pings (<Render 30s proxy timeout)
+PONG_TIMEOUT = 45.0     # seconds before declaring session degraded
+
+
+async def _heartbeat(session: WSSession) -> None:
+    """Send periodic ping; enforce pong timeout."""
+    try:
+        while session.is_alive:
+            await asyncio.sleep(PING_INTERVAL)
+            if not session.is_alive:
+                break
+
+            # Check pong timeout
+            age = session.pong_age()
+            if age > PONG_TIMEOUT:
+                logger.warning(
+                    "Pong timeout (%.0fs): %s — closing", age, session.log_ctx,
+                )
+                session.transition(WSSessionState.DEGRADED)
+                try:
+                    await session.ws.close(code=4008, reason="Pong timeout")
+                except Exception:
+                    pass
+                break
+
+            # Send ping
+            try:
+                await session.ws.send_text(json.dumps({"type": "ping"}))
+            except Exception:
+                break
+    except asyncio.CancelledError:
+        pass
+
+
+# ── Subscribe handler ────────────────────────────────────────────────────
+
+async def _handle_subscribe(
+    session: WSSession, conn, pid: int,
+) -> None:
+    """Two-phase subscription: immediate ACK + async snapshot pipeline."""
+    ws = session.ws
+
+    # Phase 0: resolve symbols (lightweight DB query)
+    symbols = await _get_portfolio_symbols(session.user_id, pid)
+
+    # Update ConnectionManager subscription index
+    _manager.subscribe(ws, pid, symbols)
+    session.subscribed_portfolios.add(pid)
+
+    # Proactive FSM sync
+    if _price_feed is not None:
+        normalized_syms = conn._portfolio_map.get(pid, set())
+        if normalized_syms:
+            await _price_feed.sync_portfolio_index(
+                pid, session.user_id, set(normalized_syms),
+            )
+
+    # Phase 1: Immediate ACK (non-blocking)
+    await _manager.send_json(ws, {
+        "type": "subscribed_ack",
+        "portfolio_id": pid,
+    })
+
+    # Backward compat: also send the old "subscribed" message
+    await _manager.send_json(ws, {
+        "type": "subscribed",
+        "portfolio_id": pid,
+        "symbols": sorted(symbols),
+    })
+
+    # Update session state
+    if session.state in (WSSessionState.READY, WSSessionState.AUTHENTICATED):
+        session.transition(WSSessionState.SUBSCRIBED)
+
+    logger.info("Subscribe: %s pid=%d symbols=%d", session.log_ctx, pid, len(symbols))
+
+    # Phase 2: Async snapshot pipeline (background task, non-blocking)
+    if _snapshot_service is not None:
+        task = asyncio.create_task(
+            _snapshot_service.send_snapshot(session, pid),
+            name=f"snapshot_{session.session_id}_{pid}",
+        )
+        session.track_task(f"snapshot_{pid}", task)
+
+
+# ── Unsubscribe handler ─────────────────────────────────────────────────
+
+async def _handle_unsubscribe(
+    session: WSSession, conn, pid: int,
+) -> None:
+    """Unsubscribe from a portfolio with reference-aware FSM cleanup."""
+    conn_id = id(session.ws)
+    _manager.unsubscribe(session.ws, pid)
+    session.subscribed_portfolios.discard(pid)
+
+    # Reference-aware FSM cleanup
+    if _price_feed is not None:
+        if not _manager.is_portfolio_subscribed_elsewhere(
+            session.user_id, pid, conn_id,
+        ):
+            await _price_feed.remove_portfolio_index(pid)
+
+    logger.info("Unsubscribe: %s pid=%d", session.log_ctx, pid)
+
+
+# ── Main endpoint ────────────────────────────────────────────────────────
+
 @router.websocket("/ws")
 async def websocket_endpoint(
     ws: WebSocket,
     token: str | None = Query(None),
     lang: str | None = Query(None),
 ):
-    # ── Authenticate ──────────────────────────────────────────────────────
+    # ── Step 1: Authenticate ─────────────────────────────────────────────
     user_id = await _authenticate_ws(token)
     if user_id is None:
         await ws.close(code=4001, reason="Authentication required")
         return
 
-    # ── Connect (Phase 11: pass language preference) ──────────────────────
+    # ── Step 2: Create session + connect ─────────────────────────────────
     language = lang if lang in ("en", "zh") else "en"
-    conn = await _manager.connect(ws, user_id, language=language)
-    heartbeat_task = asyncio.create_task(_heartbeat(ws))
+    session = create_session(user_id, language, ws)
+    session.transition(WSSessionState.AUTHENTICATED)
 
+    conn = await _manager.connect(ws, user_id, language=language)
+    session.transition(WSSessionState.READY)
+
+    logger.info("WS open: %s lang=%s", session.log_ctx, language)
+
+    # ── Step 3: Start heartbeat ──────────────────────────────────────────
+    hb_task = asyncio.create_task(
+        _heartbeat(session), name=f"heartbeat_{session.session_id}",
+    )
+    session.track_task("heartbeat", hb_task)
+
+    # ── Step 4: Message loop (thin — no heavy work here) ─────────────────
     try:
         while True:
             raw = await ws.receive_text()
@@ -118,79 +256,15 @@ async def websocket_endpoint(
                         "type": "error", "message": "portfolio_id required",
                     })
                     continue
-                symbols = await _get_portfolio_symbols(user_id, pid)
-                _manager.subscribe(ws, pid, symbols)
-
-                # Proactive FSM sync: populate inverse index immediately
-                # so the next _spot_tick uses the primary path, not fallback.
-                # Read normalized symbols back from the connection (CM normalizes).
-                if _price_feed is not None:
-                    normalized_syms = conn._portfolio_map.get(pid, set())
-                    if normalized_syms:
-                        await _price_feed.sync_portfolio_index(
-                            pid, user_id, set(normalized_syms)
-                        )
-
-                # Send initial spot snapshot from cache (with changepct so
-                # the frontend Hero Banner and Treemap are warm on first connect)
-                cached = _cache.get_many(sorted(symbols))
-                if cached:
-                    changepct_map: dict[str, str] = {}
-                    for sym in cached:
-                        cp = yfinance_client.get_changepct_cached(sym)
-                        if cp is not None:
-                            changepct_map[sym] = str(cp)
-                    await _manager.send_json(ws, {
-                        "type": "spot_update",
-                        "data": {s: str(p) for s, p in cached.items()},
-                        "changepct": changepct_map,
-                    })
-
-                await _manager.send_json(ws, {
-                    "type": "subscribed",
-                    "portfolio_id": pid,
-                    "symbols": sorted(symbols),
-                })
-
-                # Push current macro state so MarketTicker shows on first connect (<1s)
-                if _macro_service is not None:
-                    macro_ctx = _macro_service.get_latest()
-                    if macro_ctx is not None:
-                        from datetime import datetime, timezone
-                        await _manager.send_json(ws, {
-                            "type": "macro_ticker",
-                            "data": {
-                                "spx_price":          macro_ctx.spx_price,
-                                "spx_change_pct":     macro_ctx.spx_change_pct,
-                                "vix_level":          macro_ctx.vix_level,
-                                "vix_term":           macro_ctx.vix_term,
-                                "days_to_next_event": macro_ctx.days_to_next_event,
-                                "next_event_name":    macro_ctx.next_event_name,
-                                "market_regime":      macro_ctx.market_regime,
-                                "as_of":              datetime.now(timezone.utc).isoformat(),
-                            },
-                        })
-
-                # Send initial holdings snapshot
-                asyncio.create_task(
-                    _send_initial_holdings(ws, user_id, pid)
-                )
+                await _handle_subscribe(session, conn, pid)
 
             elif msg_type == "unsubscribe":
                 pid = msg.get("portfolio_id")
                 if pid is not None:
-                    conn_id = id(ws)
-                    _manager.unsubscribe(ws, pid)
-                    # Reference-aware FSM cleanup: only clear if no other
-                    # connection for this user still subscribes to this portfolio.
-                    if _price_feed is not None:
-                        if not _manager.is_portfolio_subscribed_elsewhere(
-                            user_id, pid, conn_id
-                        ):
-                            await _price_feed.remove_portfolio_index(pid)
+                    await _handle_unsubscribe(session, conn, pid)
 
             elif msg_type == "pong":
-                pass  # heartbeat ack — just ignore
+                session.record_pong()
 
             else:
                 await _manager.send_json(ws, {
@@ -201,104 +275,23 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         pass
     except Exception:
-        logger.exception("WS error for user=%d", user_id)
+        logger.exception("WS error: %s", session.log_ctx)
     finally:
-        heartbeat_task.cancel()
-        # Snapshot portfolios BEFORE disconnect removes the connection
+        # ── Cleanup ──────────────────────────────────────────────────────
+        session.cancel_all_tasks()
+        session.transition(WSSessionState.CLOSED)
+
+        # Snapshot orphan pids BEFORE disconnect removes the connection
         conn_id = id(ws)
         orphan_pids = list(conn._portfolio_map.keys())
         _manager.disconnect(ws)
-        # Reference-aware FSM cleanup: only clear portfolios that no
-        # remaining connection for this user still subscribes to.
+
+        # Reference-aware FSM cleanup
         if _price_feed is not None:
             for pid in orphan_pids:
                 if not _manager.is_portfolio_subscribed_elsewhere(
-                    user_id, pid, conn_id
+                    session.user_id, pid, conn_id,
                 ):
                     await _price_feed.remove_portfolio_index(pid)
 
-
-async def _send_initial_holdings(
-    ws: WebSocket, user_id: int, portfolio_id: int
-) -> None:
-    """Compute and send a full holdings snapshot on subscribe."""
-    try:
-        async with AsyncSessionLocal() as db:
-            pids = await resolve_portfolio_ids(db, user_id, portfolio_id)
-            positions = await position_engine.calculate_positions(
-                db, portfolio_ids=pids
-            )
-
-        if not positions:
-            return
-
-        symbols = list({pos.instrument.symbol for pos in positions})
-
-        # Force get_spot_price for all symbols — ensures FMP /quote is called,
-        # which populates changepct cache required for live perf_1d
-        spot_results = await asyncio.gather(
-            *[yfinance_client.get_spot_price(s) for s in symbols]
-        )
-        spot_map = {s: p for s, p in zip(symbols, spot_results) if p is not None}
-
-        vol_results = await asyncio.gather(
-            *[yfinance_client.get_hist_vol(s) for s in symbols]
-        )
-        vol_map = dict(zip(symbols, vol_results))
-
-        perf_results = await asyncio.gather(
-            *[yfinance_client.get_perf_cached(s) for s in symbols]
-        )
-        perf_map = dict(zip(symbols, perf_results))
-
-        # Daily P&L: BS mark-to-market (snapshot/recompute parity with price_feed)
-        from app.services.price_feed import PriceFeedService
-        prev_close_map = PriceFeedService._build_prev_close_map(symbols)
-        bs_pnl_map = PriceFeedService._build_daily_pnl_map(
-            positions, spot_map, vol_map, prev_close_map,
-        )
-
-        groups = compute_holding_groups(
-            positions, spot_map, vol_map, perf_map=perf_map,
-            bs_pnl_map=bs_pnl_map,
-        )
-        holdings_msg = {
-            "type": "holdings_update",
-            "portfolio_id": portfolio_id,
-            "data": [g.model_dump(mode="json") for g in groups],
-        }
-        await _manager.send_json(ws, holdings_msg)
-
-        # Also send initial risk snapshot
-        risk_summary = compute_risk_summary(positions, spot_map, vol_map)
-        risk_msg = {
-            "type": "risk_update",
-            "portfolio_id": portfolio_id,
-            "data": {
-                "total_net_delta": str(risk_summary["total_net_delta"]),
-                "total_gamma": str(risk_summary["total_gamma"]),
-                "total_theta_daily": str(risk_summary["total_theta_daily"]),
-                "total_vega": str(risk_summary["total_vega"]),
-                "maintenance_margin_total": str(risk_summary["maintenance_margin_total"]),
-                "var_1d_95": str(risk_summary["var_1d_95"]) if risk_summary["var_1d_95"] else None,
-                "positions_count": risk_summary["positions_count"],
-                "risk_alerts": risk_summary["risk_alerts"],
-            },
-        }
-        await _manager.send_json(ws, risk_msg)
-    except Exception:
-        logger.exception("Initial snapshot failed: user=%d pid=%d", user_id, portfolio_id)
-
-
-async def _heartbeat(ws: WebSocket, interval: float = 20.0) -> None:
-    """Send periodic ping to keep the connection alive.
-    Interval is 20s (< Render's 30s proxy idle timeout) to prevent WS drops."""
-    try:
-        while True:
-            await asyncio.sleep(interval)
-            try:
-                await ws.send_text(json.dumps({"type": "ping"}))
-            except Exception:
-                break
-    except asyncio.CancelledError:
-        pass
+        logger.info("WS closed: %s", session.log_ctx)
