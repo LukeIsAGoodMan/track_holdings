@@ -643,8 +643,7 @@ export interface BattleReportPlaybook {
     stop: number | null
     stop_label: string
   }
-  reversal_confirmation_line: number | null
-  reversal_type?: string | null  // recovery_line | breakout_confirmation | failure_boundary
+  reversal_line: { value: number; type: 'breakout' | 'reversal' | 'invalidation' } | null
   risk_rule:     string
   risk_rule_zh:  string
 }

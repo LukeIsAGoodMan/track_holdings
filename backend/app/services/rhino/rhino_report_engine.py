@@ -179,6 +179,66 @@ def _build_macro_section(
     }
 
 
+def _pick_structural_level(zones: list[dict]) -> float | None:
+    """Pick the most structurally significant level from a list of zones.
+
+    Prefers zones with strength >= 0.5 (Major or above).
+    Falls back to the first zone if nothing qualifies.
+    Never uses nearest-level heuristic.
+    """
+    if not zones:
+        return None
+    # Prefer the strongest zone that qualifies as structural (>= 0.5)
+    structural = [z for z in zones if z.get("strength", 0) >= 0.5]
+    if structural:
+        best = max(structural, key=lambda z: z.get("strength", 0))
+        return best["center"]
+    # Fallback: first zone (sorted by proximity from upstream)
+    return zones[0]["center"]
+
+
+def _get_reversal_line(
+    is_bearish: bool,
+    support_zones: list[dict],
+    resistance_zones: list[dict],
+    price: float,
+) -> dict | None:
+    """Structure-aware reversal line state machine.
+
+    Returns {"value": float, "type": str} or None.
+    Types: "breakout" | "reversal" | "invalidation"
+    """
+    has_support = len(support_zones) > 0
+    has_resistance = len(resistance_zones) > 0
+
+    if is_bearish:
+        # BEAR_REPAIR: overhead regime/recovery line
+        if has_resistance:
+            level = _pick_structural_level(resistance_zones)
+            if level is not None:
+                return {"value": level, "type": "reversal"}
+    elif has_support and has_resistance:
+        s_top = support_zones[0]["center"]
+        r_bottom = resistance_zones[0]["center"]
+        if s_top < price < r_bottom:
+            # RANGE: box upper boundary = breakout confirmation
+            level = _pick_structural_level(resistance_zones)
+            if level is not None:
+                return {"value": level, "type": "breakout"}
+        else:
+            # BULL_PULLBACK: major support = failure boundary
+            level = _pick_structural_level(support_zones)
+            if level is not None:
+                return {"value": level, "type": "invalidation"}
+    elif has_support:
+        # BULL_PULLBACK with no overhead: support failure
+        level = _pick_structural_level(support_zones)
+        if level is not None:
+            return {"value": level, "type": "invalidation"}
+
+    return None
+
+
 def _build_playbook_section(
     playbook: dict,
     narrative: FundamentalNarrative,
@@ -237,33 +297,12 @@ def _build_playbook_section(
         "stop_label": f"${downside_stop:.2f}" if downside_stop else "\u2014",
     }
 
-    # Reversal confirmation line — structure-aware invalidation boundary
-    # State machine: BEAR_REPAIR / RANGE / BULL_PULLBACK / UNKNOWN
-    reversal_line = None
-    reversal_type = None  # "recovery_line" | "breakout_confirmation" | "failure_boundary"
-    has_support = len(support_zones) > 0
-    has_resistance = len(resistance_zones) > 0
-
-    if is_bearish:
-        # BEAR_REPAIR: overhead resistance is recovery line
-        if has_resistance:
-            reversal_line = resistance_zones[0]["center"]
-            reversal_type = "recovery_line"
-    elif has_support and has_resistance:
-        s_top = support_zones[0]["center"]
-        r_bottom = resistance_zones[0]["center"]
-        if s_top < price < r_bottom:
-            # RANGE / box consolidation: upper boundary = breakout confirmation
-            reversal_line = r_bottom
-            reversal_type = "breakout_confirmation"
-        else:
-            # BULL_PULLBACK: nearest support = failure boundary
-            reversal_line = support_zones[0]["center"]
-            reversal_type = "failure_boundary"
-    elif has_support:
-        # BULL_PULLBACK with no resistance: support failure
-        reversal_line = support_zones[0]["center"]
-        reversal_type = "failure_boundary"
+    # Reversal line — structure-aware invalidation boundary
+    # State machine picks structurally meaningful level, not nearest-level heuristic.
+    # Types: "breakout" | "reversal" | "invalidation"
+    reversal_line = _get_reversal_line(
+        is_bearish, support_zones, resistance_zones, price,
+    )
 
     return {
         "title": "Tactical Playbook",
@@ -272,8 +311,7 @@ def _build_playbook_section(
         "rationale": playbook.get("rationale", []),
         "upside": upside,
         "downside": downside,
-        "reversal_confirmation_line": reversal_line,
-        "reversal_type": reversal_type,
+        "reversal_line": reversal_line,
         "risk_rule": "Single stock \u226415% of portfolio",
         "risk_rule_zh": "\u5355\u4e00\u4e2a\u80a1\u4e0d\u8d85\u8fc7\u7ec4\u5408\u768415%",
     }

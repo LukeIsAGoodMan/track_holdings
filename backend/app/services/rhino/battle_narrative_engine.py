@@ -655,8 +655,9 @@ def _build_playbook_narrative(
     framing = upside.get("framing", "expansion")
     framing_label = pool.get(f"framing_{framing}", framing)
 
-    # Reversal confirmation line
-    reversal_line = playbook.get("reversal_confirmation_line")
+    # Reversal line — structured object {"value": float, "type": str} or None
+    reversal_obj = playbook.get("reversal_line")
+    has_reversal = reversal_obj is not None
 
     trigger = upside.get("trigger")
     target = upside.get("target")
@@ -672,7 +673,7 @@ def _build_playbook_narrative(
                 f"\u7a81\u7834 ${_f(trigger)} \u540e\uff0c{framing_label}\u770b\u5411 ${_f(target)}\u3002"
             )
         elif trigger is not None:
-            if reversal_line is not None:
+            if has_reversal:
                 parts.append(
                     f"\u53cd\u5f39\u4fee\u590d\u76ee\u6807 ${_f(trigger)}\uff0c"
                     f"\u786e\u8ba4\u53cd\u8f6c\u9700\u7ad9\u7a33\u8be5\u4f4d\u3002"
@@ -720,7 +721,7 @@ def _build_playbook_narrative(
                 f"Breakout above ${_f(trigger)} opens {framing_label} toward ${_f(target)}."
             )
         elif trigger is not None:
-            if reversal_line is not None:
+            if has_reversal:
                 parts.append(
                     f"Repair target ${_f(trigger)}, "
                     f"reversal confirmation requires holding above this level."

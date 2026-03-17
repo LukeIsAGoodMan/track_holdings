@@ -25,8 +25,7 @@ interface Props {
   /** @deprecated pass via chart.current_price instead */
   price?: number
   fairValue?: { low: number; mid: number; high: number }
-  reversalLine?: number
-  reversalType?: string | null  // recovery_line | breakout_confirmation | failure_boundary
+  reversalLine?: { value: number; type: 'breakout' | 'reversal' | 'invalidation' }
 }
 
 /* ── Timeframe options ─────────────────────────────────────────────────── */
@@ -118,20 +117,31 @@ function ReversalLabel({ viewBox, value }: { viewBox?: { x?: number; y?: number;
 
 /* ── Reversal label text (structure-aware) ────────────────────────────── */
 
-function _reversalLabel(lang: string, type?: string | null): string {
+function _reversalLabel(lang: string, type?: string): string {
   if (lang === 'zh') {
-    if (type === 'breakout_confirmation') return '\u7bb1\u4f53\u7a81\u7834\u7ebf'
-    if (type === 'failure_boundary') return '\u7ed3\u6784\u5931\u6548\u7ebf'
+    if (type === 'breakout') return '\u7bb1\u4f53\u7a81\u7834\u7ebf'
+    if (type === 'invalidation') return '\u7ed3\u6784\u5931\u6548\u7ebf'
     return '\u7ed3\u6784\u53cd\u8f6c\u7ebf'
   }
-  if (type === 'breakout_confirmation') return 'Breakout'
-  if (type === 'failure_boundary') return 'Invalidation'
+  if (type === 'breakout') return 'Breakout'
+  if (type === 'invalidation') return 'Invalidation'
   return 'Reversal'
+}
+
+function _reversalColor(type?: string): string {
+  if (type === 'invalidation') return '#ef4444'  // red
+  if (type === 'reversal') return '#f97316'       // orange
+  return '#6366f1'                                 // indigo (breakout)
+}
+
+function _reversalDash(type?: string): string {
+  if (type === 'reversal') return '8 4'  // solid-ish
+  return '6 4'                            // dashed (breakout, invalidation)
 }
 
 /* ── Main component ─────────────────────────────────────────────────────── */
 
-export default function RhinoChart({ chart, price: priceProp, fairValue, reversalLine, reversalType }: Props) {
+export default function RhinoChart({ chart, price: priceProp, fairValue, reversalLine }: Props) {
   const price = chart.current_price ?? priceProp ?? 0
   const { lang, t } = useLanguage()
   const [timeframe, setTimeframe] = useState<Timeframe>(200)
@@ -250,14 +260,15 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
               if (!active || !payload?.length) return null
               const d = payload[0]?.payload
               if (!d) return null
+              const is200 = timeframe >= 200
               return (
-                <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-3 text-xs min-w-[140px] min-h-[60px] transition-all duration-150">
                   <div className="font-semibold text-slate-600 mb-1">{formatDate(String(label ?? ''))}</div>
                   <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 tabular-nums text-slate-700">
-                    <span className="text-slate-400">O</span><span>{fmtPrice(d.open)}</span>
-                    <span className="text-slate-400">H</span><span>{fmtPrice(d.high)}</span>
-                    <span className="text-slate-400">L</span><span>{fmtPrice(d.low)}</span>
-                    <span className="text-slate-400">C</span>
+                    {!is200 && <><span className="text-slate-400">O</span><span>{fmtPrice(d.open)}</span></>}
+                    {!is200 && <><span className="text-slate-400">H</span><span>{fmtPrice(d.high)}</span></>}
+                    {!is200 && <><span className="text-slate-400">L</span><span>{fmtPrice(d.low)}</span></>}
+                    <span className="text-slate-400">{is200 ? 'Close' : 'C'}</span>
                     <span className={d.bullish ? 'text-emerald-600' : 'text-rose-600'}>{fmtPrice(d.close)}</span>
                     <span className="text-slate-400">Vol</span>
                     <span>{d.volume ? (d.volume / 1e6).toFixed(1) + 'M' : '—'}</span>
@@ -407,12 +418,12 @@ export default function RhinoChart({ chart, price: priceProp, fairValue, reversa
           {reversalLine != null && (
             <ReferenceLine
               yAxisId="price"
-              y={reversalLine}
-              stroke={reversalType === 'failure_boundary' ? '#ef4444' : '#6366f1'}
+              y={reversalLine.value}
+              stroke={_reversalColor(reversalLine.type)}
               strokeWidth={2}
-              strokeDasharray="6 4"
+              strokeDasharray={_reversalDash(reversalLine.type)}
               ifOverflow="extendDomain"
-              label={<ReversalLabel value={_reversalLabel(lang, reversalType)} />}
+              label={<ReversalLabel value={_reversalLabel(lang, reversalLine.type)} />}
             />
           )}
         </ComposedChart>

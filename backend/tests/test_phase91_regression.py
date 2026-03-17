@@ -405,16 +405,17 @@ class TestScenarioTree:
         assert report["playbook"]["upside"]["trigger"] is None
         assert report["playbook"]["downside"]["trigger"] is None
 
-    def test_reversal_confirmation_line_bearish(self):
+    def test_reversal_line_bearish(self):
         report = _build_report(pattern_tags=["below_sma200"])
-        assert report["playbook"]["reversal_confirmation_line"] == 220
+        assert report["playbook"]["reversal_line"]["value"] == 220
+        assert report["playbook"]["reversal_line"]["type"] == "reversal"
 
-    def test_reversal_confirmation_line_bullish_range(self):
-        """Bullish range-bound: reversal line = upper boundary (breakout confirmation)."""
+    def test_reversal_line_bullish_range(self):
+        """Bullish range-bound: reversal line = upper boundary (breakout)."""
         report = _build_report(pattern_tags=["above_sma200"])
         # Price 200 between support 190 and resistance 220 -> RANGE
-        assert report["playbook"]["reversal_confirmation_line"] == 220
-        assert report["playbook"]["reversal_type"] == "breakout_confirmation"
+        assert report["playbook"]["reversal_line"]["value"] == 220
+        assert report["playbook"]["reversal_line"]["type"] == "breakout"
 
     def test_narrative_distinguishes_trigger_target(self):
         report = _build_report()
@@ -469,28 +470,34 @@ class TestOneWayFlowPreserved:
 class TestReversalLineStateMachine:
     """Reversal line uses structure-aware invalidation, not nearest tagged level."""
 
-    def test_bear_repair_recovery_line(self):
-        """Bearish + resistance -> recovery_line at overhead resistance."""
+    def test_bear_repair_reversal(self):
+        """Bearish + resistance -> reversal at overhead resistance."""
         report = _build_report(pattern_tags=["below_sma200"])
-        assert report["playbook"]["reversal_confirmation_line"] == 220
-        assert report["playbook"]["reversal_type"] == "recovery_line"
+        rl = report["playbook"]["reversal_line"]
+        assert rl is not None
+        assert rl["value"] == 220
+        assert rl["type"] == "reversal"
 
-    def test_range_breakout_confirmation(self):
-        """Price between S/R -> breakout_confirmation at upper boundary."""
+    def test_range_breakout(self):
+        """Price between S/R -> breakout at upper boundary."""
         report = _build_report(pattern_tags=["above_sma200"])
         # Price 200 between support 190 and resistance 220
-        assert report["playbook"]["reversal_confirmation_line"] == 220
-        assert report["playbook"]["reversal_type"] == "breakout_confirmation"
+        rl = report["playbook"]["reversal_line"]
+        assert rl is not None
+        assert rl["value"] == 220
+        assert rl["type"] == "breakout"
 
-    def test_bull_pullback_failure_boundary(self):
-        """Price above resistance (no box) -> failure_boundary at support."""
+    def test_bull_pullback_invalidation(self):
+        """Price above resistance (no box) -> invalidation at support."""
         report = _build_report(
             price=250,
             pattern_tags=["above_sma200"],
         )
-        # Price 250 > resistance 220, so not range-bound -> failure at support
-        assert report["playbook"]["reversal_confirmation_line"] == 190
-        assert report["playbook"]["reversal_type"] == "failure_boundary"
+        # Price 250 > resistance 220, so not range-bound -> invalidation at support
+        rl = report["playbook"]["reversal_line"]
+        assert rl is not None
+        assert rl["value"] == 190
+        assert rl["type"] == "invalidation"
 
     def test_no_support_no_reversal(self):
         """No support, no resistance -> no reversal line."""
@@ -498,17 +505,18 @@ class TestReversalLineStateMachine:
             pattern_tags=["above_sma200"],
             support_zones=[], resistance_zones=[],
         )
-        assert report["playbook"]["reversal_confirmation_line"] is None
-        assert report["playbook"]["reversal_type"] is None
+        assert report["playbook"]["reversal_line"] is None
 
-    def test_support_only_failure_boundary(self):
-        """Only support zones, no resistance -> failure_boundary."""
+    def test_support_only_invalidation(self):
+        """Only support zones, no resistance -> invalidation."""
         report = _build_report(
             pattern_tags=["above_sma200"],
             resistance_zones=[],
         )
-        assert report["playbook"]["reversal_confirmation_line"] == 190
-        assert report["playbook"]["reversal_type"] == "failure_boundary"
+        rl = report["playbook"]["reversal_line"]
+        assert rl is not None
+        assert rl["value"] == 190
+        assert rl["type"] == "invalidation"
 
     def test_bear_narrative_mentions_overhead(self):
         """Bear repair narrative references overhead recovery level."""

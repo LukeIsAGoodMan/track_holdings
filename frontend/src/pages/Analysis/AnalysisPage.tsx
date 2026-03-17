@@ -9,7 +9,7 @@ import { useLanguage } from '@/context/LanguageContext'
 import { fetchAnalysis } from '@/api/holdings'
 import type { AnalysisResult } from '@/types'
 
-import SymbolSearchBar       from '@/components/analysis/SymbolSearchBar'
+import SymbolSearchBar       from '@/components/shared/SymbolSearchBar'
 import PriceCard             from '@/components/analysis/PriceCard'
 import ValuationCard         from '@/components/analysis/ValuationCard'
 import MacroCard             from '@/components/analysis/MacroCard'
@@ -97,8 +97,7 @@ export default function AnalysisPage() {
             chart={result.chart}
             price={price}
             fairValue={result.valuation.raw_fair_value ?? undefined}
-            reversalLine={result.battle_report?.playbook?.reversal_confirmation_line ?? undefined}
-            reversalType={result.battle_report?.playbook?.reversal_type}
+            reversalLine={result.battle_report?.playbook?.reversal_line ?? undefined}
           />
 
           <NarrativeSection narrative={result.narrative} sections={result.text.sections} />
