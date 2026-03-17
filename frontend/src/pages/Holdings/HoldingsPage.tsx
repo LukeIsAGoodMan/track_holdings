@@ -867,6 +867,7 @@ function StockLegsTable({
             <th className="th text-[10px]">{t('col_shares')}</th>
             <th className="th text-[10px]">{t('col_cost')}</th>
             <th className="th text-[10px]">{t('col_mkt_value')}</th>
+            <th className="th text-[10px]">{t('total_pnl')}</th>
             <th className="th text-[10px]">{t('col_delta_exp')}</th>
             <th className="th text-[10px]">{/* Exit */}</th>
           </tr>
@@ -888,6 +889,18 @@ function StockLegsTable({
                 <td className="td text-slate-500">${fmtNum(leg.avg_open_price)}</td>
                 <td className="td text-slate-700">
                   {leg.market_value != null ? fmtUSD(leg.market_value) : <span className="text-slate-300">—</span>}
+                </td>
+                <td className="td">
+                  {leg.total_pnl != null ? (
+                    <span className={`font-semibold ${signClass(leg.total_pnl)}`}>
+                      {fmtUSD(leg.total_pnl)}
+                      {leg.total_pnl_pct != null && (
+                        <span className="text-[10px] ml-0.5 opacity-70">
+                          ({(parseFloat(leg.total_pnl_pct) * 100).toFixed(1)}%)
+                        </span>
+                      )}
+                    </span>
+                  ) : <span className="text-slate-300">—</span>}
                 </td>
                 <td className="td">
                   <span className={`font-semibold ${deltaPos ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -1095,6 +1108,31 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                       </div>
                     )}
                   </div>
+                  {group.total_pnl != null && (
+                    <div className="text-right">
+                      <div className="text-slate-400 uppercase tracking-wider text-[10px]">
+                        {t('total_pnl')}
+                      </div>
+                      <div className={`font-bold text-sm ${signClass(group.total_pnl)}`}>
+                        {fmtUSD(group.total_pnl)}
+                        {group.total_pnl_pct != null && (
+                          <span className="text-[10px] font-semibold ml-1 opacity-70">
+                            ({(parseFloat(group.total_pnl_pct) * 100).toFixed(1)}%)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {group.daily_pnl != null && (
+                    <div className="text-right">
+                      <div className="text-slate-400 uppercase tracking-wider text-[10px]">
+                        {t('daily_pnl')}
+                      </div>
+                      <div className={`font-bold text-sm ${signClass(group.daily_pnl)}`}>
+                        {fmtUSD(group.daily_pnl)}
+                      </div>
+                    </div>
+                  )}
                   <div className="text-right">
                     <div className="text-slate-400 uppercase tracking-wider text-[10px]">
                       {t('margin_req')}
@@ -1129,6 +1167,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                             <th className="th">{t('col_dte')}</th>
                             <th className="th">{t('col_net_qty')}</th>
                             <th className="th">{t('col_cost')}</th>
+                            <th className="th">{t('total_pnl')}</th>
                             <th className="th">{t('col_delta')}</th>
                             <th className="th">{t('col_delta_exp')}</th>
                             <th className="th">{t('col_theta')}</th>
@@ -1164,6 +1203,18 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                                   </span>
                                 </td>
                                 <td className="td text-slate-500">${fmtNum(leg.avg_open_price)}</td>
+                                <td className="td">
+                                  {leg.total_pnl != null ? (
+                                    <span className={`font-semibold ${signClass(leg.total_pnl)}`}>
+                                      {fmtUSD(leg.total_pnl)}
+                                      {leg.total_pnl_pct != null && (
+                                        <span className="text-[10px] ml-0.5 opacity-70">
+                                          ({(parseFloat(leg.total_pnl_pct) * 100).toFixed(1)}%)
+                                        </span>
+                                      )}
+                                    </span>
+                                  ) : <span className="text-slate-300">—</span>}
+                                </td>
                                 <td className="td text-slate-700">
                                   {leg.delta != null ? <span>{fmtGreek(leg.delta)}</span> : <ShimmerCell />}
                                 </td>
@@ -1190,7 +1241,7 @@ function HoldingsTable({ groups }: { groups: HoldingGroup[] }) {
                         </tbody>
                         <tfoot>
                           <tr className="border-t border-slate-100 bg-slate-50/60">
-                            <td colSpan={6} className="td-left text-[10px] uppercase tracking-widest text-slate-400 font-semibold">
+                            <td colSpan={7} className="td-left text-[10px] uppercase tracking-widest text-slate-400 font-semibold">
                               Σ Exposure
                             </td>
                             <td className="td">
@@ -1727,20 +1778,22 @@ export default function HoldingsPage() {
   // Net Exposure = Σ delta_adjusted_exposure (signed sum of all delta bets)
   const heroMetrics = useMemo(() => {
     let dailyUnrealizedPnl = 0
+    let totalUnrealizedPnl = 0
     let netExposure        = 0
     let portfolioValue     = 0
     // Track whether we have any holdings to distinguish "no data" from "computed zero"
     let hasAnyHolding      = false
+    let hasTotalPnl        = false
 
     for (const g of holdings) {
       hasAnyHolding = true
       const exposure = safeFloat(g.delta_adjusted_exposure) ?? 0
       netExposure += exposure
 
-      // Daily Unrealized P&L: prefer BS mark-to-market ($ precision)
-      const bsPnl = safeFloat(g.bs_pnl_1d)
-      if (bsPnl != null && isFinite(bsPnl)) {
-        dailyUnrealizedPnl += bsPnl
+      // Daily Unrealized P&L: prefer daily_pnl (leg-aggregated), fallback bs_pnl_1d
+      const dayPnl = safeFloat(g.daily_pnl) ?? safeFloat(g.bs_pnl_1d)
+      if (dayPnl != null && isFinite(dayPnl)) {
+        dailyUnrealizedPnl += dayPnl
       } else {
         // Fallback: delta approximation from live WS pct or cached perf
         const pctStr = lastSpotChangePct?.[g.symbol]
@@ -1748,6 +1801,13 @@ export default function HoldingsPage() {
         if (isFinite(pct) && isFinite(exposure)) {
           dailyUnrealizedPnl += exposure * pct / 100
         }
+      }
+
+      // Total Unrealized P&L: sum of group total_pnl (backend-computed)
+      const grpTotal = safeFloat(g.total_pnl)
+      if (grpTotal != null && isFinite(grpTotal)) {
+        totalUnrealizedPnl += grpTotal
+        hasTotalPnl = true
       }
 
       // Portfolio Value: stock legs → real-time MtM; option legs → premium × qty × 100
@@ -1766,7 +1826,9 @@ export default function HoldingsPage() {
     const dailyUnrealizedPnlPct = portfolioValue > 0 ? (dailyUnrealizedPnl / portfolioValue) * 100 : 0
     const realizedPnlPct        = portfolioValue > 0 ? (realizedPnl        / portfolioValue) * 100 : 0
 
-    return { dailyUnrealizedPnl, netExposure, portfolioValue, realizedPnl, dailyUnrealizedPnlPct, realizedPnlPct, hasAnyHolding }
+    const totalUnrealizedPnlPct = portfolioValue > 0 && hasTotalPnl ? (totalUnrealizedPnl / portfolioValue) * 100 : 0
+
+    return { dailyUnrealizedPnl, totalUnrealizedPnl, netExposure, portfolioValue, realizedPnl, dailyUnrealizedPnlPct, totalUnrealizedPnlPct, realizedPnlPct, hasAnyHolding, hasTotalPnl }
   }, [holdings, cash, lastSpotChangePct])
 
   // ── Treemap data ──────────────────────────────────────────────────────────
@@ -1892,8 +1954,8 @@ export default function HoldingsPage() {
         ) : (
           <div className="space-y-5">
 
-            {/* Hero Banner — 4 stats */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Hero Banner — 5 stats */}
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               <StatCard
                 label={isEn ? 'Portfolio Value' : '持仓总市值'}
                 value={heroMetrics.portfolioValue !== 0 ? fmtUSD(String(Math.round(heroMetrics.portfolioValue))) : '—'}
@@ -1906,7 +1968,7 @@ export default function HoldingsPage() {
                 valueClass={heroMetrics.netExposure >= 0 ? 'text-slate-900' : 'text-rose-600'}
               />
               <StatCard
-                label={isEn ? 'Daily Unrealized Change' : '今日浮盈变动'}
+                label={isEn ? 'Daily Unrealized' : '今日浮盈变动'}
                 value={
                   heroMetrics.hasAnyHolding
                     ? (heroMetrics.dailyUnrealizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.dailyUnrealizedPnl)))
@@ -1925,7 +1987,26 @@ export default function HoldingsPage() {
                 }
               />
               <StatCard
-                label={isEn ? 'Total Realized P&L' : '累计已实现盈亏'}
+                label={isEn ? 'Total Unrealized' : '总浮动盈亏'}
+                value={
+                  heroMetrics.hasTotalPnl
+                    ? (heroMetrics.totalUnrealizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.totalUnrealizedPnl)))
+                    : '—'
+                }
+                sub={
+                  heroMetrics.hasTotalPnl && heroMetrics.portfolioValue > 0
+                    ? (heroMetrics.totalUnrealizedPnlPct >= 0 ? '+' : '') + heroMetrics.totalUnrealizedPnlPct.toFixed(2) + '%'
+                    : (isEn ? 'vs cost basis' : '对比持仓成本')
+                }
+                valueClass={
+                  !heroMetrics.hasTotalPnl ? 'text-slate-900'
+                  : heroMetrics.totalUnrealizedPnl > 0 ? 'text-emerald-600'
+                  : heroMetrics.totalUnrealizedPnl < 0 ? 'text-rose-600'
+                  : 'text-slate-900'
+                }
+              />
+              <StatCard
+                label={isEn ? 'Realized P&L' : '已实现盈亏'}
                 value={
                   heroMetrics.realizedPnl !== 0
                     ? (heroMetrics.realizedPnl >= 0 ? '+' : '') + fmtUSD(String(Math.round(heroMetrics.realizedPnl)))
@@ -1934,7 +2015,7 @@ export default function HoldingsPage() {
                 sub={
                   heroMetrics.realizedPnlPct !== 0
                     ? (heroMetrics.realizedPnlPct >= 0 ? '+' : '') + heroMetrics.realizedPnlPct.toFixed(2) + '%'
-                    : (isEn ? 'From closed trades only' : '仅含已平仓收益')
+                    : (isEn ? 'From closed trades' : '仅含已平仓')
                 }
                 valueClass={
                   heroMetrics.realizedPnl === 0 ? 'text-slate-900'

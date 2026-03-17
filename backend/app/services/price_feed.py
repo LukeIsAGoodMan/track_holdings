@@ -744,7 +744,7 @@ class PriceFeedService:
         groups = compute_holding_groups(
             ctx.positions, ctx.spot_map, ctx.vol_map,
             perf_map=port_perf or None,
-            bs_pnl_map=bs_pnl_map,
+            prev_close_map=prev_close_map or None,
         )
 
         holdings_msg = {

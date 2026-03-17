@@ -25,6 +25,14 @@ class OptionLeg(BaseModel):
     delta_exposure:      DecStr | None = None   # net_contracts × delta × 100
     maintenance_margin:  DecStr                 # 20% × strike × 100 × |short_contracts|
 
+    # ── Unrealized P&L ────────────────────────────────────────────────────
+    # daily_pnl:  (BS(spot_now) − BS(prev_close)) × net_contracts × 100
+    # total_pnl:  (BS(spot_now) − avg_open_price) × net_contracts × 100
+    # total_pnl_pct: total_pnl / |cost_basis|  (cost_basis = |net| × avg_open × 100)
+    daily_pnl:     DecStr | None = None
+    total_pnl:     DecStr | None = None
+    total_pnl_pct: DecStr | None = None
+
 
 class StockLeg(BaseModel):
     """One stock/ETF position under a single underlying symbol.
@@ -37,6 +45,14 @@ class StockLeg(BaseModel):
     avg_open_price:  DecStr     # cost basis per share
     delta_exposure:  DecStr     # = net_shares  (1:1 ratio)
     market_value:    DecStr | None = None   # spot × net_shares, None if no quote
+
+    # ── Unrealized P&L ────────────────────────────────────────────────────
+    # daily_pnl:  net_shares × (spot − prev_close)
+    # total_pnl:  net_shares × (spot − avg_open_price)
+    # total_pnl_pct: total_pnl / |cost_basis|  (cost_basis = |shares| × avg_open)
+    daily_pnl:     DecStr | None = None
+    total_pnl:     DecStr | None = None
+    total_pnl_pct: DecStr | None = None
 
 
 class HoldingGroup(BaseModel):
@@ -94,11 +110,16 @@ class HoldingGroup(BaseModel):
     effective_perf_1m:  str | None = None
     effective_perf_3m:  str | None = None
 
-    # ── BS mark-to-market P&L (1-day) ──────────────────────────────────────────
-    # For options: Σ (BS(spot_now) − BS(prev_close)) × net_contracts × 100
-    # For stocks:  Σ net_shares × (spot_now − prev_close)
-    # Drives the hero "Daily Unrealized P&L" ($ precision).
-    # None when prev_close is unavailable.
+    # ── Unrealized P&L (group-level aggregates) ────────────────────────────────
+    # daily_pnl: Σ leg.daily_pnl  (ignoring None legs)
+    # total_pnl: Σ leg.total_pnl  (ignoring None legs)
+    # total_pnl_pct: total_pnl / Σ |leg cost_basis|
+    daily_pnl:     DecStr | None = None
+    total_pnl:     DecStr | None = None
+    total_pnl_pct: DecStr | None = None
+
+    # ── Legacy: BS mark-to-market P&L (1-day) ────────────────────────────────
+    # Preserved for backward compatibility. Equal to daily_pnl when computed.
     bs_pnl_1d: DecStr | None = None
 
     # ── Phase 15.3 — asset class classification ──────────────────────────────

@@ -17,19 +17,16 @@ Stock/ETF support:
 from __future__ import annotations
 
 import asyncio
-from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.user import User
 from app.schemas.holding import HoldingGroup
 from app.services import position_engine, yfinance_client
-from app.services.black_scholes import calculate_option_price
 from app.services.holdings_engine import compute_holding_groups
 from app.services.portfolio_resolver import resolve_portfolio_ids
 
@@ -70,42 +67,15 @@ async def get_holdings(
     perf_results = await asyncio.gather(*[yfinance_client.get_perf_cached(s) for s in symbols])
     perf_map = dict(zip(symbols, perf_results))
 
-    # ── BS mark-to-market P&L per underlying ─────────────────────────────
-    _today = date.today()
-    _r_f = Decimal(str(settings.risk_free_rate))
-    bs_pnl_map: dict[str, Decimal] = {}
-
+    # ── Prev-close map for daily P&L ──────────────────────────────────────
+    prev_close_map: dict[str, Decimal] = {}
     for sym in symbols:
-        spot = spot_map.get(sym)
-        prev_close = yfinance_client.get_prev_close_cached_only(sym)
-        if spot is None or prev_close is None:
-            continue
-
-        group_pnl = Decimal("0")
-        for pos in positions:
-            if pos.instrument.symbol != sym:
-                continue
-            inst = pos.instrument
-            if inst.instrument_type.value == "OPTION":
-                if not (inst.option_type and inst.strike and inst.expiry):
-                    continue
-                dte = (inst.expiry - _today).days
-                T = Decimal(str(max(dte, 0) / 365.0))
-                if T <= 0:
-                    continue
-                vol = vol_map.get(sym, Decimal("0.30"))
-                otype = inst.option_type.value
-                mark_now  = calculate_option_price(spot,       inst.strike, T, otype, vol, _r_f)
-                mark_prev = calculate_option_price(prev_close, inst.strike, T, otype, vol, _r_f)
-                multiplier = inst.multiplier or 100
-                group_pnl += (mark_now - mark_prev) * Decimal(str(pos.net_contracts)) * Decimal(str(multiplier))
-            else:
-                group_pnl += (spot - prev_close) * Decimal(str(pos.net_contracts))
-
-        bs_pnl_map[sym] = group_pnl.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        pc = yfinance_client.get_prev_close_cached_only(sym)
+        if pc is not None:
+            prev_close_map[sym] = pc
 
     return compute_holding_groups(
         positions, spot_map, vol_map,
         perf_map=perf_map,
-        bs_pnl_map=bs_pnl_map or None,
+        prev_close_map=prev_close_map or None,
     )

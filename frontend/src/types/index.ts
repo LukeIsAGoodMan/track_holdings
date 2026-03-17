@@ -41,6 +41,11 @@ export interface OptionLeg {
   // Position-level exposure
   delta_exposure:     string | null   // net_contracts × delta × 100
   maintenance_margin: string          // 20% × strike × 100 × |short_contracts|
+
+  // Unrealized P&L
+  daily_pnl:     string | null   // (BS_now − BS_prev) × net × 100
+  total_pnl:     string | null   // (BS_now − avg_open) × net × 100
+  total_pnl_pct: string | null   // total_pnl / |cost_basis|
 }
 
 export interface StockLeg {
@@ -49,6 +54,11 @@ export interface StockLeg {
   avg_open_price: string          // DecStr — cost basis per share
   delta_exposure: string          // DecStr = net_shares (1 share = 1Δ)
   market_value:   string | null   // DecStr = spot × net_shares
+
+  // Unrealized P&L
+  daily_pnl:     string | null   // net_shares × (spot − prev_close)
+  total_pnl:     string | null   // net_shares × (spot − avg_open)
+  total_pnl_pct: string | null   // total_pnl / |cost_basis|
 }
 
 export interface HoldingGroup {
@@ -78,7 +88,12 @@ export interface HoldingGroup {
   effective_perf_1m:  string | null
   effective_perf_3m:  string | null
 
-  // BS mark-to-market P&L (1-day, $ precision) — drives hero Daily Unrealized P&L
+  // Unrealized P&L (group-level aggregates)
+  daily_pnl:     string | null   // Σ leg daily P&L (ignoring nulls)
+  total_pnl:     string | null   // Σ leg total P&L (ignoring nulls)
+  total_pnl_pct: string | null   // total_pnl / Σ |cost_basis|
+
+  // Legacy: BS mark-to-market P&L (1-day) — preserved for backward compat
   bs_pnl_1d: string | null
 
   // Phase 15.3 — asset class: 'stock' | 'etf' | 'index' | 'crypto' | 'option'

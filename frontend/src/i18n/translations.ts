@@ -39,6 +39,8 @@ export const TRANSLATIONS = {
   delta_exposure:  { en: 'Δ Exposure',  zh: 'Delta敞口' },
   margin_req:      { en: 'Margin Req.', zh: '保证金要求' },
   cap_efficiency:  { en: 'Eff',         zh: '效率' },
+  total_pnl:       { en: 'Total P&L',   zh: '总盈亏' },
+  daily_pnl:       { en: 'Day P&L',     zh: '日盈亏' },
 
   // ── Risk dashboard ───────────────────────────────────────────────────────
   risk_title:      { en: 'Risk Dashboard',                zh: '风险仪表盘' },

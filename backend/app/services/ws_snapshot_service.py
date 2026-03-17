@@ -214,7 +214,7 @@ class WSSnapshotService:
 
             groups = compute_holding_groups(
                 positions, spot_map, vol_map,
-                perf_map=perf_map, bs_pnl_map=bs_pnl_map,
+                perf_map=perf_map, prev_close_map=prev_close_map or None,
             )
             await self._send(ws, {
                 "type": "holdings_update",
