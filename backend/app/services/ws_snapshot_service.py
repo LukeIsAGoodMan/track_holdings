@@ -12,6 +12,7 @@ On subscribe, orchestrates a multi-step snapshot:
 Each step:
   - is independently try/except guarded
   - emits snapshot_error on failure (does NOT crash session)
+  - checks session.is_alive before proceeding
   - never blocks other steps
 """
 from __future__ import annotations
@@ -43,12 +44,20 @@ class WSSnapshotService:
 
     async def send_snapshot(
         self, session: WSSession, portfolio_id: int,
+        *, symbols: set[str] | None = None,
     ) -> None:
         """Run the full snapshot pipeline for a subscription.
 
         Each step is isolated — a failure in one step does NOT prevent
         subsequent steps from executing.
+
+        Args:
+            symbols: Pre-resolved symbols from subscribe handler.
+                     If None, resolves from DB (backward compat).
         """
+        if not session.is_alive:
+            return
+
         ws = session.ws
         ctx = f"{session.log_ctx} pid={portfolio_id}"
 
@@ -61,14 +70,30 @@ class WSSnapshotService:
 
         logger.info("Snapshot starting: %s", ctx)
 
+        # Resolve symbols if not provided (backward compat)
+        if symbols is None:
+            symbols = await self._resolve_symbols(session.user_id, portfolio_id, ctx)
+
+        if not session.is_alive:
+            return
+
         # Phase 2: spot snapshot (from cache — fast, no network)
-        symbols = await self._step_spot(ws, session.user_id, portfolio_id, ctx)
+        await self._step_spot(ws, symbols, portfolio_id, ctx)
+
+        if not session.is_alive:
+            return
 
         # Phase 3: macro ticker
-        await self._step_macro(ws, ctx)
+        await self._step_macro(ws, portfolio_id, ctx)
+
+        if not session.is_alive:
+            return
 
         # Phase 4+5: holdings + risk (requires DB + computation)
         await self._step_holdings_risk(ws, session.user_id, portfolio_id, symbols, ctx)
+
+        if not session.is_alive:
+            return
 
         # Phase 6: signal complete
         await self._send(ws, {
@@ -81,11 +106,10 @@ class WSSnapshotService:
 
     # ── Individual steps ─────────────────────────────────────────────────
 
-    async def _step_spot(
-        self, ws: WebSocket, user_id: int, portfolio_id: int, ctx: str,
+    async def _resolve_symbols(
+        self, user_id: int, portfolio_id: int, ctx: str,
     ) -> set[str]:
-        """Send cached spot prices. Returns resolved symbols for later steps."""
-        symbols: set[str] = set()
+        """Fallback symbol resolution (only if caller didn't provide symbols)."""
         try:
             async with AsyncSessionLocal() as db:
                 pids = await resolve_portfolio_ids(db, user_id, portfolio_id)
@@ -97,8 +121,16 @@ class WSSnapshotService:
                     .where(TradeEvent.portfolio_id.in_(pids))
                     .distinct()
                 )
-                symbols = {row[0] for row in result.all()}
+                return {row[0] for row in result.all()}
+        except Exception:
+            logger.exception("Symbol resolution failed: %s", ctx)
+            return set()
 
+    async def _step_spot(
+        self, ws: WebSocket, symbols: set[str], portfolio_id: int, ctx: str,
+    ) -> None:
+        """Send cached spot prices. Uses pre-resolved symbols (no DB call)."""
+        try:
             cached = self._cache.get_many(sorted(symbols))
             if cached:
                 changepct_map: dict[str, str] = {}
@@ -114,9 +146,8 @@ class WSSnapshotService:
         except Exception:
             logger.exception("Snapshot spot failed: %s", ctx)
             await self._send_error(ws, portfolio_id, "spot")
-        return symbols
 
-    async def _step_macro(self, ws: WebSocket, ctx: str) -> None:
+    async def _step_macro(self, ws: WebSocket, portfolio_id: int, ctx: str) -> None:
         """Send current macro state."""
         try:
             if self._macro_service is None:
@@ -139,7 +170,7 @@ class WSSnapshotService:
             })
         except Exception:
             logger.exception("Snapshot macro failed: %s", ctx)
-            # macro is non-critical, no error emission
+            await self._send_error(ws, portfolio_id, "macro")
 
     async def _step_holdings_risk(
         self, ws: WebSocket, user_id: int, portfolio_id: int,
@@ -221,9 +252,12 @@ class WSSnapshotService:
         self, ws: WebSocket, portfolio_id: int, step: str,
     ) -> None:
         """Emit a snapshot_error message for a failed step."""
-        await self._send(ws, {
-            "type": "snapshot_error",
-            "portfolio_id": portfolio_id,
-            "step": step,
-            "message": f"Snapshot step '{step}' failed",
-        })
+        try:
+            await self._send(ws, {
+                "type": "snapshot_error",
+                "portfolio_id": portfolio_id,
+                "step": step,
+                "message": f"Snapshot step '{step}' failed",
+            })
+        except Exception:
+            pass  # secondary guard — never crash on error reporting

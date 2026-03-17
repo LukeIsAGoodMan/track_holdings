@@ -118,6 +118,10 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
   const delayRef = useRef(INITIAL_DELAY)
   const subscribedPidRef = useRef<number | null>(null)
   const intentionalClose = useRef(false)
+  const socketStateRef = useRef<SocketState>(socketState)
+
+  // Keep ref in sync with state (avoids stale closure in ws.onmessage)
+  useEffect(() => { socketStateRef.current = socketState }, [socketState])
 
   // ── Connect ────────────────────────────────────────────────────────────
 
@@ -193,7 +197,7 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
             // If we receive holdings before snapshot_status:complete, mark ready
             // (backward compat with servers that don't send snapshot_status yet)
             setSnapshotReady(true)
-            if (socketState === 'snapshot_loading' || socketState === 'subscribed') {
+            if (socketStateRef.current === 'snapshot_loading' || socketStateRef.current === 'subscribed') {
               setSocketState('ready')
             }
             break

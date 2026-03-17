@@ -50,14 +50,15 @@ logger = logging.getLogger(__name__)
 
 # ── Shared singletons (created once, live for the process lifetime) ──────────
 ws_manager = ConnectionManager()
+ws_broadcast = WSBroadcastService(ws_manager)
 price_cache = PriceCache(ttl_seconds=settings.ws_price_cache_ttl)
-alert_engine = AlertEngine(manager=ws_manager)
+alert_engine = AlertEngine(manager=ws_broadcast)
 price_feed = PriceFeedService(
-    manager=ws_manager, cache=price_cache, alert_engine=alert_engine
+    manager=ws_broadcast, cache=price_cache, alert_engine=alert_engine
 )
-market_scanner = MarketScannerService(manager=ws_manager)
-macro_service = MacroService(manager=ws_manager, cache=price_cache)
-nlv_sampler = NlvSamplerService(manager=ws_manager, cache=price_cache)
+market_scanner = MarketScannerService(manager=ws_broadcast)
+macro_service = MacroService(manager=ws_broadcast, cache=price_cache)
+nlv_sampler = NlvSamplerService(manager=ws_broadcast, cache=price_cache)
 
 # ── Voice / TTS (Phase 10a) ──────────────────────────────────────────────────
 audio_cache = AudioCache(ttl=settings.tts_cache_ttl)
@@ -69,7 +70,7 @@ if settings.tts_enabled:
     )
 
 ai_insight_svc = AiInsightService(
-    manager=ws_manager, cache=price_cache, provider=create_ai_provider(),
+    manager=ws_broadcast, cache=price_cache, provider=create_ai_provider(),
     voice=_voice_provider, audio_cache=audio_cache,
     macro_service=macro_service,
     scanner_service=market_scanner,
@@ -104,16 +105,15 @@ async def lifespan(_app: FastAPI):
 
     asyncio.create_task(_bg_prewarm(), name="prewarm_prices")
 
-    # ── Phase 10: Snapshot + Broadcast services ──────────────────────────
-    ws_broadcast = WSBroadcastService(ws_manager)
+    # ── Phase 10: Snapshot service ────────────────────────────────────────
     ws_snapshot = WSSnapshotService(
-        manager=ws_manager, cache=price_cache,
+        manager=ws_broadcast, cache=price_cache,
         macro_service=macro_service, price_feed=price_feed,
     )
 
     # ── Start real-time price feed ────────────────────────────────────────
     ws_router.init_ws_globals(
-        ws_manager, price_cache,
+        ws_broadcast, price_cache,
         macro_service=macro_service, price_feed=price_feed,
         snapshot_service=ws_snapshot,
     )

@@ -94,3 +94,24 @@ class WSBroadcastService:
     @property
     def active_count(self) -> int:
         return self._manager.active_count
+
+    # ── Connection lifecycle (delegated) ──────────────────────────────
+
+    async def connect(self, ws, user_id: int, **kwargs):
+        return await self._manager.connect(ws, user_id, **kwargs)
+
+    def disconnect(self, ws) -> None:
+        self._manager.disconnect(ws)
+
+    def subscribe(self, ws, portfolio_id: int, symbols: set[str]) -> None:
+        self._manager.subscribe(ws, portfolio_id, symbols)
+
+    def unsubscribe(self, ws, portfolio_id: int) -> None:
+        self._manager.unsubscribe(ws, portfolio_id)
+
+    def is_portfolio_subscribed_elsewhere(
+        self, user_id: int, portfolio_id: int, exclude_conn_id: int,
+    ) -> bool:
+        return self._manager.is_portfolio_subscribed_elsewhere(
+            user_id, portfolio_id, exclude_conn_id,
+        )

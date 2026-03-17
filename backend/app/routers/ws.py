@@ -136,53 +136,93 @@ async def _heartbeat(session: WSSession) -> None:
 
 # ── Subscribe handler ────────────────────────────────────────────────────
 
-async def _handle_subscribe(
+def _handle_subscribe(
     session: WSSession, conn, pid: int,
 ) -> None:
-    """Two-phase subscription: immediate ACK + async snapshot pipeline."""
-    ws = session.ws
+    """Two-phase subscription: immediate ACK (zero awaits) + background pipeline.
 
-    # Phase 0: resolve symbols (lightweight DB query)
-    symbols = await _get_portfolio_symbols(session.user_id, pid)
-
-    # Update ConnectionManager subscription index
-    _manager.subscribe(ws, pid, symbols)
+    CRITICAL: This function is synchronous. The ACK is sent via fire-and-forget
+    coroutine scheduling. ALL heavy work (symbol resolution, FSM sync, snapshot)
+    runs in a tracked background task.
+    """
     session.subscribed_portfolios.add(pid)
 
-    # Proactive FSM sync
-    if _price_feed is not None:
-        normalized_syms = conn._portfolio_map.get(pid, set())
-        if normalized_syms:
-            await _price_feed.sync_portfolio_index(
-                pid, session.user_id, set(normalized_syms),
-            )
-
-    # Phase 1: Immediate ACK (non-blocking)
-    await _manager.send_json(ws, {
-        "type": "subscribed_ack",
-        "portfolio_id": pid,
-    })
-
-    # Backward compat: also send the old "subscribed" message
-    await _manager.send_json(ws, {
-        "type": "subscribed",
-        "portfolio_id": pid,
-        "symbols": sorted(symbols),
-    })
-
-    # Update session state
+    # Update session state (synchronous)
     if session.state in (WSSessionState.READY, WSSessionState.AUTHENTICATED):
         session.transition(WSSessionState.SUBSCRIBED)
 
-    logger.info("Subscribe: %s pid=%d symbols=%d", session.log_ctx, pid, len(symbols))
+    # Phase 1: Immediate ACK — fire-and-forget send (non-blocking)
+    asyncio.ensure_future(_manager.send_json(session.ws, {
+        "type": "subscribed_ack",
+        "portfolio_id": pid,
+    }))
 
-    # Phase 2: Async snapshot pipeline (background task, non-blocking)
-    if _snapshot_service is not None:
-        task = asyncio.create_task(
-            _snapshot_service.send_snapshot(session, pid),
-            name=f"snapshot_{session.session_id}_{pid}",
-        )
-        session.track_task(f"snapshot_{pid}", task)
+    # Phase 2: ALL heavy work in a single background task
+    task = asyncio.create_task(
+        _subscribe_pipeline(session, conn, pid),
+        name=f"subscribe_{session.session_id}_{pid}",
+    )
+    session.track_task(f"subscribe_{pid}", task)
+
+
+async def _subscribe_pipeline(
+    session: WSSession, conn, pid: int,
+) -> None:
+    """Background pipeline: symbol resolution → FSM sync → snapshot.
+
+    Runs entirely outside the WS receive loop. Guarded against session closure
+    and CancelledError.
+    """
+    try:
+        if not session.is_alive:
+            return
+
+        # Step 1: Resolve symbols (DB query)
+        symbols = await _get_portfolio_symbols(session.user_id, pid)
+        if not session.is_alive:
+            return
+
+        # Step 2: Update ConnectionManager subscription index
+        _manager.subscribe(session.ws, pid, symbols)
+
+        # Step 3: Proactive FSM sync
+        if _price_feed is not None:
+            normalized_syms = conn._portfolio_map.get(pid, set())
+            if normalized_syms:
+                await _price_feed.sync_portfolio_index(
+                    pid, session.user_id, set(normalized_syms),
+                )
+        if not session.is_alive:
+            return
+
+        # Step 4: Backward-compat "subscribed" message (with symbols list)
+        await _manager.send_json(session.ws, {
+            "type": "subscribed",
+            "portfolio_id": pid,
+            "symbols": sorted(symbols),
+        })
+
+        logger.info("Subscribe: %s pid=%d symbols=%d", session.log_ctx, pid, len(symbols))
+
+        # Step 5: Snapshot pipeline (passes symbols to avoid re-resolution)
+        if _snapshot_service is not None:
+            await _snapshot_service.send_snapshot(session, pid, symbols=symbols)
+
+    except asyncio.CancelledError:
+        logger.debug("Subscribe pipeline cancelled: %s pid=%d", session.log_ctx, pid)
+    except Exception:
+        logger.exception("Subscribe pipeline failed: %s pid=%d", session.log_ctx, pid)
+        # Attempt error report (secondary guard)
+        try:
+            if session.is_alive:
+                await _manager.send_json(session.ws, {
+                    "type": "snapshot_error",
+                    "portfolio_id": pid,
+                    "step": "subscribe_pipeline",
+                    "message": "Subscribe pipeline failed",
+                })
+        except Exception:
+            pass
 
 
 # ── Unsubscribe handler ─────────────────────────────────────────────────
@@ -256,7 +296,7 @@ async def websocket_endpoint(
                         "type": "error", "message": "portfolio_id required",
                     })
                     continue
-                await _handle_subscribe(session, conn, pid)
+                _handle_subscribe(session, conn, pid)
 
             elif msg_type == "unsubscribe":
                 pid = msg.get("portfolio_id")
