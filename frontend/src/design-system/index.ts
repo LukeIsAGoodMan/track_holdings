@@ -24,3 +24,7 @@ export { default as AppShellV2 }     from './shell/AppShellV2'
 export { default as SidebarV2 }      from './shell/SidebarV2'
 export { default as TopNavV2 }       from './shell/TopNavV2'
 export { default as PageContainer }  from './shell/PageContainer'
+
+// Workspace
+export { default as HeroSection }    from './workspace/HeroSection'
+export { QuickRiskCard, AllocationCard, CashCard } from './workspace/RightPanelStack'

@@ -10,10 +10,11 @@ import AlertToastListener from '@/components/AlertToastListener'
 import Layout from '@/components/layout/Layout'
 import AppShellV2 from '@/design-system/shell/AppShellV2'
 import LoginPage    from '@/pages/Login/LoginPage'
-import HoldingsPage from '@/pages/Holdings/HoldingsPage'
-import RiskPage     from '@/pages/Risk/RiskPage'
-import ScannerPage  from '@/pages/Scanner/ScannerPage'
-import AnalysisPage from '@/pages/Analysis/AnalysisPage'
+import HoldingsPage   from '@/pages/Holdings/HoldingsPage'
+import HoldingsPageV2 from '@/pages/Holdings/HoldingsPageV2'
+import RiskPage       from '@/pages/Risk/RiskPage'
+import ScannerPage    from '@/pages/Scanner/ScannerPage'
+import AnalysisPage   from '@/pages/Analysis/AnalysisPage'
 
 /**
  * Design version flag — A/B toggle for V1 vs V2 shell.
@@ -33,12 +34,13 @@ function useDesignVersion(): 'v1' | 'v2' {
   return 'v1'
 }
 
-/** Shared page routes — identical for V1 and V2 shells */
-function PageRoutes() {
+/** Shared page routes — V2 swaps HoldingsPage for HoldingsPageV2 */
+function PageRoutes({ designVersion }: { designVersion: 'v1' | 'v2' }) {
+  const Holdings = designVersion === 'v2' ? HoldingsPageV2 : HoldingsPage
   return (
     <>
       <Route index element={<Navigate to="/holdings/overview" replace />} />
-      <Route path="holdings" element={<HoldingsPage />}>
+      <Route path="holdings" element={<Holdings />}>
         <Route index          element={<Navigate to="overview" replace />} />
         <Route path="overview" />
         <Route path="details" />
@@ -83,7 +85,7 @@ export default function App() {
                   </WebSocketProvider>
                 </PortfolioProvider>
               }>
-                {PageRoutes()}
+                {PageRoutes({ designVersion })}
               </Route>
             </Route>
           </Routes>

@@ -35,6 +35,9 @@ body {
 .td      { @apply text-sm px-3 py-2.5 text-right  tabular-nums align-middle text-slate-700; }
 .td-left { @apply text-sm px-3 py-2.5 text-left   align-middle text-slate-700; }
 
+/* ── Tabular numeric alignment ─────────────────────────────────────── */
+.tnum { font-variant-numeric: tabular-nums; }
+
 /* ── Badges ──────────────────────────────────────────────────────────── */
 .pill-bull { @apply inline-block rounded-md px-2 py-0.5 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200; }
 .pill-bear { @apply inline-block rounded-md px-2 py-0.5 text-xs font-semibold bg-rose-50    text-rose-700    border border-rose-200;   }

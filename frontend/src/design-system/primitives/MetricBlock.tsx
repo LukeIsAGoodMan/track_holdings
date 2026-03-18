@@ -3,10 +3,12 @@
  *
  * Typography hierarchy: value (largest) > label (small, muted) > delta (contextual)
  * All numeric values use tabular-nums for alignment stability.
+ * Wrapped with React.memo to prevent re-renders under frequent WS updates.
  *
  * Usage:
  *   <MetricBlock label="Daily P&L" value="+$1,234" delta="+2.3%" sentiment="positive" />
  */
+import { memo } from 'react'
 import SkeletonLoader from './SkeletonLoader'
 
 interface Props {
@@ -37,7 +39,7 @@ const sentimentClasses: Record<string, string> = {
   neutral:  'text-v2-text-1',
 }
 
-export default function MetricBlock({
+export default memo(function MetricBlock({
   label,
   value,
   delta,
@@ -60,14 +62,14 @@ export default function MetricBlock({
       <div className="text-[11px] font-medium uppercase tracking-widest text-v2-text-3 mb-1">
         {label}
       </div>
-      <div className={`${valueClasses[size]} ${sentimentClasses[sentiment]} tabular-nums leading-none`}>
+      <div className={`${valueClasses[size]} ${sentimentClasses[sentiment]} tnum leading-none`}>
         {value}
       </div>
       {delta && (
-        <div className={`text-xs font-medium tabular-nums mt-1 ${sentimentClasses[sentiment]} opacity-70`}>
+        <div className={`text-xs font-medium tnum mt-1 ${sentimentClasses[sentiment]} opacity-70`}>
           {delta}
         </div>
       )}
     </div>
   )
-}
+})
