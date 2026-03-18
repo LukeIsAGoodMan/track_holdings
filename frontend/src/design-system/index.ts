@@ -18,6 +18,7 @@ export { default as ChartContainer } from './primitives/ChartContainer'
 export { default as PanelContainer } from './primitives/PanelContainer'
 export { default as EmptyState }     from './primitives/EmptyState'
 export { default as SkeletonLoader } from './primitives/SkeletonLoader'
+export { default as Toolbar }        from './primitives/Toolbar'
 
 // Shell
 export { default as AppShellV2 }     from './shell/AppShellV2'
@@ -26,5 +27,13 @@ export { default as TopNavV2 }       from './shell/TopNavV2'
 export { default as PageContainer }  from './shell/PageContainer'
 
 // Workspace
-export { default as HeroSection }    from './workspace/HeroSection'
+export { default as HeroSection }         from './workspace/HeroSection'
+export { default as HoldingsActionBar }   from './workspace/HoldingsActionBar'
+export { default as TradeRecordTimeline } from './workspace/TradeRecordTimeline'
+export { default as ActivityPanel }       from './workspace/ActivityPanel'
 export { QuickRiskCard, AllocationCard, CashCard } from './workspace/RightPanelStack'
+export { default as RiskHero }            from './workspace/RiskHero'
+export { default as RiskHeatmap }         from './workspace/RiskHeatmap'
+export { default as ScenarioStressPanel } from './workspace/ScenarioStressPanel'
+export { default as ConcentrationTable }  from './workspace/ConcentrationTable'
+export { default as RiskAlertStack }      from './workspace/RiskAlertStack'

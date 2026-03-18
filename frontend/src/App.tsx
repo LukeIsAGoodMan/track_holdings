@@ -13,6 +13,7 @@ import LoginPage    from '@/pages/Login/LoginPage'
 import HoldingsPage   from '@/pages/Holdings/HoldingsPage'
 import HoldingsPageV2 from '@/pages/Holdings/HoldingsPageV2'
 import RiskPage       from '@/pages/Risk/RiskPage'
+import RiskPageV2     from '@/pages/Risk/RiskPageV2'
 import ScannerPage    from '@/pages/Scanner/ScannerPage'
 import AnalysisPage   from '@/pages/Analysis/AnalysisPage'
 
@@ -37,6 +38,7 @@ function useDesignVersion(): 'v1' | 'v2' {
 /** Shared page routes — V2 swaps HoldingsPage for HoldingsPageV2 */
 function PageRoutes({ designVersion }: { designVersion: 'v1' | 'v2' }) {
   const Holdings = designVersion === 'v2' ? HoldingsPageV2 : HoldingsPage
+  const Risk     = designVersion === 'v2' ? RiskPageV2     : RiskPage
   return (
     <>
       <Route index element={<Navigate to="/holdings/overview" replace />} />
@@ -46,7 +48,7 @@ function PageRoutes({ designVersion }: { designVersion: 'v1' | 'v2' }) {
         <Route path="details" />
         <Route path="records" />
       </Route>
-      <Route path="risk"          element={<RiskPage />}     />
+      <Route path="risk"          element={<Risk />}         />
       <Route path="opportunities" element={<ScannerPage />}  />
       <Route path="analysis"      element={<AnalysisPage />} />
     </>

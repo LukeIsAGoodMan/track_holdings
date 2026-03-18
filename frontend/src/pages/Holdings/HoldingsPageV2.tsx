@@ -12,8 +12,8 @@
 // Module-level singleton: lifecycle sweep fires at most once per browser session.
 let _lifecycleCalledThisSession = false
 
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
@@ -23,21 +23,23 @@ import { useLanguage }   from '@/context/LanguageContext'
 import { useWebSocket }  from '@/context/WebSocketContext'
 import { useSidebar }    from '@/context/SidebarContext'
 import {
-  fetchHoldings, fetchCash, fetchSettledTrades,
-  triggerLifecycle, fetchRiskDashboard, fetchTransactionHistory,
+  fetchHoldings, fetchCash,
+  triggerLifecycle, fetchRiskDashboard,
 } from '@/api/holdings'
 import type {
   HoldingGroup, OptionLeg, StockLeg, CashSummary,
-  TradeAction, ClosePositionState, SettledTrade, LifecycleResult,
-  RiskDashboard, Transaction, Portfolio,
+  TradeAction, ClosePositionState, LifecycleResult,
+  RiskDashboard, Portfolio,
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
 import AiInsightPanel        from '@/components/AiInsightPanel'
 import HeroSection           from '@/design-system/workspace/HeroSection'
+import HoldingsActionBar     from '@/design-system/workspace/HoldingsActionBar'
+import TradeRecordTimeline   from '@/design-system/workspace/TradeRecordTimeline'
+import ActivityPanel         from '@/design-system/workspace/ActivityPanel'
 import { QuickRiskCard, AllocationCard, CashCard } from '@/design-system/workspace/RightPanelStack'
 import SectionCard           from '@/design-system/primitives/SectionCard'
-import ChartContainer        from '@/design-system/primitives/ChartContainer'
 import TabsV2               from '@/design-system/primitives/TabsV2'
 
 // ── Safe helpers ──────────────────────────────────────────────────────────────
@@ -728,12 +730,27 @@ export default function HoldingsPageV2() {
   const { selectedPortfolioId, refreshKey, triggerRefresh, portfolios } = usePortfolio()
   const { lang, t } = useLanguage()
   const { lastHoldingsUpdate, lastSpotChangePct } = useWebSocket()
+  const isEn = lang !== 'zh'
 
   // Tab from URL
   const location  = useLocation()
+  const navigate  = useNavigate()
   const activeTab: Tab = location.pathname.includes('/details') ? 'details'
     : location.pathname.includes('/records') ? 'records'
     : 'overview'
+
+  const TAB_ITEMS = useMemo(() => [
+    { key: 'overview', label: isEn ? 'Overview' : '概览' },
+    { key: 'details',  label: isEn ? 'Details'  : '详情' },
+    { key: 'records',  label: isEn ? 'Records'  : '记录' },
+  ], [isEn])
+
+  const handleTabChange = (key: string) => {
+    const path = key === 'overview' ? '/holdings/overview'
+      : key === 'details' ? '/holdings/details'
+      : '/holdings/records'
+    navigate(path)
+  }
 
   const [holdings,        setHoldings]        = useState<HoldingGroup[]>([])
   const [cash,            setCash]            = useState<CashSummary | null>(null)
@@ -744,7 +761,6 @@ export default function HoldingsPageV2() {
   const [focusMode,       setFocusMode]       = useState(false)
 
   const lastValidHoldings = useRef<HoldingGroup[]>([])
-  const isEn = lang !== 'zh'
 
   // ── Main data fetch ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -966,6 +982,14 @@ export default function HoldingsPageV2() {
         </div>
       )}
 
+      {/* ── Tab Navigation + Action Bar ──────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <TabsV2 tabs={TAB_ITEMS} activeKey={activeTab} onChange={handleTabChange} />
+        {activeTab !== 'records' && (
+          <HoldingsActionBar isEn={isEn} hasPositions={holdings.length > 0} />
+        )}
+      </div>
+
       {/* ════════════════════════════════════════════════════════════ */}
       {/* OVERVIEW TAB                                                */}
       {/* ════════════════════════════════════════════════════════════ */}
@@ -1092,6 +1116,7 @@ export default function HoldingsPageV2() {
                   <AllocationCard holdings={holdings} isEn={isEn} />
                   <SectorMiniChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
                   <CashCard cash={cash} isEn={isEn} />
+                  <ActivityPanel portfolioId={selectedPortfolioId} isEn={isEn} />
                 </div>
               )}
             </div>
@@ -1115,13 +1140,10 @@ export default function HoldingsPageV2() {
       )}
 
       {/* ════════════════════════════════════════════════════════════ */}
-      {/* RECORDS TAB — re-uses V1 SettledTradesSection/TransactionHistory */}
+      {/* RECORDS TAB                                                 */}
       {/* ════════════════════════════════════════════════════════════ */}
       {activeTab === 'records' && (
-        <div className="text-v2-text-3 text-sm text-center py-10">
-          {/* Records tab delegates to V1 rendering — toggled via A/B flag */}
-          {isEn ? 'Records view — switch to V1 for full transaction history' : '记录视图 — 切换V1查看完整交易记录'}
-        </div>
+        <TradeRecordTimeline portfolioId={selectedPortfolioId} isFolder={selectedPortfolio?.is_folder ?? false} />
       )}
     </div>
   )
