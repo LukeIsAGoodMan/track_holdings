@@ -473,12 +473,16 @@ const ExpiryChartV2 = memo(function ExpiryChartV2({
 })
 
 // ── Sector Exposure (V2) ─────────────────────────────────────────────────────
+// Asset-class keys that must NOT appear in sector views (strict dimension separation)
+const ASSET_CLASS_KEYS = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
+
 const SectorExposureV2 = memo(function SectorExposureV2({
   sectorExp, isEn,
 }: {
   sectorExp: Record<string, string>; isEn: boolean
 }) {
-  const entries = Object.entries(sectorExp)
+  // Filter out asset_class keys — sector and asset_class are strictly separate dimensions
+  const entries = Object.entries(sectorExp).filter(([key]) => !ASSET_CLASS_KEYS.has(key))
   if (entries.length === 0) return null
   const sorted = [...entries].sort((a, b) => Math.abs(parseFloat(b[1])) - Math.abs(parseFloat(a[1])))
   const maxAbs = Math.max(...sorted.map(([, v]) => Math.abs(parseFloat(v))), 1)
@@ -700,12 +704,26 @@ export default function RiskPageV2() {
 
       {/* ── Loading skeleton ─────────────────────────────────────── */}
       {loading ? (
-        <div className="space-y-4">
-          <div className="h-28 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+        <div className="space-y-5">
+          {/* Hero skeleton — VaR headline + 4 greek metrics */}
+          <div className="h-16 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="h-20 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
             ))}
+          </div>
+          {/* Grid skeleton: main + right panel */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+            <div className="xl:col-span-8 space-y-4">
+              <div className="h-48 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+              <div className="h-36 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+              <div className="h-44 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+            </div>
+            <div className="hidden xl:block xl:col-span-4 space-y-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-28 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+              ))}
+            </div>
           </div>
         </div>
       ) : dashboard ? (
@@ -763,6 +781,13 @@ export default function RiskPageV2() {
             {isEn ? 'as of' : '截至'} {new Date(dashboard.as_of).toLocaleTimeString()}
           </p>
         </>
+      ) : !error ? (
+        <SectionCard minHeight="200px">
+          <EmptyState
+            message={isEn ? 'No risk data available' : '暂无风险数据'}
+            hint={isEn ? 'Open positions to see risk analysis' : '建立仓位后将显示风险分析'}
+          />
+        </SectionCard>
       ) : null}
 
       {/* ── AI Coach sidebar ───────────────────────────────────── */}

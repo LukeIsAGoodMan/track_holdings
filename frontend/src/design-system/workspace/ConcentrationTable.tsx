@@ -49,6 +49,7 @@ export default memo(function ConcentrationTable({ holdings, isEn, limit = 10 }: 
       {rows.length === 0 ? (
         <EmptyState
           message={isEn ? 'No positions' : '暂无持仓'}
+          hint={isEn ? 'Top risk contributors will appear when positions are opened' : '开仓后将显示主要风险来源'}
           className="py-10"
         />
       ) : (

@@ -522,9 +522,12 @@ function DeltaContribChart({ holdings, label }: { holdings: HoldingGroup[]; labe
   )
 }
 
+// Asset-class keys filtered from sector view (strict dimension separation)
+const ASSET_CLASS_KEYS_V1 = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
+
 // ── Sector exposure panel ─────────────────────────────────────────────────────
 function SectorExposurePanel({ sectorExp, label }: { sectorExp: Record<string, string>; label: string }) {
-  const entries = Object.entries(sectorExp)
+  const entries = Object.entries(sectorExp).filter(([key]) => !ASSET_CLASS_KEYS_V1.has(key))
   if (entries.length === 0) return null
   const sorted  = [...entries].sort((a, b) => Math.abs(parseFloat(b[1])) - Math.abs(parseFloat(a[1])))
   const maxAbs  = Math.max(...sorted.map(([, v]) => Math.abs(parseFloat(v))), 1)

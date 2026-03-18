@@ -996,9 +996,28 @@ export default function HoldingsPageV2() {
       {activeTab === 'overview' && (
         loading ? (
           <div className="space-y-5">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-32 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
-            ))}
+            {/* Hero skeleton — 4 metric blocks */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-24 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+              ))}
+            </div>
+            {/* Chart skeleton */}
+            <div className="h-64 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+            {/* Grid skeleton: table + right panel */}
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
+              <div className="xl:col-span-8 space-y-4">
+                <div className="h-10 w-48 bg-v2-surface rounded-v2-md animate-pulse" />
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="h-14 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
+                ))}
+              </div>
+              <div className="hidden xl:block xl:col-span-4 space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-32 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="space-y-5">

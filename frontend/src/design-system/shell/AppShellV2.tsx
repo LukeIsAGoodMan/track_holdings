@@ -1,29 +1,24 @@
 /**
- * AppShellV2 — next-generation app shell.
+ * AppShellV2 — Production app shell with synced transitions.
  *
  * Structure:
  *   <TopNavV2 />
  *   <div class="flex">
- *     <SidebarV2 />
- *     <main>
- *       <PageContainer>{children}</PageContainer>
- *     </main>
+ *     <SidebarV2 />  ← width transitions 200ms ease-out
+ *     <main />       ← flex-1 naturally absorbs width change in sync
  *   </div>
  *
- * Supports:
- *   - Future sidebar collapse (via SidebarContext)
- *   - Future multi-layout pages
- *   - Responsive: sidebar collapses to icon rail on md, hidden on sm
- *   - Existing action panels (trade entry, alerts) via SidebarContext mode
- *
- * Does NOT modify business logic. Same context providers, same routes.
+ * Key behavior:
+ *   - Sidebar and main content breathe as one system
+ *   - No "sidebar moves first, content snaps later" — flex layout auto-syncs
+ *   - Action panels (trade, alerts) replace sidebar with fixed-width panel
+ *   - Page transitions feel calm: content area is always present
  */
 import { Outlet } from 'react-router-dom'
 import TopNavV2      from './TopNavV2'
 import SidebarV2     from './SidebarV2'
 import PageContainer from './PageContainer'
 
-// Import existing action panels — they plug into the sidebar panel slot
 import { useSidebar } from '@/context/SidebarContext'
 import TradeEntryForm    from '@/components/TradeEntryForm'
 import PriceAlertsSidebar from '@/components/PriceAlertsSidebar'
@@ -44,7 +39,9 @@ export default function AppShellV2() {
           <SidebarV2 />
         )}
 
-        {/* Main content */}
+        {/* Main content — flex-1 absorbs sidebar width changes in sync.
+            The transition on the sidebar's width causes the main area
+            to reflow smoothly because flexbox distributes space each frame. */}
         <main className="flex-1 min-w-0 overflow-y-auto">
           <PageContainer>
             <Outlet />
@@ -64,20 +61,22 @@ function ActionPanel() {
     exitPortfolioCreate, exitPortfolioEdit,
   } = useSidebar()
 
+  const handleBack = () => {
+    if (mode === 'trade_entry') exitTradeEntry()
+    else if (mode === 'price_alerts') exitPriceAlerts()
+    else if (mode === 'portfolio_create') exitPortfolioCreate()
+    else if (mode === 'portfolio_edit') exitPortfolioEdit()
+  }
+
   return (
     <aside className="w-v2-panel shrink-0 bg-v2-surface border-r border-v2-border-sub
                       h-[calc(100vh-3.5rem)] sticky top-14 overflow-y-auto">
       <div className="p-4">
         {/* Panel header with back button */}
         <button
-          onClick={() => {
-            if (mode === 'trade_entry') exitTradeEntry()
-            else if (mode === 'price_alerts') exitPriceAlerts()
-            else if (mode === 'portfolio_create') exitPortfolioCreate()
-            else if (mode === 'portfolio_edit') exitPortfolioEdit()
-          }}
-          className="flex items-center gap-1.5 text-xs font-medium text-v2-text-3
-                     hover:text-v2-text-1 mb-4 transition-colors"
+          onClick={handleBack}
+          className="flex items-center gap-1.5 text-[11px] font-medium text-v2-text-3
+                     hover:text-v2-text-1 mb-4 transition-colors duration-150"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <path d="M15 18l-6-6 6-6" />
@@ -94,8 +93,6 @@ function ActionPanel() {
         {mode === 'price_alerts' && (
           <PriceAlertsSidebar prefill={alertPrefill} />
         )}
-        {/* portfolio_create and portfolio_edit use existing sidebar panels
-            which we delegate to the V1 Sidebar for now */}
       </div>
     </aside>
   )

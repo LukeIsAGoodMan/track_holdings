@@ -40,8 +40,9 @@ export default memo(function ActivityPanel({ portfolioId, isEn }: Props) {
       <SectionCard.Header title={isEn ? 'Recent Activity' : '最近动态'} />
       <SectionCard.Body>
         {trades.length === 0 ? (
-          <div className="text-[12px] text-v2-text-3 italic py-2">
-            {isEn ? 'No recent trades' : '暂无交易'}
+          <div className="py-3 text-center">
+            <div className="text-[12px] text-v2-text-3">{isEn ? 'No recent trades' : '暂无交易'}</div>
+            <div className="text-[11px] text-v2-text-3/60 mt-0.5">{isEn ? 'New trades will appear here' : '新交易将显示在此处'}</div>
           </div>
         ) : (
           <div className="space-y-2.5">

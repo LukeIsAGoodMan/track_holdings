@@ -88,10 +88,19 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-16 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
-        ))}
+      <div className="space-y-5">
+        {/* Table header skeleton */}
+        <div className="bg-v2-surface rounded-v2-xl shadow-v2-sm overflow-hidden animate-pulse">
+          <div className="h-10 border-b border-v2-border-sub bg-v2-surface-alt" />
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-v2-border-sub last:border-0">
+              <div className="h-3 w-16 bg-v2-surface-alt rounded" />
+              <div className="h-3 w-12 bg-v2-surface-alt rounded" />
+              <div className="h-3 w-20 bg-v2-surface-alt rounded" />
+              <div className="h-3 w-14 bg-v2-surface-alt rounded ml-auto" />
+            </div>
+          ))}
+        </div>
       </div>
     )
   }

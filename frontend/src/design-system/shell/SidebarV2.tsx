@@ -1,49 +1,47 @@
 /**
- * SidebarV2 — Mercury-style navigation + portfolio context + workflow actions.
+ * SidebarV2 — Workflow-driven navigation sidebar.
  *
- * Responsive hierarchy:
- *   xl+     → full expanded sidebar (240px)
- *   md–xl   → compact icon rail (64px)
- *   <md     → hidden (drawer overlay via mobile toggle)
+ * Mental model: See holdings → Understand risk → Discover opportunities → Deep dive
  *
- * Sections:
- *   1. Primary Navigation (Holdings, Risk, Opportunities, Analysis)
- *   2. Portfolio Context Zone (selector, folder tree)
- *   3. Workflow Actions (New Trade, Alerts)
+ * Structure:
+ *   Group "Portfolio"  → Holdings, Risk
+ *   Group "Strategy"   → Opportunities, Analysis
+ *   Portfolio Context  → selector tree (expanded only)
+ *   Workflow Actions   → New Trade, Alerts
  *
- * Extensible: future sections (AI, automation, alerts) plug in as NavSection entries.
- *
- * Consumes existing SidebarContext for state (mode, expanded, action panels).
- * Does NOT modify business logic — visual layer only.
+ * Collapsed mode: icon-only + hover tooltips.
+ * Transition: 200ms ease-out, synced with AppShellV2 main content.
  */
+import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useLanguage }   from '@/context/LanguageContext'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useSidebar }    from '@/context/SidebarContext'
 
-// ── Inline SVG icons (Lucide-style, 20×20) ──────────────────────────────────
+// ── Inline SVG icons (Lucide-style, 20×20, strokeWidth 1.75) ───────────────
 
 const icons = {
   holdings: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 3v18h18" /><path d="M7 16l4-8 4 4 6-6" />
+      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   ),
   risk: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 9v4" /><path d="M12 17h.01" />
-      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+      <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+      <path d="M12 8v4" /><circle cx="12" cy="16" r="0.5" fill="currentColor" />
     </svg>
   ),
   opportunities: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 000 20 14.5 14.5 0 000-20" /><path d="M2 12h20" />
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
     </svg>
   ),
   analysis: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 21H4.6c-.6 0-.9 0-1.1-.1a1 1 0 01-.4-.4C3 20.3 3 20 3 19.4V3" />
-      <path d="M7 14l4-4 4 4 6-6" />
+      <path d="M12 2a10 10 0 1 0 10 10" /><path d="M12 12V2" /><path d="M12 12l7.07-7.07" />
+      <path d="M16 8h6V2" />
     </svg>
   ),
   trade: (
@@ -66,23 +64,47 @@ const icons = {
       <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
     </svg>
   ),
-  chevronDown: (
-    <svg className="w-3.5 h-3.5" viewBox="0 0 12 12" fill="none">
-      <path d="M2 4.5L6 8l4-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
 }
 
-// ── Nav items config ─────────────────────────────────────────────────────────
+// ── Nav group configs ───────────────────────────────────────────────────────
 
-const NAV_ITEMS = [
-  { key: 'holdings',      to: '/holdings',      icon: icons.holdings,      en: 'Holdings',      zh: '持仓' },
-  { key: 'risk',          to: '/risk',           icon: icons.risk,          en: 'Risk',          zh: '风险' },
-  { key: 'opportunities', to: '/opportunities',  icon: icons.opportunities, en: 'Opportunities', zh: '机会' },
-  { key: 'analysis',      to: '/analysis',       icon: icons.analysis,      en: 'Analysis',      zh: '分析' },
+const NAV_GROUPS = [
+  {
+    key: 'portfolio',
+    en: 'Portfolio',
+    zh: '投资组合',
+    items: [
+      { key: 'holdings', to: '/holdings', icon: icons.holdings, en: 'Holdings', zh: '持仓' },
+      { key: 'risk',     to: '/risk',     icon: icons.risk,     en: 'Risk',     zh: '风险' },
+    ],
+  },
+  {
+    key: 'strategy',
+    en: 'Strategy',
+    zh: '策略',
+    items: [
+      { key: 'opportunities', to: '/opportunities', icon: icons.opportunities, en: 'Opportunities', zh: '机会' },
+      { key: 'analysis',      to: '/analysis',      icon: icons.analysis,      en: 'Analysis',      zh: '分析' },
+    ],
+  },
 ] as const
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Tooltip ─────────────────────────────────────────────────────────────────
+
+function Tooltip({ label, show }: { label: string; show: boolean }) {
+  if (!show) return null
+  return (
+    <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50
+                     bg-v2-text-1 text-white text-[11px] font-medium
+                     px-2.5 py-1 rounded-v2-sm whitespace-nowrap
+                     pointer-events-none shadow-v2-md
+                     opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+      {label}
+    </span>
+  )
+}
+
+// ── Component ───────────────────────────────────────────────────────────────
 
 export default function SidebarV2() {
   const { lang }     = useLanguage()
@@ -90,64 +112,75 @@ export default function SidebarV2() {
   const { portfolios, selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
   const { isExpanded, toggleExpand, openTradeEntry, openPriceAlerts } = useSidebar()
 
-  // Responsive: on smaller screens show only icon rail
-  // The parent shell handles md breakpoint via CSS
-
   const isEn = lang === 'en'
 
   return (
     <aside
       className={`
         shrink-0 bg-v2-surface h-[calc(100vh-3.5rem)] sticky top-14
-        flex flex-col transition-all duration-200 ease-out
-        border-r border-v2-border-sub overflow-hidden
+        flex flex-col border-r border-v2-border-sub overflow-hidden
+        transition-[width] duration-200 ease-out
         ${isExpanded ? 'w-v2-sidebar' : 'w-v2-sidebar-sm'}
       `}
     >
-      {/* ── Section 1: Primary Navigation ──────────────────────────── */}
-      <nav className="flex-1 pt-3 px-2 space-y-0.5">
-        <div className="mb-3">
-          {!isExpanded ? null : (
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-v2-text-3 px-3 mb-2">
-              {isEn ? 'Navigation' : '导航'}
-            </div>
-          )}
-          {NAV_ITEMS.map(({ key, to, icon, en, zh }) => {
-            const isActive = location.pathname.startsWith(to)
-            return (
-              <NavLink
-                key={key}
-                to={to}
-                className={`
-                  flex items-center gap-3 px-3 py-2.5 rounded-v2-md
-                  text-[13px] font-medium transition-all duration-150
-                  group relative
-                  ${isActive
-                    ? 'bg-v2-accent-soft text-v2-accent'
-                    : 'text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1'
-                  }
-                `}
-              >
-                {/* Active indicator bar */}
-                {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-v2-accent rounded-r-full" />
-                )}
-                <span className="shrink-0">{icon}</span>
-                {isExpanded && (
-                  <span className="truncate">{isEn ? en : zh}</span>
-                )}
-              </NavLink>
-            )
-          })}
-        </div>
+      {/* ── Navigation Groups ────────────────────────────────────── */}
+      <nav className="flex-1 pt-3 px-2 space-y-1 overflow-y-auto">
+        {NAV_GROUPS.map((group, gi) => (
+          <div key={group.key}>
+            {/* Group divider (between groups, not before first) */}
+            {gi > 0 && <div className="my-2 mx-2 border-t border-v2-border-sub" />}
 
-        {/* ── Section 2: Portfolio Context ────────────────────────────── */}
+            {/* Group title — visible only when expanded */}
+            {isExpanded && (
+              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-v2-text-3 px-3 mb-1.5 mt-1">
+                {isEn ? group.en : group.zh}
+              </div>
+            )}
+
+            {/* Nav items */}
+            <div className="space-y-0.5">
+              {group.items.map(({ key, to, icon, en, zh }) => {
+                const isActive = location.pathname.startsWith(to)
+                const label = isEn ? en : zh
+                return (
+                  <NavLink
+                    key={key}
+                    to={to}
+                    className={`
+                      flex items-center gap-3 rounded-v2-md
+                      text-[13px] font-medium transition-colors duration-150
+                      group relative
+                      ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
+                      ${isActive
+                        ? 'bg-v2-accent-soft text-v2-accent'
+                        : 'text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1'
+                      }
+                    `}
+                  >
+                    {/* Active indicator bar */}
+                    {isActive && (
+                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-v2-accent rounded-r-full" />
+                    )}
+                    <span className="shrink-0">{icon}</span>
+                    {isExpanded ? (
+                      <span className="truncate">{label}</span>
+                    ) : (
+                      <Tooltip label={label} show />
+                    )}
+                  </NavLink>
+                )
+              })}
+            </div>
+          </div>
+        ))}
+
+        {/* ── Portfolio Context ────────────────────────────────────── */}
         {isExpanded && (
-          <div className="pt-3 border-t border-v2-border-sub">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-v2-text-3 px-3 mb-2">
+          <div className="pt-2 mt-2 border-t border-v2-border-sub">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-v2-text-3 px-3 mb-1.5">
               {isEn ? 'Portfolios' : '投资组合'}
             </div>
-            <div className="space-y-0.5 max-h-48 overflow-y-auto">
+            <div className="space-y-0.5 max-h-44 overflow-y-auto">
               {portfolios.map((p) => (
                 <PortfolioItem
                   key={p.id}
@@ -158,7 +191,7 @@ export default function SidebarV2() {
                 />
               ))}
               {portfolios.length === 0 && (
-                <div className="text-xs text-v2-text-3 px-3 py-2 italic">
+                <div className="text-[11px] text-v2-text-3 px-3 py-2 italic">
                   {isEn ? 'No portfolios' : '暂无组合'}
                 </div>
               )}
@@ -167,38 +200,47 @@ export default function SidebarV2() {
         )}
       </nav>
 
-      {/* ── Section 3: Workflow Actions ────────────────────────────── */}
+      {/* ── Workflow Actions ──────────────────────────────────────── */}
       <div className={`border-t border-v2-border-sub ${isExpanded ? 'p-3' : 'p-2'} space-y-1`}>
         <button
           onClick={() => openTradeEntry()}
           className={`
-            flex items-center gap-2.5 w-full rounded-v2-md transition-colors
-            text-v2-accent hover:bg-v2-accent-soft
+            flex items-center gap-2.5 w-full rounded-v2-md transition-colors duration-150
+            text-v2-accent hover:bg-v2-accent-soft group relative
             ${isExpanded ? 'px-3 py-2 text-[13px] font-medium' : 'justify-center py-2.5'}
           `}
         >
           {icons.trade}
-          {isExpanded && <span>{isEn ? 'New Trade' : '新建交易'}</span>}
+          {isExpanded ? (
+            <span>{isEn ? 'New Trade' : '新建交易'}</span>
+          ) : (
+            <Tooltip label={isEn ? 'New Trade' : '新建交易'} show />
+          )}
         </button>
         <button
           onClick={() => openPriceAlerts()}
           className={`
-            flex items-center gap-2.5 w-full rounded-v2-md transition-colors
-            text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1
+            flex items-center gap-2.5 w-full rounded-v2-md transition-colors duration-150
+            text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1 group relative
             ${isExpanded ? 'px-3 py-2 text-[13px] font-medium' : 'justify-center py-2.5'}
           `}
         >
           {icons.alerts}
-          {isExpanded && <span>{isEn ? 'Alerts' : '警报'}</span>}
+          {isExpanded ? (
+            <span>{isEn ? 'Alerts' : '警报'}</span>
+          ) : (
+            <Tooltip label={isEn ? 'Alerts' : '警报'} show />
+          )}
         </button>
       </div>
 
-      {/* ── Collapse toggle ───────────────────────────────────────── */}
+      {/* ── Collapse toggle ──────────────────────────────────────── */}
       <div className="border-t border-v2-border-sub p-2">
         <button
           onClick={toggleExpand}
           className="flex items-center justify-center w-full py-2 rounded-v2-sm
-                     text-v2-text-3 hover:bg-v2-surface-alt hover:text-v2-text-1 transition-colors"
+                     text-v2-text-3 hover:bg-v2-surface-alt hover:text-v2-text-1
+                     transition-colors duration-150"
           aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <svg
@@ -213,7 +255,7 @@ export default function SidebarV2() {
   )
 }
 
-// ── Portfolio tree item ──────────────────────────────────────────────────────
+// ── Portfolio tree item ─────────────────────────────────────────────────────
 
 interface PortfolioItemProps {
   portfolio: { id: number; name: string; is_folder: boolean; children: PortfolioItemProps['portfolio'][] }
@@ -232,7 +274,7 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
         onClick={() => onSelect(portfolio.id)}
         className={`
           flex items-center gap-2 w-full rounded-v2-sm text-left text-[12px]
-          py-1.5 transition-colors
+          py-1.5 transition-colors duration-150
           ${isSelected
             ? 'bg-v2-accent-soft text-v2-accent font-semibold'
             : 'text-v2-text-2 hover:bg-v2-surface-alt'

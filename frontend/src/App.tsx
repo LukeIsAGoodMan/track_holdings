@@ -14,8 +14,10 @@ import HoldingsPage   from '@/pages/Holdings/HoldingsPage'
 import HoldingsPageV2 from '@/pages/Holdings/HoldingsPageV2'
 import RiskPage       from '@/pages/Risk/RiskPage'
 import RiskPageV2     from '@/pages/Risk/RiskPageV2'
-import ScannerPage    from '@/pages/Scanner/ScannerPage'
-import AnalysisPage   from '@/pages/Analysis/AnalysisPage'
+import ScannerPage           from '@/pages/Scanner/ScannerPage'
+import OpportunitiesPageV2   from '@/pages/Scanner/OpportunitiesPageV2'
+import AnalysisPage          from '@/pages/Analysis/AnalysisPage'
+import AnalysisPageV2        from '@/pages/Analysis/AnalysisPageV2'
 
 /**
  * Design version flag — A/B toggle for V1 vs V2 shell.
@@ -35,10 +37,20 @@ function useDesignVersion(): 'v1' | 'v2' {
   return 'v1'
 }
 
-/** Shared page routes — V2 swaps HoldingsPage for HoldingsPageV2 */
+/**
+ * Shared page routes — unified version-selection pattern.
+ *
+ * V2 swaps each page component while preserving:
+ *   - identical route structure (instant rollback)
+ *   - shared contexts above (PortfolioProvider, WebSocketProvider, SidebarProvider)
+ *   - cross-version context continuity (selected portfolio, WS state survive toggle)
+ */
 function PageRoutes({ designVersion }: { designVersion: 'v1' | 'v2' }) {
-  const Holdings = designVersion === 'v2' ? HoldingsPageV2 : HoldingsPage
-  const Risk     = designVersion === 'v2' ? RiskPageV2     : RiskPage
+  const Holdings      = designVersion === 'v2' ? HoldingsPageV2     : HoldingsPage
+  const Risk          = designVersion === 'v2' ? RiskPageV2         : RiskPage
+  const Opportunities = designVersion === 'v2' ? OpportunitiesPageV2 : ScannerPage
+  const Analysis      = designVersion === 'v2' ? AnalysisPageV2     : AnalysisPage
+
   return (
     <>
       <Route index element={<Navigate to="/holdings/overview" replace />} />
@@ -48,9 +60,9 @@ function PageRoutes({ designVersion }: { designVersion: 'v1' | 'v2' }) {
         <Route path="details" />
         <Route path="records" />
       </Route>
-      <Route path="risk"          element={<Risk />}         />
-      <Route path="opportunities" element={<ScannerPage />}  />
-      <Route path="analysis"      element={<AnalysisPage />} />
+      <Route path="risk"          element={<Risk />}           />
+      <Route path="opportunities" element={<Opportunities />}  />
+      <Route path="analysis"      element={<Analysis />}       />
     </>
   )
 }
