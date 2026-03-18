@@ -8,13 +8,54 @@ import { SidebarProvider }   from '@/context/SidebarContext'
 import ProtectedRoute from '@/components/common/ProtectedRoute'
 import AlertToastListener from '@/components/AlertToastListener'
 import Layout from '@/components/layout/Layout'
+import AppShellV2 from '@/design-system/shell/AppShellV2'
 import LoginPage    from '@/pages/Login/LoginPage'
 import HoldingsPage from '@/pages/Holdings/HoldingsPage'
 import RiskPage     from '@/pages/Risk/RiskPage'
 import ScannerPage  from '@/pages/Scanner/ScannerPage'
 import AnalysisPage from '@/pages/Analysis/AnalysisPage'
 
+/**
+ * Design version flag — A/B toggle for V1 vs V2 shell.
+ *
+ * Set to 'v2' to activate the new design system shell.
+ * V1 remains intact for easy rollback.
+ *
+ * Read from localStorage to allow per-user toggling:
+ *   localStorage.setItem('th_design', 'v2')
+ *   localStorage.setItem('th_design', 'v1')
+ */
+function useDesignVersion(): 'v1' | 'v2' {
+  try {
+    const stored = localStorage.getItem('th_design')
+    if (stored === 'v2') return 'v2'
+  } catch { /* SSR or blocked storage */ }
+  return 'v1'
+}
+
+/** Shared page routes — identical for V1 and V2 shells */
+function PageRoutes() {
+  return (
+    <>
+      <Route index element={<Navigate to="/holdings/overview" replace />} />
+      <Route path="holdings" element={<HoldingsPage />}>
+        <Route index          element={<Navigate to="overview" replace />} />
+        <Route path="overview" />
+        <Route path="details" />
+        <Route path="records" />
+      </Route>
+      <Route path="risk"          element={<RiskPage />}     />
+      <Route path="opportunities" element={<ScannerPage />}  />
+      <Route path="analysis"      element={<AnalysisPage />} />
+    </>
+  )
+}
+
 export default function App() {
+  const designVersion = useDesignVersion()
+
+  const ShellLayout = designVersion === 'v2' ? AppShellV2 : Layout
+
   return (
     <BrowserRouter>
       <Toaster
@@ -37,25 +78,12 @@ export default function App() {
                   <WebSocketProvider>
                     <SidebarProvider>
                       <AlertToastListener />
-                      <Layout />
+                      <ShellLayout />
                     </SidebarProvider>
                   </WebSocketProvider>
                 </PortfolioProvider>
               }>
-                {/* / → /holdings/overview */}
-                <Route index element={<Navigate to="/holdings/overview" replace />} />
-
-                {/* Holdings — parent route keeps HoldingsPage mounted across tab switches */}
-                <Route path="holdings" element={<HoldingsPage />}>
-                  <Route index                element={<Navigate to="overview" replace />} />
-                  <Route path="overview" />
-                  <Route path="details" />
-                  <Route path="records" />
-                </Route>
-
-                <Route path="risk"          element={<RiskPage />}     />
-                <Route path="opportunities" element={<ScannerPage />}  />
-                <Route path="analysis"      element={<AnalysisPage />} />
+                {PageRoutes()}
               </Route>
             </Route>
           </Routes>
