@@ -9,7 +9,7 @@
  */
 import { memo, useMemo } from 'react'
 import type { HoldingGroup } from '@/types'
-import { fmtNum } from '@/utils/format'
+import { formatMetric } from '@/utils/formatMetric'
 import SectionCard from '../primitives/SectionCard'
 import EmptyState from '../primitives/EmptyState'
 
@@ -46,14 +46,13 @@ export default memo(function RiskHeatmap({ holdings, isEn, isLoading = false }: 
             {data.map(({ symbol, delta }, idx) => {
               const pct = (Math.abs(delta) / maxAbs) * 100
               const isLong = delta >= 0
-              // Top 1-2 items get stronger opacity for visual hierarchy
               const barOpacity = idx < 2 ? '80' : '50'
               return (
                 <div key={symbol}>
                   <div className="flex items-center justify-between mb-1">
                     <span className={`text-ds-sm ${idx < 2 ? 'text-v2-text-1' : 'text-v2-text-2'}`}>{symbol}</span>
                     <span className={`text-ds-sm tnum ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                      {isLong ? '+' : ''}{fmtNum(String(delta.toFixed(2)))}
+                      {formatMetric(delta, { type: 'number', showSign: true })}
                     </span>
                   </div>
                   <div className="h-1.5 rounded-full bg-v2-surface-alt overflow-hidden">

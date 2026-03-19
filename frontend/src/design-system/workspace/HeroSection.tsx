@@ -9,9 +9,10 @@
  *   Left:  Portfolio value (hero size) + subtitle
  *   Right: 4 metric blocks (Daily P&L, Total P&L, Net Exposure, Realized)
  */
-import { memo, useMemo } from 'react'
+import { memo } from 'react'
 import MetricBlock from '../primitives/MetricBlock'
-import { fmtUSD } from '@/utils/format'
+import SkeletonLoader from '../primitives/SkeletonLoader'
+import { formatMetric, isPresent } from '@/utils/formatMetric'
 
 interface HeroMetrics {
   portfolioValue:       number
@@ -40,11 +41,11 @@ function sentiment(value: number, hasData: boolean): 'positive' | 'negative' | '
 }
 
 function fmtSigned(v: number): string {
-  return (v >= 0 ? '+' : '') + fmtUSD(String(Math.round(v)))
+  return formatMetric(Math.round(v), { type: 'currency', showSign: true })
 }
 
 function fmtPct(v: number): string {
-  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+  return formatMetric(v, { type: 'percent', showSign: true })
 }
 
 export default memo(function HeroSection({ metrics, isEn, isLoading = false }: Props) {
@@ -55,14 +56,16 @@ export default memo(function HeroSection({ metrics, isEn, isLoading = false }: P
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
         {/* ── Left: Hero value ───────────────────────────────── */}
         <div className="min-w-0">
-          <div className="text-ds-sm font-normal uppercase text-v2-text-3 mb-1.5">
+          <div className="text-ds-caption uppercase text-v2-text-3 mb-1.5">
             {isEn ? 'Portfolio Value' : '投资组合价值'}
           </div>
           <div className="text-ds-display text-v2-text-1 tnum leading-none">
             {isLoading ? (
-              <span className="inline-block w-48 h-10 bg-v2-surface-alt rounded-v2-sm animate-pulse" />
+              <SkeletonLoader variant="block" width="w-48" height="h-10" />
             ) : (
-              m.portfolioValue !== 0 ? fmtUSD(String(Math.round(m.portfolioValue))) : '—'
+              isPresent(m.portfolioValue) && m.portfolioValue !== 0
+                ? formatMetric(Math.round(m.portfolioValue), { type: 'currency' })
+                : '—'
             )}
           </div>
           <div className="text-ds-sm text-v2-text-3 mt-1.5">
@@ -104,8 +107,8 @@ export default memo(function HeroSection({ metrics, isEn, isLoading = false }: P
             label={isEn ? 'Net Exposure' : '净敞口'}
             value={
               isLoading ? '...'
-              : m.netExposure !== 0
-                ? fmtUSD(String(Math.round(Math.abs(m.netExposure))))
+              : isPresent(m.netExposure) && m.netExposure !== 0
+                ? formatMetric(Math.round(Math.abs(m.netExposure)), { type: 'currency' })
                 : '—'
             }
             delta={m.netExposure < 0 ? (isEn ? 'Net Short' : '净空头') : null}

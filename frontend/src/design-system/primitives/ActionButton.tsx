@@ -1,10 +1,14 @@
 /**
  * ActionButton — primary and secondary button variants.
  *
- * Uses canonical action tokens. Focus via global :focus-visible rule.
+ * Interaction states sourced from interaction.ts contract.
+ * Focus via global :focus-visible rule.
  * Micro-interaction: active:scale-[0.98] for tactile press feedback.
+ *
+ * NO local variantClasses map — interaction.ts is the single source.
  */
 import type { ReactNode, ButtonHTMLAttributes } from 'react'
+import { interactiveClasses } from '../interaction'
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
@@ -15,11 +19,12 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   block?: boolean
 }
 
-const variantClasses: Record<string, string> = {
-  primary:   'bg-v2-accent text-white hover:bg-v2-accent-hover active:scale-[0.98] active:opacity-90',
-  secondary: 'bg-v2-surface text-v2-text-1 border border-v2-border hover:bg-v2-surface-hover active:bg-v2-surface-alt active:scale-[0.98]',
-  ghost:     'bg-transparent text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1 active:scale-[0.98]',
-  danger:    'bg-v2-negative-bg text-v2-negative border border-v2-border hover:opacity-90 active:scale-[0.98]',
+/** Maps ActionButton variant → interaction system variant + visual base */
+const VARIANT_BASE: Record<string, { intent: 'button-primary' | 'button-ghost'; base: string }> = {
+  primary:   { intent: 'button-primary', base: 'bg-v2-accent text-white' },
+  secondary: { intent: 'button-ghost',   base: 'bg-v2-surface text-v2-text-1 border border-v2-border' },
+  ghost:     { intent: 'button-ghost',   base: 'bg-transparent text-v2-text-2' },
+  danger:    { intent: 'button-ghost',   base: 'bg-v2-negative-bg text-v2-negative border border-v2-border' },
 }
 
 const sizeClasses: Record<string, string> = {
@@ -38,15 +43,15 @@ export default function ActionButton({
   disabled,
   ...rest
 }: Props) {
+  const { intent, base } = VARIANT_BASE[variant]
+  const stateClasses = interactiveClasses({ variant: intent, disabled: !!disabled })
+
   return (
     <button
       className={`
-        inline-flex items-center justify-center gap-2
-        font-bold transition-colors duration-150
-        ${variantClasses[variant]}
-        ${sizeClasses[size]}
+        inline-flex items-center justify-center gap-2 font-bold
+        ${base} ${stateClasses} ${sizeClasses[size]}
         ${block ? 'w-full' : ''}
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
         ${className}
       `}
       disabled={disabled}

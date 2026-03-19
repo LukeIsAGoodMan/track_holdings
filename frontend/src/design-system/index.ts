@@ -20,6 +20,9 @@ export type { InteractionVariant, InteractionConfig } from './interaction'
 // Types — ThemeTokens, semantic key unions
 export type * from './types'
 
+// Runtime resolvers (Phase X) — programmable UI engine
+export { resolveInteraction, resolveToken, resolveMetric, isPresent } from './resolve'
+
 // Primitives
 export { default as SectionCard }    from './primitives/SectionCard'
 export { default as SectionGrid }    from './primitives/SectionGrid'

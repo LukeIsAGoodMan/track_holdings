@@ -42,8 +42,8 @@ export default memo(function RiskHero({ dashboard, isEn, isLoading = false }: Pr
 
   if (isLoading) {
     return (
-      <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6 animate-pulse">
-        <div className="h-16 bg-v2-surface-alt rounded-v2-md" />
+      <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6">
+        <div className="h-16 bg-v2-surface-alt rounded-v2-md ds-shimmer" />
       </div>
     )
   }
