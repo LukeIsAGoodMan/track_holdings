@@ -1,9 +1,9 @@
 /**
  * HoldingsPageV2 — Professional trading workspace.
  *
- * Layout (12-col grid):
- *   col-span-8: Main content (Hero → Chart → Treemap → Holdings Table)
- *   col-span-4: Right panel stack (Risk, Allocation, Cash, AI)
+ * Layout (flex):
+ *   Main column (flex-1): Hero → Chart → Treemap → Holdings Table
+ *   RightPanel (shell): Risk, Allocation, Cash, AI
  *
  * Focus mode: chart expands to full-width, right panel collapses.
  * All V1 business logic preserved — this is a visual-only rebuild.
@@ -41,6 +41,7 @@ import ActivityPanel         from '@/design-system/workspace/ActivityPanel'
 import { QuickRiskCard, AllocationCard, CashCard } from '@/design-system/workspace/RightPanelStack'
 import SectionCard           from '@/design-system/primitives/SectionCard'
 import TabsV2               from '@/design-system/primitives/TabsV2'
+import RightPanel            from '@/design-system/shell/RightPanel'
 
 // ── Safe helpers ──────────────────────────────────────────────────────────────
 function safeFloat(v: string | number | null | undefined): number | null {
@@ -157,7 +158,7 @@ function TreemapTooltip({ active, payload }: { active?: boolean; payload?: reado
       <div className="font-bold text-v2-text-1 text-sm mb-1.5 flex items-center gap-1.5">
         {name || '?'}
         {isShort && (
-          <span className="text-ds-caption font-bold text-v2-negative bg-v2-negative-bg px-1 py-0.5 rounded">(S)</span>
+          <span className="text-ds-caption text-v2-negative bg-v2-negative-bg px-1 py-0.5 rounded">(S)</span>
         )}
       </div>
       <div className="space-y-0.5 text-v2-text-3">
@@ -197,7 +198,7 @@ function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick() }}
       title={title ?? 'Close this position'}
-      className="px-2 py-0.5 rounded-v2-sm text-ds-sm font-bold text-v2-text-3
+      className="px-2 py-0.5 rounded-v2-sm text-ds-sm text-v2-text-3
                  hover:text-v2-negative hover:bg-v2-negative-bg transition-colors whitespace-nowrap"
     >
       Exit
@@ -217,7 +218,7 @@ const ASSET_BADGE: Record<string, { cls: string; label: string }> = {
 function AssetBadge({ type }: { type: string }) {
   const b = ASSET_BADGE[type] ?? ASSET_BADGE.stock
   return (
-    <span className={`px-2 py-0.5 rounded-md text-ds-sm font-bold border ${b.cls}`}>
+    <span className={`px-2 py-0.5 rounded-md text-ds-sm border ${b.cls}`}>
       {b.label}
     </span>
   )
@@ -411,7 +412,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
           <div key={group.symbol}>
             {sectionStarts.has(group.symbol) && (
               <div className="flex items-center gap-2 mt-2 mb-1">
-                <span className="text-ds-caption uppercase font-bold text-v2-text-3">
+                <span className="text-ds-caption uppercase text-v2-text-3">
                   {SECTION_LABELS[group.strategy_type] ?? group.strategy_type}
                 </span>
                 <div className="flex-1 border-t border-v2-border" />
@@ -436,7 +437,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       {lastSpotChangePct?.[group.symbol] != null && (() => {
                         const pct = parseFloat(lastSpotChangePct![group.symbol])
                         return (
-                          <span className={`text-ds-caption tnum font-bold px-1.5 py-0.5 rounded-full
+                          <span className={`text-ds-caption tnum px-1.5 py-0.5 rounded-full
                             ${pct >= 0 ? 'text-v2-positive bg-v2-positive-bg' : 'text-v2-negative bg-v2-negative-bg'}`}>
                             {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
                           </span>
@@ -462,16 +463,16 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                     </svg>
                   </span>
-                  <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
+                  <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3">
                     {totalLegs} leg{totalLegs !== 1 ? 's' : ''}
                   </span>
                   {hasOptions && (
-                    <span className={`text-ds-caption px-2 py-0.5 rounded-full font-bold border ${strategyBadgeClass(group.strategy_type)}`}>
+                    <span className={`text-ds-caption px-2 py-0.5 rounded-full border ${strategyBadgeClass(group.strategy_type)}`}>
                       {group.strategy_label}
                     </span>
                   )}
                   {hasStocks && hasOptions && (
-                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200 font-bold">
+                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
                       +stock
                     </span>
                   )}
@@ -500,7 +501,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       <div className={`font-bold text-sm ${signClass(group.total_pnl)}`}>
                         {fmtUSD(group.total_pnl)}
                         {group.total_pnl_pct != null && (
-                          <span className="text-ds-caption font-bold ml-1 opacity-70">
+                          <span className="text-ds-caption ml-1 opacity-70">
                             ({(parseFloat(group.total_pnl_pct) * 100).toFixed(1)}%)
                           </span>
                         )}
@@ -555,7 +556,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                             return (
                               <tr key={leg.instrument_id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
                                 <td className="td-left">
-                                  <span className={`px-2 py-0.5 rounded-md text-ds-sm font-bold border
+                                  <span className={`px-2 py-0.5 rounded-md text-ds-sm border
                                     ${leg.option_type === 'CALL'
                                       ? 'bg-sky-50 text-sky-700 border-sky-200'
                                       : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
@@ -565,7 +566,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                                 <td className="td tnum">${fmtNum(leg.strike)}</td>
                                 <td className="td text-v2-text-2 text-xs">{leg.expiry}</td>
                                 <td className="td">
-                                  <span className={`px-1.5 py-0.5 rounded-md text-ds-sm font-bold ${dteBadgeClass(leg.days_to_expiry)}`}>
+                                  <span className={`px-1.5 py-0.5 rounded-md text-ds-sm ${dteBadgeClass(leg.days_to_expiry)}`}>
                                     {leg.days_to_expiry}d
                                   </span>
                                 </td>
@@ -614,7 +615,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                           })}
                           {group.option_legs.length > 1 && (
                             <tr className="bg-v2-surface-alt/30 border-t border-v2-border">
-                              <td colSpan={7} className="td-left text-ds-sm font-bold text-v2-text-3 uppercaser">
+                              <td colSpan={7} className="td-left text-ds-sm text-v2-text-3 uppercaser">
                                 Subtotal
                               </td>
                               <td className="td">
@@ -961,9 +962,9 @@ export default function HoldingsPageV2() {
               <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
             </svg>
           )}
-          <span className="text-ds-body-r font-bold text-v2-text-1">{selectedPortfolio.name}</span>
+          <span className="text-ds-body-r text-v2-text-1">{selectedPortfolio.name}</span>
           {selectedPortfolio.is_folder && (
-            <span className="text-ds-caption font-bold uppercase px-1.5 py-0.5 rounded-md
+            <span className="text-ds-caption uppercase px-1.5 py-0.5 rounded-md
                              bg-v2-accent-soft text-v2-accent">
               {isEn ? 'Folder' : '文件夹'}
             </span>
@@ -1004,19 +1005,19 @@ export default function HoldingsPageV2() {
             </div>
             {/* Chart skeleton */}
             <div className="h-64 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
-            {/* Grid skeleton: table + right panel */}
-            <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-              <div className="xl:col-span-8 space-y-4">
+            {/* Flex skeleton: table + right panel */}
+            <div className="flex gap-5">
+              <div className="flex-1 min-w-0 space-y-4">
                 <div className="h-10 w-48 bg-v2-surface rounded-v2-md animate-pulse" />
                 {[1, 2, 3, 4].map((i) => (
                   <div key={i} className="h-14 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
                 ))}
               </div>
-              <div className="hidden xl:block xl:col-span-4 space-y-4">
+              <RightPanel>
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="h-32 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
                 ))}
-              </div>
+              </RightPanel>
             </div>
           </div>
         ) : (
@@ -1024,12 +1025,11 @@ export default function HoldingsPageV2() {
             {/* ── Hero Section ───────────────────────────────────── */}
             <HeroSection metrics={heroMetrics} isEn={isEn} isLoading={loading} />
 
-            {/* ── 12-col Grid: Main + Right Panel ────────────────── */}
-            <div className={`grid gap-5 transition-all duration-300 ease-in-out
-              ${focusMode ? 'grid-cols-1' : 'grid-cols-1 xl:grid-cols-12'}`}>
+            {/* ── Flex Layout: Main + Right Panel ──────────────── */}
+            <div className="flex gap-5 transition-all duration-300 ease-in-out">
 
-              {/* ── Main Column (8/12) ───────────────────────────── */}
-              <div className={focusMode ? '' : 'xl:col-span-8 space-y-5'}>
+              {/* ── Main Column ─────────────────────────────────── */}
+              <div className="flex-1 min-w-0 space-y-5">
 
                 {/* Chart with focus toggle */}
                 <div className="relative">
@@ -1128,15 +1128,15 @@ export default function HoldingsPageV2() {
                 )}
               </div>
 
-              {/* ── Right Panel (4/12) ───────────────────────────── */}
+              {/* ── Right Panel (shell component) ────────────────── */}
               {!focusMode && (
-                <div className="hidden xl:block xl:col-span-4 space-y-4">
+                <RightPanel>
                   <QuickRiskCard riskDash={riskDash} isEn={isEn} />
                   <AllocationCard holdings={holdings} isEn={isEn} />
                   <SectorMiniChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
                   <CashCard cash={cash} isEn={isEn} />
                   <ActivityPanel portfolioId={selectedPortfolioId} isEn={isEn} />
-                </div>
+                </RightPanel>
               )}
             </div>
           </div>

@@ -54,15 +54,15 @@ export default memo(function RiskHero({ dashboard, isEn, isLoading = false }: Pr
         {/* Left — VaR headline */}
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-ds-sm font-bold uppercase text-v2-text-3">
+            <span className="text-ds-sm uppercase text-v2-text-3">
               {isEn ? 'Value at Risk (1d 95%)' : '风险价值 (1日 95%)'}
             </span>
-            <span className={`text-ds-caption font-bold uppercase px-1.5 py-0.5 rounded-md ${weather.color} bg-v2-surface-alt`}>
+            <span className={`text-ds-caption uppercase px-1.5 py-0.5 rounded-md ${weather.color} bg-v2-surface-alt`}>
               {weather.icon}
             </span>
           </div>
           <div className="flex items-baseline gap-3">
-            <span className={`text-ds-display font-bold tnum leading-none ${varVal != null ? 'text-v2-text-1' : 'text-v2-text-3'}`}>
+            <span className={`text-ds-display tnum leading-none ${varVal != null ? 'text-v2-text-1' : 'text-v2-text-3'}`}>
               {varVal != null ? `$${varVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—'}
             </span>
             {varRatio && (

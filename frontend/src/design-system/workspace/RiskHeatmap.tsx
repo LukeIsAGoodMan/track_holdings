@@ -48,7 +48,7 @@ export default memo(function RiskHeatmap({ holdings, isEn, isLoading = false }: 
               return (
                 <div key={symbol}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-ds-sm font-bold text-v2-text-1">{symbol}</span>
+                    <span className="text-ds-sm text-v2-text-1">{symbol}</span>
                     <span className={`text-ds-sm tnum font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
                       {isLong ? '+' : ''}{fmtNum(String(delta.toFixed(2)))}
                     </span>

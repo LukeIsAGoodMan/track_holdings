@@ -52,7 +52,7 @@ export default memo(function RiskAlertStack({ alerts, isEn }: Props) {
         title={isEn ? 'Risk Alerts' : '风险警报'}
         action={
           alerts.length > 0 ? (
-            <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-negative-bg text-v2-negative font-bold">
+            <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-negative-bg text-v2-negative">
               {alerts.length}
             </span>
           ) : undefined

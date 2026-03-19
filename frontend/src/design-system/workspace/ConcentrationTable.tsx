@@ -36,11 +36,11 @@ export default memo(function ConcentrationTable({ holdings, isEn, limit = 10 }: 
   return (
     <SectionCard noPadding>
       <div className="px-5 py-3 border-b border-v2-border flex items-center gap-2">
-        <h3 className="text-ds-h3 font-bold text-v2-text-1">
+        <h3 className="text-ds-h3 text-v2-text-1">
           {isEn ? 'Top Risk Contributors' : '主要风险来源'}
         </h3>
         {rows.length > 0 && (
-          <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-3 font-bold">
+          <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-3">
             {rows.length}
           </span>
         )}
@@ -57,19 +57,19 @@ export default memo(function ConcentrationTable({ holdings, isEn, limit = 10 }: 
           <table className="w-full border-collapse text-xs">
             <thead>
               <tr className="border-b border-v2-border">
-                <th className="text-left text-ds-caption uppercase text-v2-text-3 font-bold pl-5 py-2">
+                <th className="text-left text-ds-caption uppercase text-v2-text-3 pl-5 py-2">
                   {isEn ? 'Symbol' : '标的'}
                 </th>
-                <th className="text-left text-ds-caption uppercase text-v2-text-3 font-bold py-2">
+                <th className="text-left text-ds-caption uppercase text-v2-text-3 py-2">
                   {isEn ? 'Strategy' : '策略'}
                 </th>
-                <th className="text-right text-ds-caption uppercase text-v2-text-3 font-bold py-2">
+                <th className="text-right text-ds-caption uppercase text-v2-text-3 py-2">
                   {isEn ? 'Delta Exp' : 'Delta敞口'}
                 </th>
-                <th className="text-right text-ds-caption uppercase text-v2-text-3 font-bold py-2">
+                <th className="text-right text-ds-caption uppercase text-v2-text-3 py-2">
                   {isEn ? 'Theta/day' : 'Theta/日'}
                 </th>
-                <th className="text-right text-ds-caption uppercase text-v2-text-3 font-bold pr-5 py-2">
+                <th className="text-right text-ds-caption uppercase text-v2-text-3 pr-5 py-2">
                   {isEn ? 'Margin' : '保证金'}
                 </th>
               </tr>
@@ -81,7 +81,7 @@ export default memo(function ConcentrationTable({ holdings, isEn, limit = 10 }: 
                   <td className="py-2.5">
                     <div className="flex flex-wrap gap-1">
                       {strategies.length > 0 ? strategies.map((s) => (
-                        <span key={s} className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
+                        <span key={s} className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3">
                           {s}
                         </span>
                       )) : (

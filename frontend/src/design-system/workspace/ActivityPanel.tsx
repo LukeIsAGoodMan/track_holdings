@@ -62,8 +62,8 @@ export default memo(function ActivityPanel({ portfolioId, isEn }: Props) {
                   {/* Content */}
                   <div className="flex-1 min-w-0 pb-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-ds-sm font-bold text-v2-text-1">{tx.symbol}</span>
-                      <span className="text-ds-caption font-bold text-v2-text-3">{tx.action.replace('_', ' ')}</span>
+                      <span className="text-ds-sm text-v2-text-1">{tx.symbol}</span>
+                      <span className="text-ds-caption text-v2-text-3">{tx.action.replace('_', ' ')}</span>
                       <span className="text-ds-caption tnum text-v2-text-3 ml-auto shrink-0">{timeStr}</span>
                     </div>
                     <div className="text-ds-sm text-v2-text-3 tnum">

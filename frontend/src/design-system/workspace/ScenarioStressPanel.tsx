@@ -42,7 +42,7 @@ export default memo(function ScenarioStressPanel({ holdings, computeScenarioPnL,
   return (
     <SectionCard noPadding>
       <div className="px-5 py-3 border-b border-v2-border flex items-center gap-2">
-        <h3 className="text-ds-h3 font-bold text-v2-text-1">
+        <h3 className="text-ds-h3 text-v2-text-1">
           {isEn ? 'Scenario Simulation' : '情景模拟'}
         </h3>
         <span className="text-ds-caption text-v2-text-3 font-mono">
@@ -59,7 +59,7 @@ export default memo(function ScenarioStressPanel({ holdings, computeScenarioPnL,
               <label className="text-ds-sm text-v2-text-2 font-normal">
                 {isEn ? 'Price Shift' : '价格变动'}
               </label>
-              <span className={`text-ds-body-r font-bold tnum ${
+              <span className={`text-ds-body-r tnum ${
                 priceShiftPct > 0 ? 'text-v2-positive' : priceShiftPct < 0 ? 'text-v2-negative' : 'text-v2-text-3'
               }`}>
                 {priceShiftPct > 0 ? '+' : ''}{priceShiftPct}%
@@ -83,7 +83,7 @@ export default memo(function ScenarioStressPanel({ holdings, computeScenarioPnL,
               <label className="text-ds-sm text-v2-text-2 font-normal">
                 {isEn ? 'IV Shift' : 'IV变动'}
               </label>
-              <span className={`text-ds-body-r font-bold tnum ${
+              <span className={`text-ds-body-r tnum ${
                 ivShiftPpt > 0 ? 'text-v2-negative' : ivShiftPpt < 0 ? 'text-v2-positive' : 'text-v2-text-3'
               }`}>
                 {ivShiftPpt > 0 ? '+' : ''}{ivShiftPpt}pp
@@ -144,17 +144,17 @@ export default memo(function ScenarioStressPanel({ holdings, computeScenarioPnL,
         {/* Result */}
         <div className="flex flex-col justify-between">
           <div className="bg-v2-surface-alt rounded-v2-lg border border-v2-border p-5 text-center mb-4">
-            <div className="text-ds-sm font-bold uppercase text-v2-text-3 mb-2">
+            <div className="text-ds-sm uppercase text-v2-text-3 mb-2">
               {isEn ? 'Estimated P&L' : '预估损益'}
             </div>
-            <div className={`text-ds-display font-bold tnum ${pnlColor}`}>
+            <div className={`text-ds-display tnum ${pnlColor}`}>
               {result.total >= 0 ? '+' : ''}${Math.abs(result.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
 
           {result.bySymbol.length > 0 && (
             <div>
-              <div className="text-ds-caption uppercase text-v2-text-3 font-bold mb-2">
+              <div className="text-ds-caption uppercase text-v2-text-3 mb-2">
                 {isEn ? 'By Symbol' : '按标的'}
               </div>
               <div className="space-y-1.5">

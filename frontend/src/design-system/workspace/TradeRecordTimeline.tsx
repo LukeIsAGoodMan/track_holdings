@@ -111,16 +111,16 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
       <SectionCard noPadding>
         <div className="px-5 py-3 border-b border-v2-border flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="text-ds-h3 font-bold text-v2-text-1">
+            <h3 className="text-ds-h3 text-v2-text-1">
               {isEn ? 'Transaction History' : '交易记录'}
             </h3>
             {transactions.length > 0 && (
-              <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-3 font-bold">
+              <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-3">
                 {transactions.length}
               </span>
             )}
             {isFolder && (
-              <span className="text-ds-caption px-1.5 py-0.5 rounded-md font-bold bg-v2-accent-soft text-v2-accent">
+              <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent">
                 {isEn ? 'Aggregated' : '合并视图'}
               </span>
             )}
@@ -139,24 +139,24 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
               <thead>
                 <tr className="border-b border-v2-border">
                   <th className="th-left">
-                    <button onClick={() => toggleSort('date')} className="flex items-center text-ds-caption uppercase text-v2-text-3 font-bold pl-4 py-2 hover:text-v2-text-1">
+                    <button onClick={() => toggleSort('date')} className="flex items-center text-ds-caption uppercase text-v2-text-3 pl-4 py-2 hover:text-v2-text-1">
                       {isEn ? 'Date' : '日期'}<SortArrow f="date" />
                     </button>
                   </th>
                   {isFolder && <th className="th text-ds-caption">{isEn ? 'Portfolio' : '组合'}</th>}
                   <th className="th">
-                    <button onClick={() => toggleSort('symbol')} className="flex items-center text-ds-caption uppercase text-v2-text-3 font-bold hover:text-v2-text-1">
+                    <button onClick={() => toggleSort('symbol')} className="flex items-center text-ds-caption uppercase text-v2-text-3 hover:text-v2-text-1">
                       {isEn ? 'Symbol' : '标的'}<SortArrow f="symbol" />
                     </button>
                   </th>
                   <th className="th">
-                    <button onClick={() => toggleSort('action')} className="flex items-center text-ds-caption uppercase text-v2-text-3 font-bold hover:text-v2-text-1">
+                    <button onClick={() => toggleSort('action')} className="flex items-center text-ds-caption uppercase text-v2-text-3 hover:text-v2-text-1">
                       {isEn ? 'Action' : '操作'}<SortArrow f="action" />
                     </button>
                   </th>
                   <th className="th text-ds-caption">{isEn ? 'Qty' : '数量'}</th>
                   <th className="th">
-                    <button onClick={() => toggleSort('price')} className="flex items-center text-ds-caption uppercase text-v2-text-3 font-bold hover:text-v2-text-1">
+                    <button onClick={() => toggleSort('price')} className="flex items-center text-ds-caption uppercase text-v2-text-3 hover:text-v2-text-1">
                       {isEn ? 'Price' : '价格'}<SortArrow f="price" />
                     </button>
                   </th>
@@ -182,7 +182,7 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
                       )}
                       <td className="td font-bold text-v2-text-1">{tx.symbol}</td>
                       <td className="td">
-                        <span className={`px-1.5 py-0.5 rounded-md text-ds-caption font-bold ${ACTION_COLORS[tx.action] ?? 'bg-v2-surface-alt text-v2-text-3'}`}>
+                        <span className={`px-1.5 py-0.5 rounded-md text-ds-caption ${ACTION_COLORS[tx.action] ?? 'bg-v2-surface-alt text-v2-text-3'}`}>
                           {tx.action}
                         </span>
                       </td>
@@ -192,7 +192,7 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
                         <span className="truncate block" title={contractLabel}>{contractLabel}</span>
                       </td>
                       <td className="td">
-                        <span className={`text-ds-caption font-bold ${STATUS_COLORS[tx.status] ?? 'text-v2-text-3'}`}>
+                        <span className={`text-ds-caption ${STATUS_COLORS[tx.status] ?? 'text-v2-text-3'}`}>
                           {tx.status}
                         </span>
                       </td>
@@ -213,10 +213,10 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
             className="w-full flex items-center justify-between px-5 py-3 hover:bg-v2-surface-hover transition-colors text-left"
           >
             <div className="flex items-center gap-2">
-              <h3 className="text-ds-h3 font-bold text-v2-text-1">
+              <h3 className="text-ds-h3 text-v2-text-1">
                 {isEn ? 'Settled Positions' : '已结算持仓'}
               </h3>
-              <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-3 font-bold">
+              <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-3">
                 {settled.length}
               </span>
             </div>
@@ -246,13 +246,13 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
                       <tr key={row.trade_event_id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
                         <td className="td-left pl-4 font-bold text-v2-text-1">{row.symbol}</td>
                         <td className="td">
-                          <span className={`px-1.5 py-0.5 rounded-md text-ds-caption font-bold ${ACTION_COLORS[row.action] ?? 'bg-v2-surface-alt text-v2-text-3'}`}>
+                          <span className={`px-1.5 py-0.5 rounded-md text-ds-caption ${ACTION_COLORS[row.action] ?? 'bg-v2-surface-alt text-v2-text-3'}`}>
                             {row.action}
                           </span>
                         </td>
                         <td className="td tnum text-v2-text-1">{row.quantity}</td>
                         <td className="td">
-                          <span className={`text-ds-caption font-bold ${STATUS_COLORS[row.status] ?? 'text-v2-text-3'}`}>
+                          <span className={`text-ds-caption ${STATUS_COLORS[row.status] ?? 'text-v2-text-3'}`}>
                             {row.status}
                           </span>
                         </td>

@@ -3,8 +3,8 @@
  *
  * Layout:
  *   SearchBar → AnalysisHero → 12-col grid
- *     col-span-8: ChartIntelligence → BattleReport → ScenarioNarrative
- *     col-span-4: LevelsPanel → TechnicalSidebar → MacroContext
+ *     Main (flex-1): ChartIntelligence → BattleReport → ScenarioNarrative
+ *     RightPanel (shell): LevelsPanel → TechnicalSidebar → MacroContext
  *
  * Reuses all V1 analysis components — this is a presentation-layer rebuild.
  * No data hooks, calculations, or API layer modified.
@@ -24,6 +24,7 @@ import TechnicalDetailsPanel from '@/components/analysis/TechnicalDetailsPanel'
 import SectionCard     from '@/design-system/primitives/SectionCard'
 import ChartContainer  from '@/design-system/primitives/ChartContainer'
 import EmptyState      from '@/design-system/primitives/EmptyState'
+import RightPanel      from '@/design-system/shell/RightPanel'
 
 // ── Action tag styles (V2 tokens) ───────────────────────────────────────────
 const ACTION_STYLES: Record<string, { bg: string; text: string }> = {
@@ -68,9 +69,9 @@ function AnalysisPageSkeleton() {
         </div>
       </div>
 
-      {/* Grid skeleton */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-        <div className="xl:col-span-8 space-y-5">
+      {/* Flex skeleton */}
+      <div className="flex gap-5">
+        <div className="flex-1 min-w-0 space-y-5">
           {/* Chart skeleton */}
           <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm overflow-hidden animate-pulse">
             <div className="px-5 pt-4 pb-2 h-5 w-40 bg-v2-surface-alt rounded-v2-sm" />
@@ -84,7 +85,7 @@ function AnalysisPageSkeleton() {
             <div className="h-24 bg-v2-surface-alt rounded-v2-md" />
           </div>
         </div>
-        <div className="xl:col-span-4 space-y-4">
+        <RightPanel>
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-5 animate-pulse">
               <div className="h-4 w-24 bg-v2-surface-alt rounded-v2-sm mb-3" />
@@ -93,7 +94,7 @@ function AnalysisPageSkeleton() {
               </div>
             </div>
           ))}
-        </div>
+        </RightPanel>
       </div>
     </div>
   )
@@ -113,7 +114,7 @@ function LevelsPanel({ result, isEn }: { result: AnalysisResult; isEn: boolean }
           {/* Resistance ladder */}
           {resistances.length > 0 && (
             <div>
-              <div className="text-ds-caption uppercase text-v2-negative font-bold mb-2">
+              <div className="text-ds-caption uppercase text-v2-negative mb-2">
                 {isEn ? 'Resistance' : '阻力'}
               </div>
               <div className="space-y-1.5">
@@ -141,7 +142,7 @@ function LevelsPanel({ result, isEn }: { result: AnalysisResult; isEn: boolean }
           {/* Current price marker */}
           <div className="flex items-center gap-2 py-1.5 border-y border-v2-border">
             <span className="w-2 h-2 rounded-full bg-v2-accent shrink-0" />
-            <span className="text-ds-body-r font-bold tnum text-v2-text-1">
+            <span className="text-ds-body-r tnum text-v2-text-1">
               ${price.toFixed(2)}
             </span>
             <span className="text-ds-caption text-v2-text-3 ml-auto">
@@ -152,7 +153,7 @@ function LevelsPanel({ result, isEn }: { result: AnalysisResult; isEn: boolean }
           {/* Support ladder */}
           {supports.length > 0 && (
             <div>
-              <div className="text-ds-caption uppercase text-v2-positive font-bold mb-2">
+              <div className="text-ds-caption uppercase text-v2-positive mb-2">
                 {isEn ? 'Support' : '支撑'}
               </div>
               <div className="space-y-1.5">
@@ -267,7 +268,7 @@ function ScenarioNarrativePanel({ result, isEn }: { result: AnalysisResult; isEn
         <div className="space-y-4">
           {/* Scenario + Regime */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className={`text-ds-body-r font-bold ${biasColor}`}>
+            <span className={`text-ds-body-r ${biasColor}`}>
               {scenario.bias.replace(/_/g, ' ')}
             </span>
             <span className="text-ds-sm px-2 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
@@ -288,20 +289,20 @@ function ScenarioNarrativePanel({ result, isEn }: { result: AnalysisResult; isEn
             <div className="grid grid-cols-2 gap-3">
               {upside != null && (
                 <div className="bg-v2-positive-bg rounded-v2-md p-3 text-center">
-                  <div className="text-ds-caption text-v2-positive uppercaser font-bold mb-1">
+                  <div className="text-ds-caption text-v2-positive uppercaser mb-1">
                     {isEn ? 'Upside' : '上涨空间'}
                   </div>
-                  <div className="text-ds-h2 font-bold tnum text-v2-positive">
+                  <div className="text-ds-h2 tnum text-v2-positive">
                     +{upside.toFixed(1)}%
                   </div>
                 </div>
               )}
               {downside != null && (
                 <div className="bg-v2-negative-bg rounded-v2-md p-3 text-center">
-                  <div className="text-ds-caption text-v2-negative uppercaser font-bold mb-1">
+                  <div className="text-ds-caption text-v2-negative uppercaser mb-1">
                     {isEn ? 'Downside' : '下跌风险'}
                   </div>
-                  <div className="text-ds-h2 font-bold tnum text-v2-negative">
+                  <div className="text-ds-h2 tnum text-v2-negative">
                     {downside.toFixed(1)}%
                   </div>
                 </div>
@@ -312,7 +313,7 @@ function ScenarioNarrativePanel({ result, isEn }: { result: AnalysisResult; isEn
           {/* Constraints */}
           {scenario.constraints.length > 0 && (
             <div className="border-t border-v2-border pt-3">
-              <div className="text-ds-caption text-v2-text-3 uppercaser font-bold mb-2">
+              <div className="text-ds-caption text-v2-text-3 uppercaser mb-2">
                 {isEn ? 'Constraints' : '约束条件'}
               </div>
               <div className="space-y-1">
@@ -379,7 +380,7 @@ export default function AnalysisPageV2() {
     <div className="space-y-5">
       {/* ── Header + Search ──────────────────────────────────── */}
       <div>
-        <h2 className="text-ds-h2 font-bold text-v2-text-1">
+        <h2 className="text-ds-h2 text-v2-text-1">
           {isEn ? 'Analysis' : '深度分析'}
         </h2>
         <p className="text-ds-sm text-v2-text-3 mt-0.5">
@@ -407,7 +408,7 @@ export default function AnalysisPageV2() {
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-ds-body-r font-bold text-v2-text-2">
+                  <span className="text-ds-body-r text-v2-text-2">
                     {result.symbol}
                   </span>
                   {result.quote?.name && (
@@ -415,10 +416,10 @@ export default function AnalysisPageV2() {
                   )}
                 </div>
                 <div className="flex items-baseline gap-3">
-                  <span className="text-ds-display font-bold tnum leading-none text-v2-text-1">
+                  <span className="text-ds-display tnum leading-none text-v2-text-1">
                     {fmtPrice(price)}
                   </span>
-                  <span className={`text-ds-body-r font-bold tnum ${changePct >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                  <span className={`text-ds-body-r tnum ${changePct >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
                     {fmtPctSigned(changePct)}
                   </span>
                 </div>
@@ -432,28 +433,28 @@ export default function AnalysisPageV2() {
               {/* Action + Confidence badges */}
               <div className="flex items-center gap-2 shrink-0">
                 {actionLabel && (
-                  <span className={`text-ds-sm font-bold px-2.5 py-1 rounded-md ${actionStyle.bg} ${actionStyle.text}`}>
+                  <span className={`text-ds-sm px-2.5 py-1 rounded-md ${actionStyle.bg} ${actionStyle.text}`}>
                     {isEn ? actionLabel.en : actionLabel.zh}
                   </span>
                 )}
-                <span className={`text-ds-sm font-bold px-2 py-1 rounded-md ${gradeStyle}`}>
+                <span className={`text-ds-sm px-2 py-1 rounded-md ${gradeStyle}`}>
                   {result.confidence.grade}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* ── 12-col grid ────────────────────────────────── */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-            {/* ── Main column (8/12) ──────────────────────── */}
-            <div className="xl:col-span-8 space-y-5">
+          {/* ── Flex layout: Main + Right Panel ────────────── */}
+          <div className="flex gap-5">
+            {/* ── Main column ─────────────────────────────── */}
+            <div className="flex-1 min-w-0 space-y-5">
               {/* Chart Intelligence — reuses ChartContainer + RhinoChart */}
               <ChartContainer
                 title={isEn ? 'Market Structure' : '市场结构'}
                 height="h-80"
                 action={
                   result.chart.market_state ? (
-                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
+                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3">
                       {result.chart.market_state}
                     </span>
                   ) : undefined
@@ -486,8 +487,8 @@ export default function AnalysisPageV2() {
               </SectionCard>
             </div>
 
-            {/* ── Right panel (4/12) ──────────────────────── */}
-            <div className="xl:col-span-4 space-y-4">
+            {/* ── Right Panel (shell component) ────────────── */}
+            <RightPanel>
               {/* Key Levels */}
               <LevelsPanel result={result} isEn={isEn} />
 
@@ -507,10 +508,10 @@ export default function AnalysisPageV2() {
                 <SectionCard.Header title={isEn ? 'Confidence' : '置信度'} />
                 <SectionCard.Body>
                   <div className="flex items-center gap-3 mb-3">
-                    <span className={`text-ds-h2 font-bold tnum ${gradeStyle} px-2.5 py-1 rounded-md`}>
+                    <span className={`text-ds-h2 tnum ${gradeStyle} px-2.5 py-1 rounded-md`}>
                       {result.confidence.grade}
                     </span>
-                    <span className="text-ds-body-r font-bold tnum text-v2-text-1">
+                    <span className="text-ds-body-r tnum text-v2-text-1">
                       {result.confidence.score}/100
                     </span>
                   </div>
@@ -524,7 +525,7 @@ export default function AnalysisPageV2() {
                   </div>
                 </SectionCard.Body>
               </SectionCard>
-            </div>
+            </RightPanel>
           </div>
 
           {/* ── Data quality footer ────────────────────────── */}

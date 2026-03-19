@@ -1,9 +1,9 @@
 /**
  * RiskPageV2 — Professional risk workspace.
  *
- * Layout (12-col grid):
- *   col-span-8: Main content (Hero → Scenario → Concentration → Charts)
- *   col-span-4: Right panel (Alerts, Heatmap, Sector, Benchmark)
+ * Layout (flex):
+ *   Main column (flex-1): Hero → Scenario → Concentration → Charts
+ *   RightPanel (shell): Alerts, Insights, Sector, Benchmark
  *
  * All V1 business logic preserved — this is a visual-only rebuild.
  * Data hooks, WS logic, computeScenarioPnL are reused as-is.
@@ -35,6 +35,7 @@ import ConcentrationTable  from '@/design-system/workspace/ConcentrationTable'
 import RiskAlertStack      from '@/design-system/workspace/RiskAlertStack'
 import SectionCard         from '@/design-system/primitives/SectionCard'
 import EmptyState          from '@/design-system/primitives/EmptyState'
+import RightPanel          from '@/design-system/shell/RightPanel'
 
 // ── V2 Tooltip style ─────────────────────────────────────────────────────────
 const TOOLTIP_STYLE = {
@@ -176,7 +177,7 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
     <SectionCard noPadding>
       <div className="px-5 py-3 border-b border-v2-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-ds-h3 font-bold text-v2-text-1">
+          <h3 className="text-ds-h3 text-v2-text-1">
             {t('alpha_dashboard')}
           </h3>
           {hasHistory && (
@@ -355,7 +356,7 @@ const AttributionPanelV2 = memo(function AttributionPanelV2({
     <SectionCard noPadding>
       <div className="px-5 py-3 border-b border-v2-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-ds-h3 font-bold text-v2-text-1">
+          <h3 className="text-ds-h3 text-v2-text-1">
             {t('pnl_attribution')}
           </h3>
           {hasData && (
@@ -537,7 +538,7 @@ const BenchmarkPanelV2 = memo(function BenchmarkPanelV2({
             const cls = ytd == null ? 'text-v2-text-3' : isPos ? 'text-v2-positive' : 'text-v2-negative'
             return (
               <div key={bench.symbol} className="bg-v2-surface-alt rounded-v2-md border border-v2-border p-4 text-center">
-                <div className="text-ds-caption font-bold text-v2-text-3 uppercaser mb-2">{bench.symbol}</div>
+                <div className="text-ds-caption text-v2-text-3 uppercaser mb-2">{bench.symbol}</div>
                 <div className={`text-xl font-bold tnum ${cls}`}>{isPos ? '+' : ''}{pctStr}</div>
                 <div className="text-ds-caption text-v2-text-3 mt-1 uppercaser">
                   {isEn ? 'YTD Return' : 'YTD回报'}
@@ -582,7 +583,7 @@ const InsightPanelV2 = memo(function InsightPanelV2({
       <SectionCard.Header
         title={t('insights_title')}
         action={
-          <span className="text-ds-caption px-2 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent border border-v2-accent/20 font-bold">
+          <span className="text-ds-caption px-2 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent border border-v2-accent/20">
             LLM-Ready
           </span>
         }
@@ -599,13 +600,13 @@ const InsightPanelV2 = memo(function InsightPanelV2({
             <div className="flex items-center gap-3 flex-wrap">
               <div>
                 <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">{t('insights_posture')}</div>
-                <span className={`text-ds-sm font-bold font-mono ${postureColor}`}>
+                <span className={`text-ds-sm font-mono ${postureColor}`}>
                   {data.risk_posture.replace(/_/g, ' ')}
                 </span>
               </div>
               <div className="border-l border-v2-border pl-3">
                 <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">{t('dominant_risk')}</div>
-                <span className="text-ds-sm font-bold text-v2-text-1 uppercase">{data.dominant_risk}</span>
+                <span className="text-ds-sm text-v2-text-1 uppercase">{data.dominant_risk}</span>
               </div>
             </div>
 
@@ -613,7 +614,7 @@ const InsightPanelV2 = memo(function InsightPanelV2({
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(data.strategy_mix).map(([strat, count]) => (
                   <span key={strat}
-                    className="text-ds-caption px-2 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-2 font-bold border border-v2-border">
+                    className="text-ds-caption px-2 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-2 border border-v2-border">
                     {count}x {strat}
                   </span>
                 ))}
@@ -686,9 +687,9 @@ export default function RiskPageV2() {
       {/* ── Portfolio breadcrumb ────────────────────────────────── */}
       {selectedPortfolio && (
         <div className="flex items-center gap-2">
-          <span className="text-ds-body-r font-bold text-v2-text-1">{selectedPortfolio.name}</span>
+          <span className="text-ds-body-r text-v2-text-1">{selectedPortfolio.name}</span>
           {selectedPortfolio.is_folder && (
-            <span className="text-ds-caption font-bold uppercase px-1.5 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent">
+            <span className="text-ds-caption uppercase px-1.5 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent">
               {isEn ? 'Folder' : '文件夹'}
             </span>
           )}
@@ -712,18 +713,18 @@ export default function RiskPageV2() {
               <div key={i} className="h-20 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
             ))}
           </div>
-          {/* Grid skeleton: main + right panel */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-            <div className="xl:col-span-8 space-y-4">
+          {/* Flex skeleton: main + right panel */}
+          <div className="flex gap-5">
+            <div className="flex-1 min-w-0 space-y-4">
               <div className="h-48 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
               <div className="h-36 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
               <div className="h-44 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
             </div>
-            <div className="hidden xl:block xl:col-span-4 space-y-4">
+            <RightPanel>
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-28 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
               ))}
-            </div>
+            </RightPanel>
           </div>
         </div>
       ) : dashboard ? (
@@ -731,10 +732,10 @@ export default function RiskPageV2() {
           {/* ── Risk Hero ──────────────────────────────────────── */}
           <RiskHero dashboard={dashboard} isEn={isEn} />
 
-          {/* ── 12-col grid ────────────────────────────────────── */}
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-            {/* ── Main column (8/12) ──────────────────────────── */}
-            <div className="xl:col-span-8 space-y-5">
+          {/* ── Flex layout: Main + Right Panel ────────────────── */}
+          <div className="flex gap-5">
+            {/* ── Main column ─────────────────────────────────── */}
+            <div className="flex-1 min-w-0 space-y-5">
               {/* Alpha Dashboard */}
               <AlphaDashboardV2 portfolioId={selectedPortfolioId} />
 
@@ -758,22 +759,15 @@ export default function RiskPageV2() {
               </div>
             </div>
 
-            {/* ── Right panel (4/12) ──────────────────────────── */}
-            <div className="hidden xl:block xl:col-span-4 space-y-4">
-              {/* Risk Alerts */}
+            {/* ── Right Panel (shell component) ───────────────── */}
+            <RightPanel>
               <RiskAlertStack alerts={dashboard.risk_alerts ?? []} isEn={isEn} />
-
-              {/* Portfolio Insights */}
               <InsightPanelV2 portfolioId={selectedPortfolioId} />
-
-              {/* Sector Exposure */}
               {hasSector && (
                 <SectorExposureV2 sectorExp={dashboard.sector_exposure} isEn={isEn} />
               )}
-
-              {/* Benchmarks */}
               <BenchmarkPanelV2 dashboard={dashboard} isEn={isEn} />
-            </div>
+            </RightPanel>
           </div>
 
           {/* ── Last updated ───────────────────────────────────── */}

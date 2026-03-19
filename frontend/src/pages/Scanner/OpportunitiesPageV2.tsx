@@ -2,7 +2,7 @@
  * OpportunitiesPageV2 — Actionable Idea Funnel.
  *
  * Layout:
- *   Header → Filters → 12-col grid (OpportunityList col-span-7 + DetailPanel col-span-5)
+ *   Header → Filters → Flex layout (OpportunityList flex-1 + DetailPanel 420px)
  *
  * Scan → Compare → Act. Not a research report — an execution surface.
  * All V1 data hooks preserved. UI-only rebuild.
@@ -64,8 +64,8 @@ const OpportunityCard = memo(function OpportunityCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-ds-h3 font-bold text-v2-text-1">{opp.symbol}</span>
-            <span className={`text-ds-caption font-bold px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
+            <span className="text-ds-h3 text-v2-text-1">{opp.symbol}</span>
+            <span className={`text-ds-caption px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
               {isEn ? signal.label : signal.labelZh}
             </span>
           </div>
@@ -75,7 +75,7 @@ const OpportunityCard = memo(function OpportunityCard({
         </div>
         <div className="text-right shrink-0">
           {opp.spot_price && (
-            <div className="text-ds-body-r font-bold tnum text-v2-text-1">
+            <div className="text-ds-body-r tnum text-v2-text-1">
               ${fmtNum(opp.spot_price)}
             </div>
           )}
@@ -95,7 +95,7 @@ const OpportunityCard = memo(function OpportunityCard({
             style={{ width: `${rank}%` }}
           />
         </div>
-        <span className={`text-ds-caption font-bold ${RISK_COLORS[setup.risk]}`}>
+        <span className={`text-ds-caption ${RISK_COLORS[setup.risk]}`}>
           {isEn ? setup.risk : setup.risk === 'low' ? '低' : setup.risk === 'medium' ? '中' : '高'}
         </span>
       </div>
@@ -165,13 +165,13 @@ const DetailPanel = memo(function DetailPanel({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-ds-h2 font-bold text-v2-text-1">{opp.symbol}</span>
-          <span className={`text-ds-caption font-bold px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
+          <span className="text-ds-h2 text-v2-text-1">{opp.symbol}</span>
+          <span className={`text-ds-caption px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
             {isEn ? signal.label : signal.labelZh}
           </span>
         </div>
         {opp.spot_price && (
-          <span className="text-ds-h2 font-bold tnum text-v2-text-1">${fmtNum(opp.spot_price)}</span>
+          <span className="text-ds-h2 tnum text-v2-text-1">${fmtNum(opp.spot_price)}</span>
         )}
       </div>
 
@@ -179,19 +179,19 @@ const DetailPanel = memo(function DetailPanel({
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
           <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">IV Rank</div>
-          <div className="text-ds-h2 font-bold tnum text-v2-text-1">{Math.round(rank * 100)}%</div>
+          <div className="text-ds-h2 tnum text-v2-text-1">{Math.round(rank * 100)}%</div>
         </div>
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
           <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">IV Percentile</div>
-          <div className="text-ds-h2 font-bold tnum text-v2-text-1">{Math.round(pctl * 100)}%</div>
+          <div className="text-ds-h2 tnum text-v2-text-1">{Math.round(pctl * 100)}%</div>
         </div>
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
           <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">{isEn ? 'Current HV' : '当前HV'}</div>
-          <div className="text-ds-body-r font-bold tnum text-v2-text-1">{(hv * 100).toFixed(1)}%</div>
+          <div className="text-ds-body-r tnum text-v2-text-1">{(hv * 100).toFixed(1)}%</div>
         </div>
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
           <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">{isEn ? '52w Range' : '52周范围'}</div>
-          <div className="text-ds-sm font-bold tnum text-v2-text-2">
+          <div className="text-ds-sm tnum text-v2-text-2">
             {(hvLow * 100).toFixed(1)}% — {(hvHigh * 100).toFixed(1)}%
           </div>
         </div>
@@ -219,10 +219,10 @@ const DetailPanel = memo(function DetailPanel({
 
       {/* Setup suggestion */}
       <div className="bg-v2-surface-alt rounded-v2-md p-4 mb-5">
-        <div className="text-ds-sm font-bold uppercaser text-v2-text-3 mb-2">
+        <div className="text-ds-sm uppercaser text-v2-text-3 mb-2">
           {isEn ? 'Suggested Setup' : '建议策略'}
         </div>
-        <div className="text-ds-body-r font-bold text-v2-text-1 mb-1">
+        <div className="text-ds-body-r text-v2-text-1 mb-1">
           {isEn ? setup.type : setup.typeZh}
         </div>
         <p className="text-ds-sm text-v2-text-2 leading-relaxed">
@@ -235,7 +235,7 @@ const DetailPanel = memo(function DetailPanel({
         <button
           onClick={() => openTradeEntry()}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-v2-sm
-                     bg-v2-accent text-white text-ds-body-r font-bold
+                     bg-v2-accent text-white text-ds-body-r
                      hover:bg-v2-accent/90 transition-colors"
         >
           {isEn ? 'Trade' : '交易'}
@@ -243,7 +243,7 @@ const DetailPanel = memo(function DetailPanel({
         <button
           onClick={() => openPriceAlerts({ symbol: opp.symbol, price: parseFloat(opp.spot_price ?? '0') })}
           className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-v2-sm
-                     text-v2-text-2 text-ds-body-r font-bold border border-v2-border
+                     text-v2-text-2 text-ds-body-r border border-v2-border
                      hover:bg-v2-surface-alt transition-colors"
         >
           {isEn ? 'Alert' : '警报'}
@@ -311,7 +311,7 @@ export default function OpportunitiesPageV2() {
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-ds-h2 font-bold text-v2-text-1">
+          <h2 className="text-ds-h2 text-v2-text-1">
             {isEn ? 'Opportunities' : '交易机会'}
           </h2>
           <p className="text-ds-sm text-v2-text-3 mt-0.5">
@@ -322,12 +322,12 @@ export default function OpportunitiesPageV2() {
           <div className="flex items-center gap-4 text-xs tnum">
             <div className="text-right">
               <div className="text-ds-caption text-v2-text-3 uppercaser">{isEn ? 'Setups' : '机会'}</div>
-              <span className="text-ds-body-r font-bold text-v2-text-1">{opportunities.length}</span>
+              <span className="text-ds-body-r text-v2-text-1">{opportunities.length}</span>
             </div>
             {avgRank != null && (
               <div className="text-right">
                 <div className="text-ds-caption text-v2-text-3 uppercaser">{isEn ? 'Avg IV Rank' : '平均IV'}</div>
-                <span className="text-ds-body-r font-bold text-v2-text-1">{avgRank}%</span>
+                <span className="text-ds-body-r text-v2-text-1">{avgRank}%</span>
               </div>
             )}
           </div>
@@ -340,7 +340,7 @@ export default function OpportunitiesPageV2() {
           <span className="text-v2-negative text-sm flex-1">{error}</span>
           <button
             onClick={() => { setError(null); setLoading(true); fetchOpportunities().then(setOpportunities).catch((e: Error) => setError(e.message ?? 'Failed to load')).finally(() => setLoading(false)) }}
-            className="text-ds-sm font-bold text-v2-accent hover:text-v2-text-1 transition-colors"
+            className="text-ds-sm text-v2-accent hover:text-v2-text-1 transition-colors"
           >
             {isEn ? 'Retry' : '重试'}
           </button>
@@ -353,7 +353,7 @@ export default function OpportunitiesPageV2() {
           <button
             key={key}
             onClick={() => setFilterSignal(key)}
-            className={`px-3 py-1.5 rounded-v2-sm text-ds-sm font-bold transition-colors
+            className={`px-3 py-1.5 rounded-v2-sm text-ds-sm transition-colors
               ${filterSignal === key
                 ? 'bg-v2-accent text-white'
                 : 'bg-v2-surface-alt text-v2-text-2 hover:bg-v2-surface-hover border border-v2-border'
@@ -364,13 +364,13 @@ export default function OpportunitiesPageV2() {
         ))}
       </div>
 
-      {/* ── Main grid ─────────────────────────────────────────── */}
+      {/* ── Main layout ───────────────────────────────────────── */}
       {loading ? (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          <div className="xl:col-span-7">
+        <div className="flex gap-5">
+          <div className="flex-1 min-w-0">
             <OpportunityListSkeleton />
           </div>
-          <div className="xl:col-span-5">
+          <div className="hidden xl:block w-[420px] shrink-0 sticky top-20 self-start">
             <SectionCard minHeight="400px" isLoading />
           </div>
         </div>
@@ -382,9 +382,9 @@ export default function OpportunitiesPageV2() {
           />
         </SectionCard>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
-          {/* List (7/12) */}
-          <div className="xl:col-span-7 space-y-3">
+        <div className="flex gap-5">
+          {/* Opportunity list */}
+          <div className="flex-1 min-w-0 space-y-3">
             {filtered.length === 0 ? (
               <SectionCard minHeight="200px">
                 <EmptyState
@@ -406,8 +406,8 @@ export default function OpportunitiesPageV2() {
             )}
           </div>
 
-          {/* Detail (5/12) */}
-          <div className="xl:col-span-5">
+          {/* Detail panel — wider than standard RightPanel (detail view, not widget stack) */}
+          <div className="hidden xl:block w-[420px] shrink-0">
             <div className="sticky top-20">
               <DetailPanel opp={selectedOpp} isEn={isEn} />
             </div>
