@@ -6,7 +6,7 @@
  */
 import { memo, useMemo } from 'react'
 import type { RiskDashboard } from '@/types'
-import { fmtNum, fmtGreek, fmtUSD, signClass } from '@/utils/format'
+import { formatMetric } from '@/utils/formatMetric'
 import MetricBlock from '../primitives/MetricBlock'
 
 interface Props {
@@ -33,10 +33,10 @@ export default memo(function RiskHero({ dashboard, isEn, isLoading = false }: Pr
   const metrics = useMemo(() => {
     if (!dashboard) return []
     return [
-      { label: isEn ? 'Net Delta' : '净Delta', value: fmtNum(dashboard.total_net_delta), sentiment: (parseFloat(dashboard.total_net_delta) >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' },
-      { label: isEn ? 'Gamma' : 'Gamma', value: fmtGreek(dashboard.total_gamma), sentiment: 'neutral' as const },
-      { label: isEn ? 'Theta/day' : 'Theta/日', value: fmtNum(dashboard.total_theta_daily), sentiment: (parseFloat(dashboard.total_theta_daily) >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' },
-      { label: isEn ? 'Margin' : '保证金', value: fmtUSD(dashboard.maintenance_margin_total), sentiment: 'neutral' as const },
+      { label: isEn ? 'Net Delta' : '净Delta', value: formatMetric(dashboard.total_net_delta, { type: 'number' }), sentiment: (parseFloat(dashboard.total_net_delta) >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' },
+      { label: isEn ? 'Gamma' : 'Gamma', value: formatMetric(dashboard.total_gamma, { type: 'greek' }), sentiment: 'neutral' as const },
+      { label: isEn ? 'Theta/day' : 'Theta/日', value: formatMetric(dashboard.total_theta_daily, { type: 'number' }), sentiment: (parseFloat(dashboard.total_theta_daily) >= 0 ? 'positive' : 'negative') as 'positive' | 'negative' },
+      { label: isEn ? 'Margin' : '保证金', value: formatMetric(dashboard.maintenance_margin_total, { type: 'currency' }), sentiment: 'neutral' as const },
     ]
   }, [dashboard, isEn])
 

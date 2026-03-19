@@ -6,7 +6,7 @@
  */
 import { memo, useMemo } from 'react'
 import type { HoldingGroup } from '@/types'
-import { fmtNum, fmtUSD } from '@/utils/format'
+import { formatMetric } from '@/utils/formatMetric'
 import SectionCard from '../primitives/SectionCard'
 import EmptyState from '../primitives/EmptyState'
 
@@ -90,13 +90,13 @@ export default memo(function ConcentrationTable({ holdings, isEn, limit = 10 }: 
                     </div>
                   </td>
                   <td className={`py-2.5 text-right tnum font-bold ${delta >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                    {delta >= 0 ? '+' : ''}{fmtNum(String(delta.toFixed(2)))}
+                    {formatMetric(delta, { type: 'number', showSign: true })}
                   </td>
                   <td className={`py-2.5 text-right tnum font-bold ${theta >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                    {theta >= 0 ? '+' : ''}{fmtNum(String(theta.toFixed(2)))}
+                    {formatMetric(theta, { type: 'number', showSign: true })}
                   </td>
                   <td className="py-2.5 pr-5 text-right tnum text-v2-text-1">
-                    {fmtUSD(String(margin.toFixed(2)))}
+                    {formatMetric(margin, { type: 'currency' })}
                   </td>
                 </tr>
               ))}

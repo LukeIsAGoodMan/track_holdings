@@ -9,7 +9,7 @@ import { useState, useEffect, useMemo, memo } from 'react'
 import { useLanguage } from '@/context/LanguageContext'
 import { fetchTransactionHistory, fetchSettledTrades } from '@/api/holdings'
 import type { Transaction, SettledTrade } from '@/types'
-import { fmtUSD, fmtNum } from '@/utils/format'
+import { formatMetric } from '@/utils/formatMetric'
 import SectionCard from '../primitives/SectionCard'
 import EmptyState from '../primitives/EmptyState'
 
@@ -168,7 +168,7 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
                 {sorted.map((tx) => {
                   const isOption = tx.option_type != null
                   const contractLabel = isOption
-                    ? `${tx.option_type} $${fmtNum(tx.strike ?? '0')} ${tx.expiry ?? ''}`
+                    ? `${tx.option_type} $${formatMetric(tx.strike, { type: 'number' })} ${tx.expiry ?? ''}`
                     : 'STOCK'
                   return (
                     <tr key={tx.id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
@@ -187,7 +187,7 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
                         </span>
                       </td>
                       <td className="td tnum text-v2-text-1">{tx.quantity}</td>
-                      <td className="td tnum text-v2-text-1">${fmtNum(tx.price)}</td>
+                      <td className="td tnum text-v2-text-1">${formatMetric(tx.price, { type: 'number' })}</td>
                       <td className="td text-v2-text-2 text-ds-sm max-w-[140px]">
                         <span className="truncate block" title={contractLabel}>{contractLabel}</span>
                       </td>
@@ -240,7 +240,7 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
                 <tbody>
                   {settled.map((row) => {
                     const contract = row.option_type
-                      ? `${row.option_type} $${fmtNum(row.strike ?? '0')} ${row.expiry ?? ''}`
+                      ? `${row.option_type} $${formatMetric(row.strike, { type: 'number' })} ${row.expiry ?? ''}`
                       : 'STOCK'
                     return (
                       <tr key={row.trade_event_id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
@@ -259,7 +259,7 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
                         <td className="td text-v2-text-2 text-ds-sm">{contract}</td>
                         <td className="td tnum">
                           {row.effective_cost_per_share != null
-                            ? <span className="font-bold text-v2-text-1">${fmtNum(row.effective_cost_per_share)}</span>
+                            ? <span className="font-bold text-v2-text-1">${formatMetric(row.effective_cost_per_share, { type: 'number' })}</span>
                             : <span className="text-v2-text-3">—</span>}
                         </td>
                         <td className="td text-v2-text-2 text-ds-sm">{row.settled_date ?? '—'}</td>

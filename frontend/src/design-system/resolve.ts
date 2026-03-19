@@ -116,12 +116,14 @@ const _tokenCache = new Map<string, string | number | undefined>()
  * Results are cached.
  */
 export function resolveToken(path: string): string | number | undefined {
-  const cached = _tokenCache.get(path)
-  if (cached !== undefined) return cached
+  if (_tokenCache.has(path)) return _tokenCache.get(path)
 
   const [domain, key] = path.split('.', 2)
   const group = TOKEN_MAP[domain]
-  if (!group || !key) return undefined
+  if (!group || !key) {
+    _tokenCache.set(path, undefined)
+    return undefined
+  }
 
   const value = group[key]
   _tokenCache.set(path, value)

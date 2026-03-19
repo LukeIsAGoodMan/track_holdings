@@ -1,68 +1,47 @@
 /**
  * Formatting utilities for financial data.
- * Backend returns Decimal values as strings (e.g. "499.25781500").
- * All functions accept string | null | undefined and degrade gracefully.
+ *
+ * IMPORTANT: All core formatters now delegate to formatMetric() for
+ * single-source-of-truth numeric formatting. This ensures zero-safety
+ * and consistent precision across the entire application.
+ *
+ * For new code, prefer importing from '@/utils/formatMetric' directly.
+ * These functions remain for backward compatibility with V1 pages
+ * and components that have not yet been migrated.
  */
 
-const USD = new Intl.NumberFormat('en-US', {
-  style: 'currency',
-  currency: 'USD',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
+import { formatMetric } from './formatMetric'
 
-const NUM2 = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-})
-
-const NUM4 = new Intl.NumberFormat('en-US', {
-  minimumFractionDigits: 4,
-  maximumFractionDigits: 4,
-})
-
-// ── Core formatters ───────────────────────────────────────────────────────────
+// ── Core formatters (delegate to formatMetric) ──────────────────────────────
 
 /** "$250,000.00" */
 export function fmtUSD(v: string | number | null | undefined): string {
-  if (v == null || v === '') return '—'
-  const n = typeof v === 'string' ? parseFloat(v) : v
-  return isNaN(n) ? '—' : USD.format(n)
+  if (v === '') return '—'
+  return formatMetric(v, { type: 'currency' })
 }
 
 /** "+$15,000.00" or "-$3,000.00" */
 export function fmtUSDSigned(v: string | number | null | undefined): string {
-  if (v == null || v === '') return '—'
-  const n = typeof v === 'string' ? parseFloat(v) : v
-  if (isNaN(n)) return '—'
-  return (n >= 0 ? '+' : '') + USD.format(n)
+  if (v === '') return '—'
+  return formatMetric(v, { type: 'currency', showSign: true })
 }
 
 /** "499.26" (2 decimal places, thousands separator) */
 export function fmtNum(v: string | number | null | undefined): string {
-  if (v == null || v === '') return '—'
-  const n = typeof v === 'string' ? parseFloat(v) : v
-  return isNaN(n) ? '—' : NUM2.format(n)
+  if (v === '') return '—'
+  return formatMetric(v, { type: 'number' })
 }
 
 /** "-0.9985" (4 decimal places) — for Greeks */
 export function fmtGreek(v: string | number | null | undefined): string {
-  if (v == null || v === '') return '—'
-  const n = typeof v === 'string' ? parseFloat(v) : v
-  return isNaN(n) ? '—' : NUM4.format(n)
+  if (v === '') return '—'
+  return formatMetric(v, { type: 'greek' })
 }
 
 /** "+499.26" with explicit sign */
 export function fmtSigned(v: string | number | null | undefined, places = 2): string {
-  if (v == null || v === '') return '—'
-  const n = typeof v === 'string' ? parseFloat(v) : v
-  if (isNaN(n)) return '—'
-  const abs = Math.abs(n).toFixed(places)
-  const formatted = parseFloat(abs).toLocaleString('en-US', {
-    minimumFractionDigits: places,
-    maximumFractionDigits: places,
-  })
-  return (n >= 0 ? '+' : '-') + formatted
+  if (v === '') return '—'
+  return formatMetric(v, { type: 'number', precision: places, showSign: true })
 }
 
 /** Compact: "250K" / "1.2M" */
@@ -103,14 +82,12 @@ export function isPositive(v: string | null | undefined): boolean {
 
 // ── Analysis page helpers ─────────────────────────────────────────────────
 
-/** "$123.45" — plain price display (no sign, no thousands sep for <1000) */
+/** "$123.45" — plain price display */
 export function fmtPrice(v: number | null | undefined): string {
-  if (v == null || isNaN(v)) return '—'
-  return USD.format(v)
+  return formatMetric(v, { type: 'currency' })
 }
 
 /** "+2.35%" or "-0.80%" */
 export function fmtPctSigned(v: number | null | undefined): string {
-  if (v == null || isNaN(v)) return '—'
-  return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
+  return formatMetric(v, { type: 'percent', showSign: true })
 }

@@ -108,7 +108,7 @@ function OpportunityListSkeleton() {
   return (
     <div className="space-y-3">
       {[1, 2, 3, 4, 5, 6].map((i) => (
-        <div key={i} className="rounded-v2-lg border border-v2-border bg-v2-surface p-4 animate-pulse">
+        <div key={i} className="rounded-v2-lg border border-v2-border bg-v2-surface p-4 ds-shimmer">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-2 flex-1">
               <div className="flex items-center gap-2">

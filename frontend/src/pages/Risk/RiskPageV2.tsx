@@ -252,7 +252,7 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
 
         {/* Chart or state messages */}
         {loading ? (
-          <div className="h-64 animate-pulse bg-v2-surface-alt rounded-v2-md" />
+          <div className="h-64 ds-shimmer bg-v2-surface-alt rounded-v2-md" />
         ) : error ? (
           <div className="text-xs text-v2-negative bg-v2-negative-bg border border-v2-negative/20 rounded-v2-md px-3 py-2">
             {error}
@@ -390,7 +390,7 @@ const AttributionPanelV2 = memo(function AttributionPanelV2({
 
       <div className="p-5">
         {loading ? (
-          <div className="h-56 animate-pulse bg-v2-surface-alt rounded-v2-md" />
+          <div className="h-56 ds-shimmer bg-v2-surface-alt rounded-v2-md" />
         ) : error ? (
           <div className="text-xs text-v2-negative bg-v2-negative-bg border border-v2-negative/20 rounded-v2-md px-3 py-2">
             {error}
@@ -591,7 +591,7 @@ const InsightPanelV2 = memo(function InsightPanelV2({
       <SectionCard.Body>
         {loading ? (
           <div className="space-y-2">
-            {[1, 2, 3].map((i) => <div key={i} className="h-3 bg-v2-surface-alt rounded animate-pulse" />)}
+            {[1, 2, 3].map((i) => <div key={i} className="h-3 bg-v2-surface-alt rounded ds-shimmer" />)}
           </div>
         ) : !data ? (
           <p className="text-ds-sm text-v2-text-3">{t('var_no_data')}</p>
@@ -707,22 +707,22 @@ export default function RiskPageV2() {
       {loading ? (
         <div className="space-y-5">
           {/* Hero skeleton — VaR headline + 4 greek metrics */}
-          <div className="h-16 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
+          <div className="h-16 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-20 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
+              <div key={i} className="h-20 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
             ))}
           </div>
           {/* Flex skeleton: main + right panel */}
           <div className="flex gap-5">
             <div className="flex-1 min-w-0 space-y-4">
-              <div className="h-48 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
-              <div className="h-36 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
-              <div className="h-44 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
+              <div className="h-48 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+              <div className="h-36 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+              <div className="h-44 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
             </div>
             <RightPanel>
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-28 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
+                <div key={i} className="h-28 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
               ))}
             </RightPanel>
           </div>

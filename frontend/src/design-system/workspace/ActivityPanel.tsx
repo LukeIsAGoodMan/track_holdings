@@ -7,7 +7,7 @@
 import { useState, useEffect, memo } from 'react'
 import { fetchTransactionHistory } from '@/api/holdings'
 import type { Transaction } from '@/types'
-import { fmtNum } from '@/utils/format'
+import { formatMetric } from '@/utils/formatMetric'
 import SectionCard from '../primitives/SectionCard'
 
 const ACTION_DOT: Record<string, string> = {
@@ -67,10 +67,10 @@ export default memo(function ActivityPanel({ portfolioId, isEn }: Props) {
                       <span className="text-ds-caption tnum text-v2-text-3 ml-auto shrink-0">{timeStr}</span>
                     </div>
                     <div className="text-ds-sm text-v2-text-3 tnum">
-                      {tx.quantity}x @ ${fmtNum(tx.price)}
+                      {tx.quantity}x @ ${formatMetric(tx.price, { type: 'number' })}
                       {isOption && tx.option_type && (
                         <span className="ml-1">
-                          {tx.option_type} ${fmtNum(tx.strike ?? '0')}
+                          {tx.option_type} ${formatMetric(tx.strike, { type: 'number' })}
                         </span>
                       )}
                     </div>
