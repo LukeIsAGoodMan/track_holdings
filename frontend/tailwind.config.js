@@ -25,43 +25,66 @@ export default {
           soft:    '#eef2ff',
         },
 
-        // ── V2 Design System tokens ─────────────────────────────────────
+        // ── V2 Design System tokens (Figma source of truth) ───────────
+        // See: src/design-system/tokens.ts
+        // See: src/design-system/docs/figma-extraction-report.md
         v2: {
-          bg:           '#fafafa',
-          surface:      '#ffffff',
-          'surface-hover':'#f8f9fa',
-          'surface-alt': '#f5f6f8',
-          'text-1':     '#0a0f1a',
-          'text-2':     '#5c6370',
-          'text-3':     '#9ca3af',
-          border:       '#e5e7eb',
-          'border-sub': '#f0f1f3',
-          positive:     '#16a34a',
-          'positive-bg':'#f0fdf4',
-          negative:     '#dc2626',
-          'negative-bg':'#fef2f2',
-          caution:      '#d97706',
-          'caution-bg': '#fffbeb',
-          accent:       '#4f46e5',
-          'accent-soft':'#eef2ff',
-          'accent-muted':'#818cf8',
-          'accent-text':'#3730a3',
+          bg:              '#fafafa',
+          surface:         '#ffffff',
+          'surface-raised':'#f9f9f9',
+          'surface-hover': '#f5f4f4',
+          'surface-alt':   '#f2f2f2',
+          'surface-warm':  '#e4e2dd',
+          'surface-warm-alt':'#ded5d2',
+          'text-1':        '#32302f',
+          'text-2':        '#686664',
+          'text-3':        '#94908d',
+          border:          'rgba(0, 0, 0, 0.08)',
+          'border-sub':    'rgba(0, 0, 0, 0.12)',
+          positive:        '#058a33',
+          'positive-bg':   '#f0fdf4',
+          negative:        '#cd1c13',
+          'negative-bg':   '#fef2f2',
+          caution:         '#d97706',
+          'caution-bg':    '#fffbeb',
+          warning:         '#7e6812',
+          accent:          '#305faa',
+          'accent-hover':  '#4a6fa5',
+          'accent-soft':   '#eef2ff',
+          'accent-muted':  '#7f78df',
+          'accent-text':   '#305faa',
+          'overlay-btn':   'rgba(0, 0, 0, 0.06)',
+          'overlay-badge-blue':  'rgba(169, 188, 229, 0.22)',
+          'overlay-badge-yellow':'rgba(218, 201, 103, 0.24)',
         },
       },
       fontFamily: {
         mono: ['JetBrains Mono', 'Fira Code', 'ui-monospace', 'monospace'],
-        sans: ['Plus Jakarta Sans', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+      },
+      // ── V2 Semantic Typography ────────────────────────────────────────
+      // Usage: text-ds-display, text-ds-h1, text-ds-body, etc.
+      // Source: typography.ts → Figma extraction
+      fontSize: {
+        'ds-display':  ['1.75rem',   { lineHeight: '2.25rem',  letterSpacing: '-0.02em',  fontWeight: '700' }],  // 28px
+        'ds-h1':       ['1.5rem',    { lineHeight: '2rem',     letterSpacing: '-0.01em',  fontWeight: '700' }],  // 24px
+        'ds-h2':       ['1.0625rem', { lineHeight: '1.625rem', letterSpacing: '-0.01em',  fontWeight: '700' }],  // 17px
+        'ds-h3':       ['0.9375rem', { lineHeight: '1.375rem', letterSpacing: '0.001em',  fontWeight: '700' }],  // 15px
+        'ds-body':     ['0.875rem',  { lineHeight: '1.25rem',  letterSpacing: '0.01em',   fontWeight: '700' }],  // 14px bold
+        'ds-body-r':   ['0.875rem',  { lineHeight: '1.25rem',  letterSpacing: '0.01em',   fontWeight: '400' }],  // 14px regular
+        'ds-sm':       ['0.75rem',   { lineHeight: '1rem',     letterSpacing: '0.015em',  fontWeight: '400' }],  // 12px
+        'ds-caption':  ['0.625rem',  { lineHeight: '0.875rem', letterSpacing: '0.02em',   fontWeight: '700' }],  // 10px
       },
       borderRadius: {
-        'v2-sm': '0.5rem',
-        'v2-md': '0.75rem',
-        'v2-lg': '1rem',
-        'v2-xl': '1.25rem',
+        'v2-sm': '0.5rem',    // 8px
+        'v2-md': '0.75rem',   // 12px
+        'v2-lg': '1rem',      // 16px
+        'v2-xl': '1.25rem',   // 20px — DEPRECATED: alias for migration, will be removed in Phase A
       },
       boxShadow: {
-        'v2-sm': '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
-        'v2-md': '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03)',
-        'v2-lg': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03)',
+        'v2-sm':       '0px 8px 24px 0px rgba(0, 0, 0, 0.05)',   // card
+        'v2-md':       '0px 8px 16px 0px rgba(0, 0, 0, 0.04)',   // subtle
+        'v2-lg':       '0px 12px 46px 0px rgba(0, 0, 0, 0.18)',  // elevated
       },
       maxWidth: {
         'v2-content': '1400px',

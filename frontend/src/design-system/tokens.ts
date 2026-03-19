@@ -1,137 +1,100 @@
 /**
  * Design System V2 — Centralized Design Tokens
  *
- * Philosophy: Mercury (structure) + Apple (typography) + Wealthsimple (focus)
+ * SOURCE OF TRUTH: Figma extraction (Wealthsimple dashboard, 2026-03-19)
+ * See: docs/figma-extraction-report.md for raw data
+ * See: docs/refactoring-notes.md for normalization decisions
  *
- * All tokens are exported as typed constants. Tailwind classes reference these
- * via the extended config; components use them directly when needed.
+ * This file owns: colors, spacing, radius, shadows, layout, zIndex.
+ * Typography  → typography.ts (canonical source)
+ * Motion      → motion.ts     (canonical source)
+ *
+ * All tokens exported `as const` for strict typing.
+ * Tailwind classes reference these via extended config.
+ * CSS variables mirror these in design-tokens.css.
  *
  * RULE: No ad-hoc colors, spacing, or typography outside this file.
  */
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 export const colors = {
-  // Surfaces
-  bg:           '#fafafa',     // page background — warmer than slate-50
-  surface:      '#ffffff',     // cards, panels
-  surfaceHover: '#f8f9fa',     // interactive hover on surface
-  surfaceAlt:   '#f5f6f8',     // secondary surface (sidebar, header subtle)
+  // Surfaces — warm-tinted grey scale
+  bg:            '#fafafa',     // page background
+  surface:       '#ffffff',     // canvas — cards, panels, modals
+  surfaceRaised: '#f9f9f9',     // raised — card default (Alabaster)
+  surfaceHover:  '#f5f4f4',     // hover — interactive feedback (Wild Sand)
+  surfaceAlt:    '#f2f2f2',     // muted — skeleton bg, secondary areas
+  surfaceWarm:   '#e4e2dd',     // warm — promo cards, accent surfaces (Westar)
+  surfaceWarmAlt:'#ded5d2',     // warm alt — variant promo (Swiss Coffee)
 
-  // Text
-  textPrimary:   '#0a0f1a',   // near-black — high contrast headings + numbers
-  textSecondary: '#5c6370',   // body copy, descriptions
-  textTertiary:  '#9ca3af',   // labels, placeholders, muted
-  textInverse:   '#ffffff',   // text on dark backgrounds
+  // Text — warm grey hierarchy
+  textPrimary:   '#32302f',     // Dune — headings, primary labels, prices
+  textSecondary: '#686664',     // Ironside Gray — body, descriptions
+  textTertiary:  '#94908d',     // Natural Gray — muted, placeholders, inactive tabs
+  textInverse:   '#ffffff',     // on dark backgrounds
 
-  // Borders
-  border:       '#e5e7eb',    // default border (gray-200)
-  borderSubtle: '#f0f1f3',    // very subtle dividers (used instead of borders)
+  // Borders — alpha-based for surface layering
+  border:        'rgba(0, 0, 0, 0.08)',   // dividers, list separators
+  borderStrong:  'rgba(0, 0, 0, 0.12)',   // stronger separation
 
   // Semantic — Financial
-  positive:     '#16a34a',    // muted green (green-600) — gains, long, bull
-  positiveBg:   '#f0fdf4',    // green-50 — background tint
-  negative:     '#dc2626',    // muted red (red-600) — losses, short, bear
-  negativeBg:   '#fef2f2',    // red-50 — background tint
-  caution:      '#d97706',    // amber-600 — warnings, expiry
-  cautionBg:    '#fffbeb',    // amber-50
+  positive:      '#058a33',     // Salem — gains, long, bull
+  positiveBg:    '#f0fdf4',     // green-50 — background tint
+  negative:      '#cd1c13',     // Thunderbird — losses, short, bear
+  negativeBg:    '#fef2f2',     // red-50 — background tint
+  caution:       '#d97706',     // amber-600 — warnings, expiry
+  cautionBg:     '#fffbeb',     // amber-50
+  warning:       '#7e6812',     // warning text (on yellow badge)
 
-  // Accent — ONE consistent accent throughout
-  accent:       '#4f46e5',    // indigo-600
-  accentSoft:   '#eef2ff',    // indigo-50 — background tint
-  accentMuted:  '#818cf8',    // indigo-400 — secondary accent
-  accentText:   '#3730a3',    // indigo-800 — on light accent backgrounds
+  // Action — Azure accent
+  accent:        '#305faa',     // Azure — primary CTA, links, badges
+  accentHover:   '#4a6fa5',     // San Marino — hover state
+  accentSoft:    '#eef2ff',     // background tint for accent elements
+  accentMuted:   '#7f78df',     // Medium Purple — avatars, secondary accent
+  accentText:    '#305faa',     // text on light accent backgrounds
+
+  // Overlay — alpha colors for layered elements
+  overlayBtnSubtle:  'rgba(0, 0, 0, 0.06)',           // icon button bg
+  overlayBadgeBlue:  'rgba(169, 188, 229, 0.22)',     // blue badge bg
+  overlayBadgeYellow:'rgba(218, 201, 103, 0.24)',     // yellow badge bg
+  overlayGlass:      'rgba(193, 202, 237, 0.50)',     // glass effect bg
 
   // Chrome (shell UI)
-  chrome:       '#ffffff',
-  chromeMuted:  '#6b7280',    // gray-500
+  chrome:        '#ffffff',
+  chromeMuted:   '#94908d',     // aligned with textTertiary
 } as const
 
 // ── Spacing ───────────────────────────────────────────────────────────────────
-// 4-based scale: 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32 / 48
+// 8pt grid with 4pt half-step: 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32 / 40 / 48
 export const spacing = {
-  '1':  '0.25rem',   // 4px
-  '1.5':'0.375rem',  // 6px
-  '2':  '0.5rem',    // 8px
-  '3':  '0.75rem',   // 12px
-  '4':  '1rem',      // 16px
-  '5':  '1.25rem',   // 20px
-  '6':  '1.5rem',    // 24px
-  '8':  '2rem',      // 32px
-  '12': '3rem',      // 48px
+  '0.5': '0.125rem',  // 2px
+  '1':   '0.25rem',   // 4px
+  '1.5': '0.375rem',  // 6px
+  '2':   '0.5rem',    // 8px
+  '3':   '0.75rem',   // 12px
+  '4':   '1rem',      // 16px
+  '5':   '1.25rem',   // 20px
+  '6':   '1.5rem',    // 24px
+  '8':   '2rem',      // 32px
+  '10':  '2.5rem',    // 40px
+  '12':  '3rem',      // 48px
 } as const
 
 // ── Radius ────────────────────────────────────────────────────────────────────
 export const radius = {
-  sm:   '0.5rem',    // 8px — buttons, inputs
-  md:   '0.75rem',   // 12px — cards inner elements
-  lg:   '1rem',      // 16px — cards, panels
-  xl:   '1.25rem',   // 20px — primary containers
-  full: '9999px',    // pills, avatars
+  sm:   '0.5rem',    // 8px — icon buttons, inputs, list row hover
+  md:   '0.75rem',   // 12px — sidebar items, stock logos
+  lg:   '1rem',      // 16px — cards, carousel, main containers
+  full: '9999px',    // pills, avatars, badges, circles
 } as const
 
 // ── Shadows ───────────────────────────────────────────────────────────────────
-// Minimal — Apple-style barely-there elevation
+// Wealthsimple-style: 8-12px offset, soft opacity
 export const shadows = {
-  sm:   '0 1px 2px 0 rgba(0, 0, 0, 0.03)',
-  md:   '0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03)',
-  lg:   '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03)',
-  none: 'none',
-} as const
-
-// ── Typography ────────────────────────────────────────────────────────────────
-// Hierarchy: Numbers > Titles > Labels
-export const typography = {
-  // Hero financial numbers — largest, tightest
-  heroNumber: {
-    fontSize:      '2rem',       // 32px
-    fontWeight:    '600',
-    letterSpacing: '-0.025em',
-    lineHeight:    '1.1',
-    fontFeatureSettings: '"tnum"',
-  },
-  // Large metric values
-  metricValue: {
-    fontSize:      '1.5rem',     // 24px
-    fontWeight:    '600',
-    letterSpacing: '-0.02em',
-    lineHeight:    '1.2',
-    fontFeatureSettings: '"tnum"',
-  },
-  // Secondary metric values
-  metricValueSm: {
-    fontSize:      '1.125rem',   // 18px
-    fontWeight:    '600',
-    letterSpacing: '-0.015em',
-    lineHeight:    '1.3',
-    fontFeatureSettings: '"tnum"',
-  },
-  // Section titles
-  sectionTitle: {
-    fontSize:      '0.9375rem',  // 15px
-    fontWeight:    '600',
-    letterSpacing: '-0.01em',
-    lineHeight:    '1.4',
-  },
-  // Small labels / captions
-  label: {
-    fontSize:      '0.6875rem',  // 11px
-    fontWeight:    '500',
-    letterSpacing: '0.04em',
-    lineHeight:    '1.5',
-    textTransform: 'uppercase' as const,
-  },
-  // Body text
-  body: {
-    fontSize:      '0.875rem',   // 14px
-    fontWeight:    '400',
-    lineHeight:    '1.6',
-  },
-  // Small body / table data
-  bodySm: {
-    fontSize:      '0.8125rem',  // 13px
-    fontWeight:    '400',
-    lineHeight:    '1.5',
-  },
+  card:     '0px 8px 24px 0px rgba(0, 0, 0, 0.05)',   // standard cards
+  subtle:   '0px 8px 16px 0px rgba(0, 0, 0, 0.04)',   // subtle floating elements
+  elevated: '0px 12px 46px 0px rgba(0, 0, 0, 0.18)',  // high-emphasis float (modals, FABs)
+  none:     'none',
 } as const
 
 // ── Layout ────────────────────────────────────────────────────────────────────
@@ -144,14 +107,6 @@ export const layout = {
   pageGutter:      '1.5rem',     // 24px — px-6
   pageGutterMd:    '2rem',       // 32px — px-8
   sectionGap:      '1.25rem',    // 20px — gap between sections
-} as const
-
-// ── Animation ─────────────────────────────────────────────────────────────────
-export const motion = {
-  fast:     '150ms',
-  default:  '200ms',
-  slow:     '300ms',
-  easing:   'cubic-bezier(0.4, 0, 0.2, 1)',
 } as const
 
 // ── Z-Index ───────────────────────────────────────────────────────────────────

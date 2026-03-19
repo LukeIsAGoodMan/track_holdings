@@ -4,8 +4,17 @@
  * Usage: import { SectionCard, MetricBlock, ... } from '@/design-system'
  */
 
-// Tokens
+// Tokens — colors, spacing, radius, shadows, layout, zIndex
 export * from './tokens'
+
+// Typography — fontFamily, fontWeight, typographyScale (canonical source)
+export * from './typography'
+
+// Motion — duration, easing, skeleton, transition helper (canonical source)
+export * from './motion'
+
+// Types — ThemeTokens, semantic key unions
+export type * from './types'
 
 // Primitives
 export { default as SectionCard }    from './primitives/SectionCard'
