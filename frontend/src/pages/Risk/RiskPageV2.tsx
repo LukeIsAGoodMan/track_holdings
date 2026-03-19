@@ -40,7 +40,7 @@ import EmptyState          from '@/design-system/primitives/EmptyState'
 const TOOLTIP_STYLE = {
   contentStyle: {
     background: 'var(--color-v2-surface, #ffffff)',
-    border: '1px solid var(--color-v2-border-sub, #e2e8f0)',
+    border: '1px solid var(--ds-border-subtle, #e2e8f0)',
     borderRadius: 8,
     fontSize: 12,
     boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
@@ -174,13 +174,13 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
 
   return (
     <SectionCard noPadding>
-      <div className="px-5 py-3 border-b border-v2-border-sub flex items-center justify-between flex-wrap gap-3">
+      <div className="px-5 py-3 border-b border-v2-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-[15px] font-semibold text-v2-text-1 tracking-tight">
+          <h3 className="text-ds-h3 font-bold text-v2-text-1">
             {t('alpha_dashboard')}
           </h3>
           {hasHistory && (
-            <span className="text-[10px] text-v2-text-3 font-mono">
+            <span className="text-ds-caption text-v2-text-3 font-mono">
               {t('nlv_normalized')}
             </span>
           )}
@@ -190,7 +190,7 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
           <div className="flex items-center gap-4 text-xs tnum">
             {history.alpha_vs_spy != null && (
               <div className="text-right">
-                <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-0.5">
+                <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">
                   {t('alpha_relative')}
                 </div>
                 <span className={`font-bold text-sm ${history.alpha_vs_spy >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
@@ -200,12 +200,12 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
             )}
             {history.sharpe_ratio != null && (
               <div className="text-right">
-                <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-0.5">
+                <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">
                   {t('sharpe_ratio')}
                 </div>
                 <span className={`font-bold text-sm ${history.sharpe_ratio >= 1 ? 'text-v2-positive' : history.sharpe_ratio >= 0 ? 'text-v2-caution' : 'text-v2-negative'}`}>
                   {history.sharpe_ratio.toFixed(2)}
-                  <span className="text-[10px] font-normal text-v2-text-3 ml-1">{t('indicative')}</span>
+                  <span className="text-ds-caption font-normal text-v2-text-3 ml-1">{t('indicative')}</span>
                 </span>
               </div>
             )}
@@ -218,8 +218,8 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
         <div className="flex flex-wrap items-center gap-2">
           {extraBm.map((sym) => (
             <span key={sym}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px]
-                         font-semibold border"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-ds-sm
+                         font-bold border"
               style={{ color: lineColor(sym, extraBm), borderColor: lineColor(sym, extraBm) + '60' }}
             >
               {sym}
@@ -233,7 +233,7 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
               onChange={(e) => setInputSym(e.target.value.toUpperCase())}
               onKeyDown={(e) => e.key === 'Enter' && addSymbol()}
               placeholder={t('benchmark_search')}
-              className="w-44 bg-v2-surface border border-v2-border-sub rounded-v2-sm px-2.5 py-1 text-xs
+              className="w-44 bg-v2-surface border border-v2-border rounded-v2-sm px-2.5 py-1 text-xs
                          text-v2-text-1 placeholder-v2-text-3
                          focus:outline-none focus:border-v2-accent/50 transition-colors"
             />
@@ -241,7 +241,7 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
               onClick={addSymbol}
               disabled={!inputSym.trim()}
               className="px-3 py-1 rounded-v2-sm bg-v2-accent-soft border border-v2-accent/30 text-v2-accent
-                         text-xs font-semibold hover:bg-v2-accent-soft/80 transition-colors
+                         text-xs font-bold hover:bg-v2-accent-soft/80 transition-colors
                          disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {t('add_benchmark')}
@@ -261,7 +261,7 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
         ) : (
           <ResponsiveContainer width="100%" height={280}>
             <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-v2-border-sub, #f1f5f9)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--ds-border-subtle, #f1f5f9)" />
               <XAxis
                 dataKey="date" interval={xInterval}
                 tick={{ fill: 'var(--color-v2-text-3, #94a3b8)', fontSize: 10 }}
@@ -301,7 +301,7 @@ const AlphaDashboardV2 = memo(function AlphaDashboardV2({
         )}
 
         {hasHistory && history.first_date && (
-          <p className="text-[10px] text-v2-text-3 text-right">
+          <p className="text-ds-caption text-v2-text-3 text-right">
             Normalized to 100 at {history.first_date}
           </p>
         )}
@@ -353,32 +353,32 @@ const AttributionPanelV2 = memo(function AttributionPanelV2({
 
   return (
     <SectionCard noPadding>
-      <div className="px-5 py-3 border-b border-v2-border-sub flex items-center justify-between flex-wrap gap-3">
+      <div className="px-5 py-3 border-b border-v2-border flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-2">
-          <h3 className="text-[15px] font-semibold text-v2-text-1 tracking-tight">
+          <h3 className="text-ds-h3 font-bold text-v2-text-1">
             {t('pnl_attribution')}
           </h3>
           {hasData && (
-            <span className="text-[10px] text-v2-text-3">{t('attr_subtitle')}</span>
+            <span className="text-ds-caption text-v2-text-3">{t('attr_subtitle')}</span>
           )}
         </div>
 
         {hasData && (
           <div className="flex items-center gap-4 text-xs tnum">
             <div className="text-right">
-              <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-0.5">{t('attr_time_decay')}</div>
+              <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">{t('attr_time_decay')}</div>
               <span className={`font-bold text-sm ${totalDecay >= 0 ? 'text-v2-caution' : 'text-v2-negative'}`}>
                 {fmtUsdShort(totalDecay)}
               </span>
             </div>
             <div className="text-right">
-              <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-0.5">{t('attr_directional')}</div>
+              <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">{t('attr_directional')}</div>
               <span className={`font-bold text-sm ${totalDir >= 0 ? 'text-v2-accent' : 'text-v2-negative'}`}>
                 {fmtUsdShort(totalDir)}
               </span>
             </div>
-            <div className="text-right border-l border-v2-border-sub pl-4">
-              <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-0.5">{t('attr_total')}</div>
+            <div className="text-right border-l border-v2-border pl-4">
+              <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">{t('attr_total')}</div>
               <span className={`font-bold text-sm ${totalUnreal >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
                 {fmtUsdShort(totalUnreal)}
               </span>
@@ -399,7 +399,7 @@ const AttributionPanelV2 = memo(function AttributionPanelV2({
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--color-v2-border-sub, #f1f5f9)" />
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--ds-border-subtle, #f1f5f9)" />
               <XAxis
                 dataKey="label"
                 tick={{ fill: 'var(--color-v2-text-3, #94a3b8)', fontSize: 10 }}
@@ -458,7 +458,7 @@ const ExpiryChartV2 = memo(function ExpiryChartV2({
       <SectionCard.Body>
         <ResponsiveContainer width="100%" height={200}>
           <BarChart data={data} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-v2-border-sub, #f1f5f9)" />
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--ds-border-subtle, #f1f5f9)" />
             <XAxis dataKey="label" tick={{ fill: 'var(--color-v2-text-3, #94a3b8)', fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: 'var(--color-v2-text-3, #94a3b8)', fontSize: 11 }} axisLine={false} tickLine={false} />
             <Tooltip {...TOOLTIP_STYLE} />
@@ -498,13 +498,13 @@ const SectorExposureV2 = memo(function SectorExposureV2({
             const isLong = delta >= 0
             return (
               <div key={tag}>
-                <div className="flex items-center justify-between text-[12px] mb-1">
-                  <span className="text-v2-text-1 font-medium">{tag}</span>
-                  <span className={`tnum font-semibold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                <div className="flex items-center justify-between text-ds-sm mb-1">
+                  <span className="text-v2-text-1 font-bold">{tag}</span>
+                  <span className={`tnum font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
                     {isLong ? '+' : ''}{fmtNum(deltaStr)}
                   </span>
                 </div>
-                <div className="h-1.5 rounded-full bg-v2-border-sub overflow-hidden">
+                <div className="h-1.5 rounded-full bg-v2-surface-alt overflow-hidden">
                   <div className={`h-full rounded-full ${isLong ? 'bg-v2-positive/60' : 'bg-v2-negative/60'}`}
                     style={{ width: `${pct}%` }} />
                 </div>
@@ -536,10 +536,10 @@ const BenchmarkPanelV2 = memo(function BenchmarkPanelV2({
             const isPos = ytd != null && ytd >= 0
             const cls = ytd == null ? 'text-v2-text-3' : isPos ? 'text-v2-positive' : 'text-v2-negative'
             return (
-              <div key={bench.symbol} className="bg-v2-surface-alt rounded-v2-md border border-v2-border-sub p-4 text-center">
-                <div className="text-[10px] font-bold text-v2-text-3 uppercase tracking-wider mb-2">{bench.symbol}</div>
+              <div key={bench.symbol} className="bg-v2-surface-alt rounded-v2-md border border-v2-border p-4 text-center">
+                <div className="text-ds-caption font-bold text-v2-text-3 uppercaser mb-2">{bench.symbol}</div>
                 <div className={`text-xl font-bold tnum ${cls}`}>{isPos ? '+' : ''}{pctStr}</div>
-                <div className="text-[10px] text-v2-text-3 mt-1 uppercase tracking-wider">
+                <div className="text-ds-caption text-v2-text-3 mt-1 uppercaser">
                   {isEn ? 'YTD Return' : 'YTD回报'}
                 </div>
               </div>
@@ -582,7 +582,7 @@ const InsightPanelV2 = memo(function InsightPanelV2({
       <SectionCard.Header
         title={t('insights_title')}
         action={
-          <span className="text-[10px] px-2 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent border border-v2-accent/20 font-semibold">
+          <span className="text-ds-caption px-2 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent border border-v2-accent/20 font-bold">
             LLM-Ready
           </span>
         }
@@ -593,19 +593,19 @@ const InsightPanelV2 = memo(function InsightPanelV2({
             {[1, 2, 3].map((i) => <div key={i} className="h-3 bg-v2-surface-alt rounded animate-pulse" />)}
           </div>
         ) : !data ? (
-          <p className="text-[12px] text-v2-text-3">{t('var_no_data')}</p>
+          <p className="text-ds-sm text-v2-text-3">{t('var_no_data')}</p>
         ) : (
           <div className="space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <div>
-                <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-0.5">{t('insights_posture')}</div>
-                <span className={`text-[12px] font-bold font-mono ${postureColor}`}>
+                <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">{t('insights_posture')}</div>
+                <span className={`text-ds-sm font-bold font-mono ${postureColor}`}>
                   {data.risk_posture.replace(/_/g, ' ')}
                 </span>
               </div>
-              <div className="border-l border-v2-border-sub pl-3">
-                <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-0.5">{t('dominant_risk')}</div>
-                <span className="text-[12px] font-bold text-v2-text-1 uppercase">{data.dominant_risk}</span>
+              <div className="border-l border-v2-border pl-3">
+                <div className="text-ds-caption text-v2-text-3 uppercaser mb-0.5">{t('dominant_risk')}</div>
+                <span className="text-ds-sm font-bold text-v2-text-1 uppercase">{data.dominant_risk}</span>
               </div>
             </div>
 
@@ -613,14 +613,14 @@ const InsightPanelV2 = memo(function InsightPanelV2({
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(data.strategy_mix).map(([strat, count]) => (
                   <span key={strat}
-                    className="text-[10px] px-2 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-2 font-semibold border border-v2-border-sub">
+                    className="text-ds-caption px-2 py-0.5 rounded-full bg-v2-surface-alt text-v2-text-2 font-bold border border-v2-border">
                     {count}x {strat}
                   </span>
                 ))}
               </div>
             )}
 
-            <p className="text-[11px] text-v2-text-2 leading-relaxed border-t border-v2-border-sub pt-3">
+            <p className="text-ds-sm text-v2-text-2 leading-relaxed border-t border-v2-border pt-3">
               {data.natural_language_hint}
             </p>
           </div>
@@ -686,9 +686,9 @@ export default function RiskPageV2() {
       {/* ── Portfolio breadcrumb ────────────────────────────────── */}
       {selectedPortfolio && (
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold text-v2-text-1">{selectedPortfolio.name}</span>
+          <span className="text-ds-body-r font-bold text-v2-text-1">{selectedPortfolio.name}</span>
           {selectedPortfolio.is_folder && (
-            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent">
+            <span className="text-ds-caption font-bold uppercase px-1.5 py-0.5 rounded-md bg-v2-accent-soft text-v2-accent">
               {isEn ? 'Folder' : '文件夹'}
             </span>
           )}
@@ -706,22 +706,22 @@ export default function RiskPageV2() {
       {loading ? (
         <div className="space-y-5">
           {/* Hero skeleton — VaR headline + 4 greek metrics */}
-          <div className="h-16 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+          <div className="h-16 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-20 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+              <div key={i} className="h-20 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
             ))}
           </div>
           {/* Grid skeleton: main + right panel */}
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
             <div className="xl:col-span-8 space-y-4">
-              <div className="h-48 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
-              <div className="h-36 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
-              <div className="h-44 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+              <div className="h-48 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
+              <div className="h-36 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
+              <div className="h-44 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
             </div>
             <div className="hidden xl:block xl:col-span-4 space-y-4">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-28 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+                <div key={i} className="h-28 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
               ))}
             </div>
           </div>
@@ -777,7 +777,7 @@ export default function RiskPageV2() {
           </div>
 
           {/* ── Last updated ───────────────────────────────────── */}
-          <p className="text-[10px] text-v2-text-3 text-right tnum">
+          <p className="text-ds-caption text-v2-text-3 text-right tnum">
             {isEn ? 'as of' : '截至'} {new Date(dashboard.as_of).toLocaleTimeString()}
           </p>
         </>

@@ -38,11 +38,11 @@ export default function ChartContainer({
   className = '',
 }: Props) {
   return (
-    <div className={`bg-v2-surface rounded-v2-xl shadow-v2-sm overflow-hidden ${className}`}>
+    <div className={`bg-v2-surface-raised rounded-v2-lg shadow-v2-sm overflow-hidden ${className}`}>
       {(title || action) && (
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+        <div className="flex items-center justify-between px-6 pt-4 pb-2">
           {title && (
-            <h3 className="text-[15px] font-semibold text-v2-text-1 tracking-tight">{title}</h3>
+            <h3 className="text-ds-h3 text-v2-text-1">{title}</h3>
           )}
           {action && <div className="flex items-center gap-2">{action}</div>}
         </div>
@@ -53,7 +53,7 @@ export default function ChartContainer({
             <SkeletonLoader variant="block" width="w-full" height="h-full" className="mx-3 mb-4" />
           </div>
         ) : isEmpty ? (
-          <div className="flex items-center justify-center h-full text-sm text-v2-text-3">
+          <div className="flex items-center justify-center h-full text-ds-body-r text-v2-text-3">
             {emptyMessage}
           </div>
         ) : (

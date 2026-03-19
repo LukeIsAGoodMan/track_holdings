@@ -95,7 +95,7 @@ function Tooltip({ label, show }: { label: string; show: boolean }) {
   if (!show) return null
   return (
     <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50
-                     bg-v2-text-1 text-white text-[11px] font-medium
+                     bg-v2-text-1 text-white text-ds-sm font-bold
                      px-2.5 py-1 rounded-v2-sm whitespace-nowrap
                      pointer-events-none shadow-v2-md
                      opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -118,7 +118,7 @@ export default function SidebarV2() {
     <aside
       className={`
         shrink-0 bg-v2-surface h-[calc(100vh-3.5rem)] sticky top-14
-        flex flex-col border-r border-v2-border-sub overflow-hidden
+        flex flex-col border-r border-v2-border overflow-hidden
         transition-[width] duration-200 ease-out
         ${isExpanded ? 'w-v2-sidebar' : 'w-v2-sidebar-sm'}
       `}
@@ -128,11 +128,11 @@ export default function SidebarV2() {
         {NAV_GROUPS.map((group, gi) => (
           <div key={group.key}>
             {/* Group divider (between groups, not before first) */}
-            {gi > 0 && <div className="my-2 mx-2 border-t border-v2-border-sub" />}
+            {gi > 0 && <div className="my-2 mx-2 border-t border-v2-border" />}
 
             {/* Group title — visible only when expanded */}
             {isExpanded && (
-              <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-v2-text-3 px-3 mb-1.5 mt-1">
+              <div className="text-ds-caption uppercase tracking-widest text-v2-text-3 px-3 mb-1.5 mt-1">
                 {isEn ? group.en : group.zh}
               </div>
             )}
@@ -148,11 +148,11 @@ export default function SidebarV2() {
                     to={to}
                     className={`
                       flex items-center gap-3 rounded-v2-md
-                      text-[13px] font-medium transition-colors duration-150
+                      text-ds-body-r transition-colors duration-150
                       group relative
                       ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
                       ${isActive
-                        ? 'bg-v2-accent-soft text-v2-accent'
+                        ? 'bg-v2-accent-soft text-v2-accent font-bold'
                         : 'text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1'
                       }
                     `}
@@ -176,8 +176,8 @@ export default function SidebarV2() {
 
         {/* ── Portfolio Context ────────────────────────────────────── */}
         {isExpanded && (
-          <div className="pt-2 mt-2 border-t border-v2-border-sub">
-            <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-v2-text-3 px-3 mb-1.5">
+          <div className="pt-2 mt-2 border-t border-v2-border">
+            <div className="text-ds-caption uppercase tracking-widest text-v2-text-3 px-3 mb-1.5">
               {isEn ? 'Portfolios' : '投资组合'}
             </div>
             <div className="space-y-0.5 max-h-44 overflow-y-auto">
@@ -191,7 +191,7 @@ export default function SidebarV2() {
                 />
               ))}
               {portfolios.length === 0 && (
-                <div className="text-[11px] text-v2-text-3 px-3 py-2 italic">
+                <div className="text-ds-sm text-v2-text-3 px-3 py-2 italic">
                   {isEn ? 'No portfolios' : '暂无组合'}
                 </div>
               )}
@@ -201,13 +201,13 @@ export default function SidebarV2() {
       </nav>
 
       {/* ── Workflow Actions ──────────────────────────────────────── */}
-      <div className={`border-t border-v2-border-sub ${isExpanded ? 'p-3' : 'p-2'} space-y-1`}>
+      <div className={`border-t border-v2-border ${isExpanded ? 'p-3' : 'p-2'} space-y-1`}>
         <button
           onClick={() => openTradeEntry()}
           className={`
             flex items-center gap-2.5 w-full rounded-v2-md transition-colors duration-150
             text-v2-accent hover:bg-v2-accent-soft group relative
-            ${isExpanded ? 'px-3 py-2 text-[13px] font-medium' : 'justify-center py-2.5'}
+            ${isExpanded ? 'px-3 py-2 text-ds-body-r font-bold' : 'justify-center py-2.5'}
           `}
         >
           {icons.trade}
@@ -222,7 +222,7 @@ export default function SidebarV2() {
           className={`
             flex items-center gap-2.5 w-full rounded-v2-md transition-colors duration-150
             text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1 group relative
-            ${isExpanded ? 'px-3 py-2 text-[13px] font-medium' : 'justify-center py-2.5'}
+            ${isExpanded ? 'px-3 py-2 text-ds-body-r' : 'justify-center py-2.5'}
           `}
         >
           {icons.alerts}
@@ -235,7 +235,7 @@ export default function SidebarV2() {
       </div>
 
       {/* ── Collapse toggle ──────────────────────────────────────── */}
-      <div className="border-t border-v2-border-sub p-2">
+      <div className="border-t border-v2-border p-2">
         <button
           onClick={toggleExpand}
           className="flex items-center justify-center w-full py-2 rounded-v2-sm
@@ -273,10 +273,10 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
       <button
         onClick={() => onSelect(portfolio.id)}
         className={`
-          flex items-center gap-2 w-full rounded-v2-sm text-left text-[12px]
+          flex items-center gap-2 w-full rounded-v2-sm text-left text-ds-sm
           py-1.5 transition-colors duration-150
           ${isSelected
-            ? 'bg-v2-accent-soft text-v2-accent font-semibold'
+            ? 'bg-v2-accent-soft text-v2-accent font-bold'
             : 'text-v2-text-2 hover:bg-v2-surface-alt'
           }
         `}

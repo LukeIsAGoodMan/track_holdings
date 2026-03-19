@@ -1,7 +1,7 @@
 /**
  * PageHeader — page-level title + subtitle + right action slot.
  *
- * Apple-minimal: generous vertical breathing room, tight typography.
+ * Uses semantic typography: h2 for title, ds-sm for subtitle.
  */
 import type { ReactNode } from 'react'
 
@@ -22,11 +22,11 @@ export default function PageHeader({
   return (
     <div className={`flex items-start justify-between mb-6 ${className}`}>
       <div>
-        <h1 className="text-xl font-semibold text-v2-text-1 tracking-tight">
+        <h1 className="text-ds-h2 text-v2-text-1">
           {title}
         </h1>
         {subtitle && (
-          <p className="text-sm text-v2-text-3 mt-0.5">{subtitle}</p>
+          <p className="text-ds-sm text-v2-text-3 mt-0.5">{subtitle}</p>
         )}
       </div>
       {action && <div className="flex items-center gap-2 shrink-0">{action}</div>}

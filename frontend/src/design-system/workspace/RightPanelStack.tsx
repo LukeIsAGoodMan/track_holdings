@@ -39,8 +39,8 @@ export const QuickRiskCard = memo(function QuickRiskCard({ riskDash, isEn }: Qui
         <div className="space-y-2">
           {rows.map(({ label, value, color }) => (
             <div key={label} className="flex items-center justify-between">
-              <span className="text-[12px] text-v2-text-3">{label}</span>
-              <span className={`text-[13px] font-semibold tnum ${color}`}>{value}</span>
+              <span className="text-ds-sm text-v2-text-3">{label}</span>
+              <span className={`text-ds-body-r font-bold tnum ${color}`}>{value}</span>
             </div>
           ))}
         </div>
@@ -78,8 +78,8 @@ export const AllocationCard = memo(function AllocationCard({ holdings, isEn }: A
             return (
               <div key={h.symbol}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[12px] font-semibold text-v2-text-1">{h.symbol}</span>
-                  <span className="text-[11px] tnum text-v2-text-3">{pct.toFixed(0)}%</span>
+                  <span className="text-ds-sm font-bold text-v2-text-1">{h.symbol}</span>
+                  <span className="text-ds-sm tnum text-v2-text-3">{pct.toFixed(0)}%</span>
                 </div>
                 <div className="h-1 bg-v2-surface-alt rounded-full overflow-hidden">
                   <div
@@ -115,12 +115,12 @@ export const CashCard = memo(function CashCard({ cash, isEn }: CashProps) {
       <SectionCard.Body>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-[12px] text-v2-text-3">{isEn ? 'Balance' : '余额'}</span>
-            <span className="text-[13px] font-semibold tnum text-v2-text-1">{fmtUSD(String(balance))}</span>
+            <span className="text-ds-sm text-v2-text-3">{isEn ? 'Balance' : '余额'}</span>
+            <span className="text-ds-body-r font-bold tnum text-v2-text-1">{fmtUSD(String(balance))}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-[12px] text-v2-text-3">{isEn ? 'Realized P&L' : '已实现'}</span>
-            <span className={`text-[13px] font-semibold tnum ${realized > 0 ? 'text-v2-positive' : realized < 0 ? 'text-v2-negative' : 'text-v2-text-2'}`}>
+            <span className="text-ds-sm text-v2-text-3">{isEn ? 'Realized P&L' : '已实现'}</span>
+            <span className={`text-ds-body-r font-bold tnum ${realized > 0 ? 'text-v2-positive' : realized < 0 ? 'text-v2-negative' : 'text-v2-text-2'}`}>
               {realized !== 0 ? (realized >= 0 ? '+' : '') + fmtUSD(String(Math.round(realized))) : '—'}
             </span>
           </div>

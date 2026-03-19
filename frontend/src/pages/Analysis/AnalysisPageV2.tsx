@@ -54,7 +54,7 @@ function AnalysisPageSkeleton() {
   return (
     <div className="space-y-5">
       {/* Hero skeleton */}
-      <div className="bg-v2-surface rounded-v2-xl shadow-v2-sm p-6 animate-pulse">
+      <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6 animate-pulse">
         <div className="flex items-end justify-between gap-4">
           <div className="space-y-2">
             <div className="h-5 w-24 bg-v2-surface-alt rounded-v2-sm" />
@@ -72,12 +72,12 @@ function AnalysisPageSkeleton() {
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
         <div className="xl:col-span-8 space-y-5">
           {/* Chart skeleton */}
-          <div className="bg-v2-surface rounded-v2-xl shadow-v2-sm overflow-hidden animate-pulse">
+          <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm overflow-hidden animate-pulse">
             <div className="px-5 pt-4 pb-2 h-5 w-40 bg-v2-surface-alt rounded-v2-sm" />
             <div className="h-80 mx-5 mb-4 bg-v2-surface-alt rounded-v2-md" />
           </div>
           {/* Battle report skeleton */}
-          <div className="bg-v2-surface rounded-v2-xl shadow-v2-sm p-5 animate-pulse space-y-3">
+          <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-5 animate-pulse space-y-3">
             <div className="h-4 w-32 bg-v2-surface-alt rounded-v2-sm" />
             <div className="h-3 w-full bg-v2-surface-alt rounded-v2-sm" />
             <div className="h-3 w-3/4 bg-v2-surface-alt rounded-v2-sm" />
@@ -86,7 +86,7 @@ function AnalysisPageSkeleton() {
         </div>
         <div className="xl:col-span-4 space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-v2-surface rounded-v2-xl shadow-v2-sm p-5 animate-pulse">
+            <div key={i} className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-5 animate-pulse">
               <div className="h-4 w-24 bg-v2-surface-alt rounded-v2-sm mb-3" />
               <div className="space-y-2">
                 {[1, 2, 3].map((j) => <div key={j} className="h-3 bg-v2-surface-alt rounded-v2-sm" />)}
@@ -113,23 +113,23 @@ function LevelsPanel({ result, isEn }: { result: AnalysisResult; isEn: boolean }
           {/* Resistance ladder */}
           {resistances.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-v2-negative font-semibold mb-2">
+              <div className="text-ds-caption uppercase text-v2-negative font-bold mb-2">
                 {isEn ? 'Resistance' : '阻力'}
               </div>
               <div className="space-y-1.5">
                 {resistances.slice(0, 4).map((z, i) => {
                   const pctAway = price > 0 ? ((z.center - price) / price * 100).toFixed(1) : '—'
                   return (
-                    <div key={i} className="flex items-center justify-between text-[12px]">
+                    <div key={i} className="flex items-center justify-between text-ds-sm">
                       <div className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-v2-negative shrink-0" />
-                        <span className="tnum font-semibold text-v2-text-1">${z.center.toFixed(2)}</span>
+                        <span className="tnum font-bold text-v2-text-1">${z.center.toFixed(2)}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         {z.zone_type && (
-                          <span className="text-[10px] text-v2-text-3">{z.zone_type}</span>
+                          <span className="text-ds-caption text-v2-text-3">{z.zone_type}</span>
                         )}
-                        <span className="tnum text-v2-negative text-[11px]">+{pctAway}%</span>
+                        <span className="tnum text-v2-negative text-ds-sm">+{pctAway}%</span>
                       </div>
                     </div>
                   )
@@ -139,12 +139,12 @@ function LevelsPanel({ result, isEn }: { result: AnalysisResult; isEn: boolean }
           )}
 
           {/* Current price marker */}
-          <div className="flex items-center gap-2 py-1.5 border-y border-v2-border-sub">
+          <div className="flex items-center gap-2 py-1.5 border-y border-v2-border">
             <span className="w-2 h-2 rounded-full bg-v2-accent shrink-0" />
-            <span className="text-[13px] font-bold tnum text-v2-text-1">
+            <span className="text-ds-body-r font-bold tnum text-v2-text-1">
               ${price.toFixed(2)}
             </span>
-            <span className="text-[10px] text-v2-text-3 ml-auto">
+            <span className="text-ds-caption text-v2-text-3 ml-auto">
               {isEn ? 'Current' : '当前'}
             </span>
           </div>
@@ -152,23 +152,23 @@ function LevelsPanel({ result, isEn }: { result: AnalysisResult; isEn: boolean }
           {/* Support ladder */}
           {supports.length > 0 && (
             <div>
-              <div className="text-[10px] uppercase tracking-widest text-v2-positive font-semibold mb-2">
+              <div className="text-ds-caption uppercase text-v2-positive font-bold mb-2">
                 {isEn ? 'Support' : '支撑'}
               </div>
               <div className="space-y-1.5">
                 {supports.slice(0, 4).map((z, i) => {
                   const pctAway = price > 0 ? ((z.center - price) / price * 100).toFixed(1) : '—'
                   return (
-                    <div key={i} className="flex items-center justify-between text-[12px]">
+                    <div key={i} className="flex items-center justify-between text-ds-sm">
                       <div className="flex items-center gap-2">
                         <span className="w-1.5 h-1.5 rounded-full bg-v2-positive shrink-0" />
-                        <span className="tnum font-semibold text-v2-text-1">${z.center.toFixed(2)}</span>
+                        <span className="tnum font-bold text-v2-text-1">${z.center.toFixed(2)}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         {z.zone_type && (
-                          <span className="text-[10px] text-v2-text-3">{z.zone_type}</span>
+                          <span className="text-ds-caption text-v2-text-3">{z.zone_type}</span>
                         )}
-                        <span className="tnum text-v2-positive text-[11px]">{pctAway}%</span>
+                        <span className="tnum text-v2-positive text-ds-sm">{pctAway}%</span>
                       </div>
                     </div>
                   )
@@ -178,7 +178,7 @@ function LevelsPanel({ result, isEn }: { result: AnalysisResult; isEn: boolean }
           )}
 
           {supports.length === 0 && resistances.length === 0 && (
-            <p className="text-[12px] text-v2-text-3 text-center py-4">
+            <p className="text-ds-sm text-v2-text-3 text-center py-4">
               {isEn ? 'No levels detected' : '未检测到关键价位'}
             </p>
           )}
@@ -209,36 +209,36 @@ function MacroContextCard({ result, isEn }: { result: AnalysisResult; isEn: bool
       <SectionCard.Header title={isEn ? 'Macro Context' : '宏观环境'} />
       <SectionCard.Body>
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-[12px]">
+          <div className="flex items-center justify-between text-ds-sm">
             <span className="text-v2-text-3">VIX</span>
-            <span className={`font-semibold tnum ${REGIME_STYLES[macro.vix_regime] ?? 'text-v2-text-1'}`}>
+            <span className={`font-bold tnum ${REGIME_STYLES[macro.vix_regime] ?? 'text-v2-text-1'}`}>
               {macro.vix_level != null ? macro.vix_level.toFixed(1) : '—'}
-              <span className="text-[10px] text-v2-text-3 ml-1">({macro.vix_regime})</span>
+              <span className="text-ds-caption text-v2-text-3 ml-1">({macro.vix_regime})</span>
             </span>
           </div>
-          <div className="flex items-center justify-between text-[12px]">
+          <div className="flex items-center justify-between text-ds-sm">
             <span className="text-v2-text-3">{isEn ? '10Y Treasury' : '10年期国债'}</span>
-            <span className={`font-semibold tnum ${RATE_STYLES[macro.rate_pressure_regime] ?? 'text-v2-text-1'}`}>
+            <span className={`font-bold tnum ${RATE_STYLES[macro.rate_pressure_regime] ?? 'text-v2-text-1'}`}>
               {macro.treasury_10y != null ? `${macro.treasury_10y.toFixed(2)}%` : '—'}
             </span>
           </div>
-          <div className="flex items-center justify-between text-[12px]">
+          <div className="flex items-center justify-between text-ds-sm">
             <span className="text-v2-text-3">{isEn ? 'Rate Pressure' : '利率压力'}</span>
-            <span className={`font-semibold ${RATE_STYLES[macro.rate_pressure_regime] ?? 'text-v2-text-1'}`}>
+            <span className={`font-bold ${RATE_STYLES[macro.rate_pressure_regime] ?? 'text-v2-text-1'}`}>
               {macro.rate_pressure_regime}
             </span>
           </div>
-          <div className="flex items-center justify-between text-[12px]">
+          <div className="flex items-center justify-between text-ds-sm">
             <span className="text-v2-text-3">{isEn ? 'Haircut' : '折扣'}</span>
-            <span className="font-semibold tnum text-v2-text-1">
+            <span className="font-bold tnum text-v2-text-1">
               {macro.recommended_haircut_pct}%
             </span>
           </div>
 
           {macro.alerts.length > 0 && (
-            <div className="border-t border-v2-border-sub pt-2 space-y-1.5">
+            <div className="border-t border-v2-border pt-2 space-y-1.5">
               {macro.alerts.map((alert, i) => (
-                <div key={i} className="flex items-start gap-2 text-[11px]">
+                <div key={i} className="flex items-start gap-2 text-ds-sm">
                   <span className="w-1.5 h-1.5 rounded-full bg-v2-caution shrink-0 mt-1" />
                   <span className="text-v2-text-2">{alert}</span>
                 </div>
@@ -267,19 +267,19 @@ function ScenarioNarrativePanel({ result, isEn }: { result: AnalysisResult; isEn
         <div className="space-y-4">
           {/* Scenario + Regime */}
           <div className="flex items-center gap-3 flex-wrap">
-            <span className={`text-[13px] font-bold ${biasColor}`}>
+            <span className={`text-ds-body-r font-bold ${biasColor}`}>
               {scenario.bias.replace(/_/g, ' ')}
             </span>
-            <span className="text-[11px] px-2 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-semibold">
+            <span className="text-ds-sm px-2 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
               {scenario.scenario.replace(/_/g, ' ')}
             </span>
-            <span className="text-[11px] px-2 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-semibold">
+            <span className="text-ds-sm px-2 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
               {scenario.confidence}
             </span>
           </div>
 
           {/* Setup description */}
-          <p className="text-[12px] text-v2-text-2 leading-relaxed">
+          <p className="text-ds-sm text-v2-text-2 leading-relaxed">
             {scenario.setup}
           </p>
 
@@ -288,20 +288,20 @@ function ScenarioNarrativePanel({ result, isEn }: { result: AnalysisResult; isEn
             <div className="grid grid-cols-2 gap-3">
               {upside != null && (
                 <div className="bg-v2-positive-bg rounded-v2-md p-3 text-center">
-                  <div className="text-[10px] text-v2-positive uppercase tracking-wider font-semibold mb-1">
+                  <div className="text-ds-caption text-v2-positive uppercaser font-bold mb-1">
                     {isEn ? 'Upside' : '上涨空间'}
                   </div>
-                  <div className="text-[16px] font-bold tnum text-v2-positive">
+                  <div className="text-ds-h2 font-bold tnum text-v2-positive">
                     +{upside.toFixed(1)}%
                   </div>
                 </div>
               )}
               {downside != null && (
                 <div className="bg-v2-negative-bg rounded-v2-md p-3 text-center">
-                  <div className="text-[10px] text-v2-negative uppercase tracking-wider font-semibold mb-1">
+                  <div className="text-ds-caption text-v2-negative uppercaser font-bold mb-1">
                     {isEn ? 'Downside' : '下跌风险'}
                   </div>
-                  <div className="text-[16px] font-bold tnum text-v2-negative">
+                  <div className="text-ds-h2 font-bold tnum text-v2-negative">
                     {downside.toFixed(1)}%
                   </div>
                 </div>
@@ -311,13 +311,13 @@ function ScenarioNarrativePanel({ result, isEn }: { result: AnalysisResult; isEn
 
           {/* Constraints */}
           {scenario.constraints.length > 0 && (
-            <div className="border-t border-v2-border-sub pt-3">
-              <div className="text-[10px] text-v2-text-3 uppercase tracking-wider font-semibold mb-2">
+            <div className="border-t border-v2-border pt-3">
+              <div className="text-ds-caption text-v2-text-3 uppercaser font-bold mb-2">
                 {isEn ? 'Constraints' : '约束条件'}
               </div>
               <div className="space-y-1">
                 {scenario.constraints.map((c, i) => (
-                  <div key={i} className="flex items-start gap-2 text-[11px]">
+                  <div key={i} className="flex items-start gap-2 text-ds-sm">
                     <span className="text-v2-text-3 shrink-0">-</span>
                     <span className="text-v2-text-2">{c}</span>
                   </div>
@@ -379,10 +379,10 @@ export default function AnalysisPageV2() {
     <div className="space-y-5">
       {/* ── Header + Search ──────────────────────────────────── */}
       <div>
-        <h2 className="text-[18px] font-bold text-v2-text-1 tracking-tight">
+        <h2 className="text-ds-h2 font-bold text-v2-text-1">
           {isEn ? 'Analysis' : '深度分析'}
         </h2>
-        <p className="text-[12px] text-v2-text-3 mt-0.5">
+        <p className="text-ds-sm text-v2-text-3 mt-0.5">
           {isEn ? 'Build conviction through structured intelligence' : '通过结构化情报建立信心'}
         </p>
       </div>
@@ -403,27 +403,27 @@ export default function AnalysisPageV2() {
       {result && !loading && (
         <>
           {/* ── Analysis Hero ──────────────────────────────── */}
-          <div className="bg-v2-surface rounded-v2-xl shadow-v2-sm p-6">
+          <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[13px] font-semibold text-v2-text-2">
+                  <span className="text-ds-body-r font-bold text-v2-text-2">
                     {result.symbol}
                   </span>
                   {result.quote?.name && (
-                    <span className="text-[11px] text-v2-text-3">{result.quote.name}</span>
+                    <span className="text-ds-sm text-v2-text-3">{result.quote.name}</span>
                   )}
                 </div>
                 <div className="flex items-baseline gap-3">
-                  <span className="text-[2rem] md:text-[2.5rem] font-bold tnum tracking-tight leading-none text-v2-text-1">
+                  <span className="text-ds-display font-bold tnum leading-none text-v2-text-1">
                     {fmtPrice(price)}
                   </span>
-                  <span className={`text-[14px] font-semibold tnum ${changePct >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                  <span className={`text-ds-body-r font-bold tnum ${changePct >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
                     {fmtPctSigned(changePct)}
                   </span>
                 </div>
                 {result.narrative?.summary && (
-                  <p className="text-[12px] text-v2-text-2 mt-2 max-w-xl leading-relaxed">
+                  <p className="text-ds-sm text-v2-text-2 mt-2 max-w-xl leading-relaxed">
                     {result.narrative.summary}
                   </p>
                 )}
@@ -432,11 +432,11 @@ export default function AnalysisPageV2() {
               {/* Action + Confidence badges */}
               <div className="flex items-center gap-2 shrink-0">
                 {actionLabel && (
-                  <span className={`text-[11px] font-bold px-2.5 py-1 rounded-md ${actionStyle.bg} ${actionStyle.text}`}>
+                  <span className={`text-ds-sm font-bold px-2.5 py-1 rounded-md ${actionStyle.bg} ${actionStyle.text}`}>
                     {isEn ? actionLabel.en : actionLabel.zh}
                   </span>
                 )}
-                <span className={`text-[11px] font-bold px-2 py-1 rounded-md ${gradeStyle}`}>
+                <span className={`text-ds-sm font-bold px-2 py-1 rounded-md ${gradeStyle}`}>
                   {result.confidence.grade}
                 </span>
               </div>
@@ -453,7 +453,7 @@ export default function AnalysisPageV2() {
                 height="h-80"
                 action={
                   result.chart.market_state ? (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-semibold">
+                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
                       {result.chart.market_state}
                     </span>
                   ) : undefined
@@ -507,16 +507,16 @@ export default function AnalysisPageV2() {
                 <SectionCard.Header title={isEn ? 'Confidence' : '置信度'} />
                 <SectionCard.Body>
                   <div className="flex items-center gap-3 mb-3">
-                    <span className={`text-[20px] font-bold tnum ${gradeStyle} px-2.5 py-1 rounded-md`}>
+                    <span className={`text-ds-h2 font-bold tnum ${gradeStyle} px-2.5 py-1 rounded-md`}>
                       {result.confidence.grade}
                     </span>
-                    <span className="text-[14px] font-semibold tnum text-v2-text-1">
+                    <span className="text-ds-body-r font-bold tnum text-v2-text-1">
                       {result.confidence.score}/100
                     </span>
                   </div>
                   <div className="space-y-1">
                     {result.confidence.reasons.map((r, i) => (
-                      <div key={i} className="flex items-start gap-2 text-[11px]">
+                      <div key={i} className="flex items-start gap-2 text-ds-sm">
                         <span className="text-v2-text-3 shrink-0">-</span>
                         <span className="text-v2-text-2">{r}</span>
                       </div>
@@ -528,7 +528,7 @@ export default function AnalysisPageV2() {
           </div>
 
           {/* ── Data quality footer ────────────────────────── */}
-          <p className="text-[10px] text-v2-text-3 text-right tnum">
+          <p className="text-ds-caption text-v2-text-3 text-right tnum">
             {isEn ? 'as of' : '截至'} {new Date(result.as_of).toLocaleString()}
             {' · '}
             {isEn ? 'history' : '历史'}: {result.data_quality.history_days}d

@@ -69,13 +69,13 @@ function ActionPanel() {
   }
 
   return (
-    <aside className="w-v2-panel shrink-0 bg-v2-surface border-r border-v2-border-sub
+    <aside className="w-v2-panel shrink-0 bg-v2-surface border-r border-v2-border
                       h-[calc(100vh-3.5rem)] sticky top-14 overflow-y-auto">
       <div className="p-4">
         {/* Panel header with back button */}
         <button
           onClick={handleBack}
-          className="flex items-center gap-1.5 text-[11px] font-medium text-v2-text-3
+          className="flex items-center gap-1.5 text-ds-sm font-bold text-v2-text-3
                      hover:text-v2-text-1 mb-4 transition-colors duration-150"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">

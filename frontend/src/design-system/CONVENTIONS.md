@@ -49,4 +49,8 @@
 
 | Token | Status | Replacement | Remove In |
 |---|---|---|---|
-| `rounded-v2-xl` | DEPRECATED | `rounded-v2-lg` | Phase A |
+| `rounded-v2-xl` | ERADICATED | `rounded-v2-lg` | Completed in Phase A+B |
+| `border-sub` | ERADICATED | `border-v2-border` | Completed in Phase C |
+| `font-semibold` | ERADICATED | `font-bold` | Completed in Phase B+C |
+| `font-medium` | ERADICATED | `font-normal` or `font-bold` | Completed in Phase B+C |
+| `text-[Npx]` | ERADICATED | `text-ds-*` semantic classes | Completed in Phase C |

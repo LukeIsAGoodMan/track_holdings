@@ -1,7 +1,7 @@
 /**
  * SectionCard — primary container for page sections.
  *
- * Mercury-clean: white surface, minimal shadow, generous internal spacing.
+ * Surface: surfaceRaised (#f9f9f9), radius: lg (16px), shadow: card.
  * Supports loading state with stable min-height to prevent layout shift.
  *
  * Usage:
@@ -38,8 +38,8 @@ function SectionCardRoot({
   return (
     <div
       className={`
-        bg-v2-surface rounded-v2-xl shadow-v2-sm
-        ${noPadding ? '' : 'p-5'}
+        bg-v2-surface-raised rounded-v2-lg shadow-v2-sm
+        ${noPadding ? '' : 'p-6'}
         ${className}
       `}
       style={{ minHeight, ...style }}
@@ -63,11 +63,11 @@ function CardHeader({ title, subtitle, action, className = '' }: HeaderProps) {
   return (
     <div className={`flex items-center justify-between mb-4 ${className}`}>
       <div>
-        <h3 className="text-[15px] font-semibold text-v2-text-1 tracking-tight">
+        <h3 className="text-ds-h3 text-v2-text-1">
           {title}
         </h3>
         {subtitle && (
-          <p className="text-[11px] text-v2-text-3 mt-0.5">{subtitle}</p>
+          <p className="text-ds-sm text-v2-text-3 mt-0.5">{subtitle}</p>
         )}
       </div>
       {action && <div className="flex items-center gap-2">{action}</div>}

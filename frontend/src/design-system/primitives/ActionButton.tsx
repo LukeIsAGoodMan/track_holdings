@@ -1,7 +1,8 @@
 /**
  * ActionButton — primary and secondary button variants.
  *
- * Apple-clean: no heavy shadows, generous padding, clear hierarchy.
+ * Uses canonical action tokens. Focus via global :focus-visible rule.
+ * Two weights only: font-bold (700) for emphasis, font-normal (400) for ghost.
  */
 import type { ReactNode, ButtonHTMLAttributes } from 'react'
 
@@ -15,16 +16,16 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<string, string> = {
-  primary:   'bg-v2-accent text-white hover:bg-indigo-700 active:bg-indigo-800',
+  primary:   'bg-v2-accent text-white hover:bg-v2-accent-hover active:opacity-90',
   secondary: 'bg-v2-surface text-v2-text-1 border border-v2-border hover:bg-v2-surface-hover active:bg-v2-surface-alt',
   ghost:     'bg-transparent text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1',
-  danger:    'bg-v2-negative-bg text-v2-negative border border-red-200 hover:bg-red-100',
+  danger:    'bg-v2-negative-bg text-v2-negative border border-v2-border hover:opacity-90',
 }
 
 const sizeClasses: Record<string, string> = {
-  sm: 'px-3 py-1.5 text-xs rounded-v2-sm',
-  md: 'px-4 py-2 text-sm rounded-v2-md',
-  lg: 'px-5 py-2.5 text-sm rounded-v2-md',
+  sm: 'px-3 py-1.5 text-ds-sm rounded-v2-sm',
+  md: 'px-4 py-2 text-ds-body-r rounded-v2-md',
+  lg: 'px-5 py-2.5 text-ds-body-r rounded-v2-md',
 }
 
 export default function ActionButton({
@@ -41,7 +42,7 @@ export default function ActionButton({
     <button
       className={`
         inline-flex items-center justify-center gap-2
-        font-medium transition-all duration-150
+        font-bold transition-colors duration-150
         ${variantClasses[variant]}
         ${sizeClasses[size]}
         ${block ? 'w-full' : ''}

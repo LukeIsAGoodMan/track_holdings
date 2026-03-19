@@ -24,7 +24,7 @@ export default memo(function HoldingsActionBar({ isEn, hasPositions }: Props) {
           <button
             onClick={() => openTradeEntry()}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-v2-sm
-                       bg-v2-accent text-white text-[13px] font-medium
+                       bg-v2-accent text-white text-ds-body-r font-normal
                        hover:bg-v2-accent/90 transition-colors"
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round">
@@ -38,7 +38,7 @@ export default memo(function HoldingsActionBar({ isEn, hasPositions }: Props) {
               <button
                 onClick={() => openPriceAlerts()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-v2-sm
-                           text-v2-text-2 text-[13px] font-medium
+                           text-v2-text-2 text-ds-body-r font-normal
                            hover:bg-v2-surface-alt transition-colors"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
@@ -51,7 +51,7 @@ export default memo(function HoldingsActionBar({ isEn, hasPositions }: Props) {
               <button
                 onClick={() => openTradeEntry()}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-v2-sm
-                           text-v2-text-2 text-[13px] font-medium
+                           text-v2-text-2 text-ds-body-r font-normal
                            hover:bg-v2-surface-alt transition-colors"
               >
                 <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -66,7 +66,7 @@ export default memo(function HoldingsActionBar({ isEn, hasPositions }: Props) {
       }
       right={
         hasPositions ? (
-          <span className="text-[11px] text-v2-text-3 font-medium">
+          <span className="text-ds-sm text-v2-text-3 font-normal">
             {isEn ? 'Select positions for batch actions' : '选择持仓进行批量操作'}
           </span>
         ) : null

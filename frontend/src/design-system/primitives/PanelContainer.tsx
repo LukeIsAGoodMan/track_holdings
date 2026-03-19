@@ -25,9 +25,9 @@ interface Props {
 }
 
 const variantClasses: Record<string, string> = {
-  default:  'bg-v2-surface rounded-v2-xl shadow-v2-sm',
-  outlined: 'bg-v2-surface rounded-v2-xl border border-v2-border',
-  subtle:   'bg-v2-surface-alt rounded-v2-xl',
+  default:  'bg-v2-surface-raised rounded-v2-lg shadow-v2-sm',
+  outlined: 'bg-v2-surface-raised rounded-v2-lg border border-v2-border',
+  subtle:   'bg-v2-surface-alt rounded-v2-lg',
 }
 
 export default function PanelContainer({
@@ -42,17 +42,17 @@ export default function PanelContainer({
 }: Props) {
   return (
     <div
-      className={`p-5 ${variantClasses[variant]} ${className}`}
+      className={`p-6 ${variantClasses[variant]} ${className}`}
       style={{ minHeight }}
     >
       {(title || action) && (
         <div className="flex items-center justify-between mb-4">
           <div>
             {title && (
-              <h3 className="text-[15px] font-semibold text-v2-text-1 tracking-tight">{title}</h3>
+              <h3 className="text-ds-h3 text-v2-text-1">{title}</h3>
             )}
             {subtitle && (
-              <p className="text-[11px] text-v2-text-3 mt-0.5">{subtitle}</p>
+              <p className="text-ds-sm text-v2-text-3 mt-0.5">{subtitle}</p>
             )}
           </div>
           {action && <div className="flex items-center gap-2">{action}</div>}

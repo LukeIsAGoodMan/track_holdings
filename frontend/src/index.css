@@ -33,7 +33,7 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: var(--ds-border-strong); }
 
 /* ── Table utility classes ──────────────────────────────────────────── */
-/* Used by V1 pages — will migrate to primitives in Phase A             */
+/* Used by V1 pages — will migrate to primitives in Phase C             */
 .th      { @apply text-xs uppercase tracking-wider px-3 py-2.5 text-right whitespace-nowrap;
            font-weight: var(--ds-font-weight-bold);
            color: var(--ds-text-muted);
@@ -49,6 +49,15 @@ body {
 
 /* ── Tabular numeric alignment ──────────────────────────────────────── */
 .tnum { font-variant-numeric: tabular-nums; }
+
+/* ── Unified Focus Grammar (FIX 2) ─────────────────────────────────── */
+/* ONE focus system for the entire app: 2px outline, action-primary,    */
+/* offset 2px. Applied to buttons, inputs, selects, textareas.          */
+
+:focus-visible {
+  outline: 2px solid var(--ds-action-primary);
+  outline-offset: 2px;
+}
 
 /* ── Input resets ───────────────────────────────────────────────────── */
 input[type='text'],
@@ -71,7 +80,7 @@ input[type='date']:focus,
 select:focus {
   outline: none;
   border-color: var(--ds-action-primary);
-  box-shadow: 0 0 0 2px rgba(48, 95, 170, 0.2);
+  box-shadow: 0 0 0 2px rgba(48, 95, 170, 0.15);
 }
 
 input::placeholder,
@@ -94,7 +103,7 @@ textarea {
 textarea:focus {
   outline: none;
   border-color: var(--ds-action-primary);
-  box-shadow: 0 0 0 2px rgba(48, 95, 170, 0.2);
+  box-shadow: 0 0 0 2px rgba(48, 95, 170, 0.15);
 }
 
 textarea::placeholder {
@@ -103,7 +112,4 @@ textarea::placeholder {
 
 /* ── Button resets ──────────────────────────────────────────────────── */
 button { cursor: pointer; transition: background-color 150ms, color 150ms; }
-button:focus-visible {
-  outline: 2px solid var(--ds-action-primary);
-  outline-offset: 2px;
-}
+/* Focus handled by global :focus-visible rule above */

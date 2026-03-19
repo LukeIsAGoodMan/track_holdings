@@ -28,12 +28,14 @@ export { default as PanelContainer } from './primitives/PanelContainer'
 export { default as EmptyState }     from './primitives/EmptyState'
 export { default as SkeletonLoader } from './primitives/SkeletonLoader'
 export { default as Toolbar }        from './primitives/Toolbar'
+export { default as Badge }         from './primitives/Badge'
 
 // Shell
 export { default as AppShellV2 }     from './shell/AppShellV2'
 export { default as SidebarV2 }      from './shell/SidebarV2'
 export { default as TopNavV2 }       from './shell/TopNavV2'
 export { default as PageContainer }  from './shell/PageContainer'
+export { default as RightPanel }     from './shell/RightPanel'
 
 // Workspace
 export { default as HeroSection }         from './workspace/HeroSection'

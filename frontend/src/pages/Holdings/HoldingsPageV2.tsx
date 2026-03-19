@@ -157,23 +157,23 @@ function TreemapTooltip({ active, payload }: { active?: boolean; payload?: reado
       <div className="font-bold text-v2-text-1 text-sm mb-1.5 flex items-center gap-1.5">
         {name || '?'}
         {isShort && (
-          <span className="text-[10px] font-semibold text-v2-negative bg-v2-negative-bg px-1 py-0.5 rounded">(S)</span>
+          <span className="text-ds-caption font-bold text-v2-negative bg-v2-negative-bg px-1 py-0.5 rounded">(S)</span>
         )}
       </div>
       <div className="space-y-0.5 text-v2-text-3">
         {exposure != null && (
-          <div>Notional: <span className="font-semibold text-v2-text-1">{fmtUSD(String(exposure))}</span></div>
+          <div>Notional: <span className="font-bold text-v2-text-1">{fmtUSD(String(exposure))}</span></div>
         )}
         {rawPerf != null && (
           <div>
             Underlying:{' '}
-            <span className={`font-semibold ${rawPerf >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
+            <span className={`font-bold ${rawPerf >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
               {rawPerf >= 0 ? '+' : ''}{rawPerf.toFixed(2)}%
             </span>
           </div>
         )}
         {perf != null && (
-          <div className="border-t border-v2-border-sub pt-0.5 mt-0.5">
+          <div className="border-t border-v2-border pt-0.5 mt-0.5">
             P&L direction:{' '}
             <span className={`font-bold ${perf >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
               {perf >= 0 ? '+' : ''}{perf.toFixed(2)}%
@@ -197,7 +197,7 @@ function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick() }}
       title={title ?? 'Close this position'}
-      className="px-2 py-0.5 rounded-v2-sm text-[11px] font-semibold text-v2-text-3
+      className="px-2 py-0.5 rounded-v2-sm text-ds-sm font-bold text-v2-text-3
                  hover:text-v2-negative hover:bg-v2-negative-bg transition-colors whitespace-nowrap"
     >
       Exit
@@ -217,7 +217,7 @@ const ASSET_BADGE: Record<string, { cls: string; label: string }> = {
 function AssetBadge({ type }: { type: string }) {
   const b = ASSET_BADGE[type] ?? ASSET_BADGE.stock
   return (
-    <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${b.cls}`}>
+    <span className={`px-2 py-0.5 rounded-md text-ds-sm font-bold border ${b.cls}`}>
       {b.label}
     </span>
   )
@@ -237,17 +237,17 @@ function StockLegsTable({
   if (legs.length === 0) return null
 
   return (
-    <div className="overflow-x-auto border-b border-v2-border-sub">
+    <div className="overflow-x-auto border-b border-v2-border">
       <table className="w-full border-collapse">
         <thead>
-          <tr className="border-b border-v2-border-sub">
-            <th className="th-left text-[10px]">Asset Class</th>
-            <th className="th text-[10px]">{t('col_shares')}</th>
-            <th className="th text-[10px]">{t('col_cost')}</th>
-            <th className="th text-[10px]">{t('col_mkt_value')}</th>
-            <th className="th text-[10px]">{t('total_pnl')}</th>
-            <th className="th text-[10px]">{t('col_delta_exp')}</th>
-            <th className="th text-[10px]">{/* Exit */}</th>
+          <tr className="border-b border-v2-border">
+            <th className="th-left text-ds-caption">Asset Class</th>
+            <th className="th text-ds-caption">{t('col_shares')}</th>
+            <th className="th text-ds-caption">{t('col_cost')}</th>
+            <th className="th text-ds-caption">{t('col_mkt_value')}</th>
+            <th className="th text-ds-caption">{t('total_pnl')}</th>
+            <th className="th text-ds-caption">{t('col_delta_exp')}</th>
+            <th className="th text-ds-caption">{/* Exit */}</th>
           </tr>
         </thead>
         <tbody>
@@ -255,10 +255,10 @@ function StockLegsTable({
             const isLong   = leg.net_shares > 0
             const deltaPos = parseFloat(leg.delta_exposure) > 0
             return (
-              <tr key={leg.instrument_id} className="border-b border-v2-border-sub hover:bg-v2-surface-hover transition-colors">
+              <tr key={leg.instrument_id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
                 <td className="td-left"><AssetBadge type={assetClass} /></td>
                 <td className="td">
-                  <span className={`font-semibold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                  <span className={`font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
                     {leg.net_shares > 0 ? '+' : ''}{leg.net_shares}
                   </span>
                 </td>
@@ -268,10 +268,10 @@ function StockLegsTable({
                 </td>
                 <td className="td">
                   {leg.total_pnl != null ? (
-                    <span className={`font-semibold ${signClass(leg.total_pnl)}`}>
+                    <span className={`font-bold ${signClass(leg.total_pnl)}`}>
                       {fmtUSD(leg.total_pnl)}
                       {leg.total_pnl_pct != null && (
-                        <span className="text-[10px] ml-0.5 opacity-70">
+                        <span className="text-ds-caption ml-0.5 opacity-70">
                           ({(parseFloat(leg.total_pnl_pct) * 100).toFixed(1)}%)
                         </span>
                       )}
@@ -279,7 +279,7 @@ function StockLegsTable({
                   ) : <span className="text-v2-text-3">—</span>}
                 </td>
                 <td className="td">
-                  <span className={`font-semibold ${deltaPos ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                  <span className={`font-bold ${deltaPos ? 'text-v2-positive' : 'text-v2-negative'}`}>
                     {fmtNum(leg.delta_exposure)}
                   </span>
                 </td>
@@ -411,10 +411,10 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
           <div key={group.symbol}>
             {sectionStarts.has(group.symbol) && (
               <div className="flex items-center gap-2 mt-2 mb-1">
-                <span className="text-[10px] uppercase tracking-widest font-bold text-v2-text-3">
+                <span className="text-ds-caption uppercase font-bold text-v2-text-3">
                   {SECTION_LABELS[group.strategy_type] ?? group.strategy_type}
                 </span>
-                <div className="flex-1 border-t border-v2-border-sub" />
+                <div className="flex-1 border-t border-v2-border" />
               </div>
             )}
             <div className={`bg-v2-surface rounded-v2-lg overflow-hidden shadow-v2-sm
@@ -436,7 +436,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       {lastSpotChangePct?.[group.symbol] != null && (() => {
                         const pct = parseFloat(lastSpotChangePct![group.symbol])
                         return (
-                          <span className={`text-[10px] tnum font-semibold px-1.5 py-0.5 rounded-full
+                          <span className={`text-ds-caption tnum font-bold px-1.5 py-0.5 rounded-full
                             ${pct >= 0 ? 'text-v2-positive bg-v2-positive-bg' : 'text-v2-negative bg-v2-negative-bg'}`}>
                             {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
                           </span>
@@ -462,16 +462,16 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                     </svg>
                   </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-semibold">
+                  <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3 font-bold">
                     {totalLegs} leg{totalLegs !== 1 ? 's' : ''}
                   </span>
                   {hasOptions && (
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${strategyBadgeClass(group.strategy_type)}`}>
+                    <span className={`text-ds-caption px-2 py-0.5 rounded-full font-bold border ${strategyBadgeClass(group.strategy_type)}`}>
                       {group.strategy_label}
                     </span>
                   )}
                   {hasStocks && hasOptions && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200 font-semibold">
+                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200 font-bold">
                       +stock
                     </span>
                   )}
@@ -480,14 +480,14 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                 <div className="flex items-center gap-4 text-xs tnum">
                   {fmtEfficiency(group.capital_efficiency) && (
                     <div className="text-right hidden md:block">
-                      <div className="text-v2-text-3 uppercase tracking-wider text-[10px] mb-0.5">{t('cap_efficiency')}</div>
+                      <div className="text-v2-text-3 uppercaser text-ds-caption mb-0.5">{t('cap_efficiency')}</div>
                       <span className={`px-1.5 py-0.5 rounded-md text-xs font-bold ${efficiencyClass(group.capital_efficiency)}`}>
                         {fmtEfficiency(group.capital_efficiency)}
                       </span>
                     </div>
                   )}
                   <div className="text-right">
-                    <div className="text-v2-text-3 uppercase tracking-wider text-[10px]">{t('delta_exposure')}</div>
+                    <div className="text-v2-text-3 uppercaser text-ds-caption">{t('delta_exposure')}</div>
                     {greeksLoading ? <ShimmerCell w="w-16" /> : (
                       <div className={`font-bold text-sm ${signClass(group.total_delta_exposure)}`}>
                         {fmtNum(group.total_delta_exposure)}
@@ -496,11 +496,11 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                   </div>
                   {group.total_pnl != null && (
                     <div className="text-right hidden lg:block">
-                      <div className="text-v2-text-3 uppercase tracking-wider text-[10px]">{t('total_pnl')}</div>
+                      <div className="text-v2-text-3 uppercaser text-ds-caption">{t('total_pnl')}</div>
                       <div className={`font-bold text-sm ${signClass(group.total_pnl)}`}>
                         {fmtUSD(group.total_pnl)}
                         {group.total_pnl_pct != null && (
-                          <span className="text-[10px] font-semibold ml-1 opacity-70">
+                          <span className="text-ds-caption font-bold ml-1 opacity-70">
                             ({(parseFloat(group.total_pnl_pct) * 100).toFixed(1)}%)
                           </span>
                         )}
@@ -509,13 +509,13 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                   )}
                   {group.daily_pnl != null && (
                     <div className="text-right hidden lg:block">
-                      <div className="text-v2-text-3 uppercase tracking-wider text-[10px]">{t('daily_pnl')}</div>
+                      <div className="text-v2-text-3 uppercaser text-ds-caption">{t('daily_pnl')}</div>
                       <div className={`font-bold text-sm ${signClass(group.daily_pnl)}`}>{fmtUSD(group.daily_pnl)}</div>
                     </div>
                   )}
                   <div className="text-right hidden xl:block">
-                    <div className="text-v2-text-3 uppercase tracking-wider text-[10px]">{t('margin_req')}</div>
-                    <div className="text-v2-text-1 font-semibold">{fmtUSD(group.total_maintenance_margin)}</div>
+                    <div className="text-v2-text-3 uppercaser text-ds-caption">{t('margin_req')}</div>
+                    <div className="text-v2-text-1 font-bold">{fmtUSD(group.total_maintenance_margin)}</div>
                   </div>
                 </div>
               </button>
@@ -534,7 +534,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                     <div className="overflow-x-auto">
                       <table className="w-full border-collapse">
                         <thead>
-                          <tr className="border-b border-v2-border-sub bg-v2-surface-alt/40">
+                          <tr className="border-b border-v2-border bg-v2-surface-alt/40">
                             <th className="th-left">{t('col_type')}</th>
                             <th className="th">{t('col_strike')}</th>
                             <th className="th">{t('col_expiry')}</th>
@@ -553,9 +553,9 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                           {group.option_legs.map((leg) => {
                             const isLong = leg.net_contracts > 0
                             return (
-                              <tr key={leg.instrument_id} className="border-b border-v2-border-sub hover:bg-v2-surface-hover transition-colors">
+                              <tr key={leg.instrument_id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
                                 <td className="td-left">
-                                  <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold border
+                                  <span className={`px-2 py-0.5 rounded-md text-ds-sm font-bold border
                                     ${leg.option_type === 'CALL'
                                       ? 'bg-sky-50 text-sky-700 border-sky-200'
                                       : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
@@ -565,22 +565,22 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                                 <td className="td tnum">${fmtNum(leg.strike)}</td>
                                 <td className="td text-v2-text-2 text-xs">{leg.expiry}</td>
                                 <td className="td">
-                                  <span className={`px-1.5 py-0.5 rounded-md text-[11px] font-bold ${dteBadgeClass(leg.days_to_expiry)}`}>
+                                  <span className={`px-1.5 py-0.5 rounded-md text-ds-sm font-bold ${dteBadgeClass(leg.days_to_expiry)}`}>
                                     {leg.days_to_expiry}d
                                   </span>
                                 </td>
                                 <td className="td">
-                                  <span className={`font-semibold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                                  <span className={`font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
                                     {leg.net_contracts > 0 ? '+' : ''}{leg.net_contracts}
                                   </span>
                                 </td>
                                 <td className="td text-v2-text-2">${fmtNum(leg.avg_open_price)}</td>
                                 <td className="td">
                                   {leg.total_pnl != null ? (
-                                    <span className={`font-semibold ${signClass(leg.total_pnl)}`}>
+                                    <span className={`font-bold ${signClass(leg.total_pnl)}`}>
                                       {fmtUSD(leg.total_pnl)}
                                       {leg.total_pnl_pct != null && (
-                                        <span className="text-[10px] ml-0.5 opacity-70">
+                                        <span className="text-ds-caption ml-0.5 opacity-70">
                                           ({(parseFloat(leg.total_pnl_pct) * 100).toFixed(1)}%)
                                         </span>
                                       )}
@@ -594,7 +594,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                                 </td>
                                 <td className="td">
                                   {leg.delta_exposure != null ? (
-                                    <span className={`font-semibold ${signClass(leg.delta_exposure)}`}>{fmtNum(leg.delta_exposure)}</span>
+                                    <span className={`font-bold ${signClass(leg.delta_exposure)}`}>{fmtNum(leg.delta_exposure)}</span>
                                   ) : <ShimmerCell />}
                                 </td>
                                 <td className="td">
@@ -613,8 +613,8 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                             )
                           })}
                           {group.option_legs.length > 1 && (
-                            <tr className="bg-v2-surface-alt/30 border-t border-v2-border-sub">
-                              <td colSpan={7} className="td-left text-[11px] font-semibold text-v2-text-3 uppercase tracking-wider">
+                            <tr className="bg-v2-surface-alt/30 border-t border-v2-border">
+                              <td colSpan={7} className="td-left text-ds-sm font-bold text-v2-text-3 uppercaser">
                                 Subtotal
                               </td>
                               <td className="td">
@@ -624,11 +624,11 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                               </td>
                               <td className="td" />
                               <td className="td">
-                                <span className={`font-semibold ${sumGreekExposure(group.option_legs, 'theta') >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                                <span className={`font-bold ${sumGreekExposure(group.option_legs, 'theta') >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
                                   {sumGreekExposure(group.option_legs, 'theta').toFixed(2)}
                                 </span>
                               </td>
-                              <td className="td text-v2-text-2 font-semibold">{fmtUSD(group.total_maintenance_margin)}</td>
+                              <td className="td text-v2-text-2 font-bold">{fmtUSD(group.total_maintenance_margin)}</td>
                               <td className="td" />
                             </tr>
                           )}
@@ -703,15 +703,15 @@ function SectorMiniChart({ sectorExp, isEn }: { sectorExp: Record<string, string
             {data.slice(0, 5).map(d => {
               const pct = total > 0 ? Math.round(d.value / total * 100) : 0
               return (
-                <div key={d.key} className="flex items-center gap-2 text-[11px]">
+                <div key={d.key} className="flex items-center gap-2 text-ds-sm">
                   <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: d.color }} />
                   <span className="truncate flex-1 text-v2-text-2">{d.label}</span>
-                  <span className="tnum font-semibold text-v2-text-1 shrink-0">{pct}%</span>
+                  <span className="tnum font-bold text-v2-text-1 shrink-0">{pct}%</span>
                 </div>
               )
             })}
             {data.length > 5 && (
-              <div className="text-[10px] text-v2-text-3">+{data.length - 5} more</div>
+              <div className="text-ds-caption text-v2-text-3">+{data.length - 5} more</div>
             )}
           </div>
         </div>
@@ -961,9 +961,9 @@ export default function HoldingsPageV2() {
               <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
             </svg>
           )}
-          <span className="text-[13px] font-semibold text-v2-text-1">{selectedPortfolio.name}</span>
+          <span className="text-ds-body-r font-bold text-v2-text-1">{selectedPortfolio.name}</span>
           {selectedPortfolio.is_folder && (
-            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md
+            <span className="text-ds-caption font-bold uppercase px-1.5 py-0.5 rounded-md
                              bg-v2-accent-soft text-v2-accent">
               {isEn ? 'Folder' : '文件夹'}
             </span>
@@ -974,10 +974,10 @@ export default function HoldingsPageV2() {
       {/* ── Lifecycle banner ─────────────────────────────────────────── */}
       {hadSettlement && (
         <div className="flex items-center gap-3 bg-v2-caution-bg border border-v2-caution/20 rounded-v2-lg px-4 py-3 text-xs">
-          <span className="text-v2-caution font-semibold">{t('lifecycle_notice')}</span>
+          <span className="text-v2-caution font-bold">{t('lifecycle_notice')}</span>
           <span className="text-v2-text-2">
             {(lifecycleResult?.expired ?? 0) > 0 && <span className="mr-3">{lifecycleResult?.expired} expired</span>}
-            {(lifecycleResult?.assigned ?? 0) > 0 && <span className="text-v2-caution font-semibold">{lifecycleResult?.assigned} assigned</span>}
+            {(lifecycleResult?.assigned ?? 0) > 0 && <span className="text-v2-caution font-bold">{lifecycleResult?.assigned} assigned</span>}
           </span>
         </div>
       )}
@@ -999,11 +999,11 @@ export default function HoldingsPageV2() {
             {/* Hero skeleton — 4 metric blocks */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-24 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+                <div key={i} className="h-24 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
               ))}
             </div>
             {/* Chart skeleton */}
-            <div className="h-64 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+            <div className="h-64 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
             {/* Grid skeleton: table + right panel */}
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-5">
               <div className="xl:col-span-8 space-y-4">
@@ -1014,7 +1014,7 @@ export default function HoldingsPageV2() {
               </div>
               <div className="hidden xl:block xl:col-span-4 space-y-4">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-32 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+                  <div key={i} className="h-32 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
                 ))}
               </div>
             </div>
@@ -1037,7 +1037,7 @@ export default function HoldingsPageV2() {
                   <button
                     onClick={() => setFocusMode(f => !f)}
                     className="absolute top-3 right-3 z-10 p-1.5 rounded-v2-sm
-                               bg-v2-surface/80 backdrop-blur-sm border border-v2-border-sub
+                               bg-v2-surface/80 backdrop-blur-sm border border-v2-border
                                text-v2-text-3 hover:text-v2-text-1 hover:bg-v2-surface
                                transition-colors"
                     title={focusMode ? 'Exit focus' : 'Focus mode'}
@@ -1062,12 +1062,12 @@ export default function HoldingsPageV2() {
                   <>
                     {/* Exposure Treemap */}
                     <SectionCard noPadding>
-                      <div className="flex items-center justify-between px-5 py-3 border-b border-v2-border-sub flex-wrap gap-2">
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-v2-border flex-wrap gap-2">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-sm text-v2-text-1">
+                          <span className="font-bold text-sm text-v2-text-1">
                             {isEn ? 'Exposure Map' : '敞口热力图'}
                           </span>
-                          <span className="text-[10px] text-v2-text-3 uppercase tracking-wider hidden sm:block">
+                          <span className="text-ds-caption text-v2-text-3 uppercaser hidden sm:block">
                             {isEn ? 'Area = Notional · Color = P&L · (S) = Short' : '面积=名义 · 颜色=盈亏 · (S)=空头'}
                           </span>
                         </div>
@@ -1076,7 +1076,7 @@ export default function HoldingsPageV2() {
                             <button
                               key={p}
                               onClick={() => setPeriod(p)}
-                              className={`px-2.5 py-1 rounded-v2-sm text-xs font-semibold transition-all ${
+                              className={`px-2.5 py-1 rounded-v2-sm text-xs font-bold transition-all ${
                                 period === p
                                   ? 'bg-v2-accent text-white shadow-sm'
                                   : 'text-v2-text-3 hover:text-v2-text-1 hover:bg-v2-surface-alt'
@@ -1113,7 +1113,7 @@ export default function HoldingsPageV2() {
                         ].map(({ color, label }) => (
                           <div key={label} className="flex items-center gap-1">
                             <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: color }} />
-                            <span className="text-[10px] text-v2-text-3">{label}</span>
+                            <span className="text-ds-caption text-v2-text-3">{label}</span>
                           </div>
                         ))}
                       </div>
@@ -1150,7 +1150,7 @@ export default function HoldingsPageV2() {
         loading ? (
           <div className="space-y-4">
             {[1, 2].map((i) => (
-              <div key={i} className="h-48 bg-v2-surface rounded-v2-xl shadow-v2-sm animate-pulse" />
+              <div key={i} className="h-48 bg-v2-surface rounded-v2-lg shadow-v2-sm animate-pulse" />
             ))}
           </div>
         ) : (

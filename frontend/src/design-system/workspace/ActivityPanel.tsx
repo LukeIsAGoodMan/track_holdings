@@ -41,8 +41,8 @@ export default memo(function ActivityPanel({ portfolioId, isEn }: Props) {
       <SectionCard.Body>
         {trades.length === 0 ? (
           <div className="py-3 text-center">
-            <div className="text-[12px] text-v2-text-3">{isEn ? 'No recent trades' : '暂无交易'}</div>
-            <div className="text-[11px] text-v2-text-3/60 mt-0.5">{isEn ? 'New trades will appear here' : '新交易将显示在此处'}</div>
+            <div className="text-ds-sm text-v2-text-3">{isEn ? 'No recent trades' : '暂无交易'}</div>
+            <div className="text-ds-sm text-v2-text-3/60 mt-0.5">{isEn ? 'New trades will appear here' : '新交易将显示在此处'}</div>
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -57,16 +57,16 @@ export default memo(function ActivityPanel({ portfolioId, isEn }: Props) {
                   {/* Timeline dot */}
                   <div className="flex flex-col items-center pt-1.5">
                     <span className={`w-2 h-2 rounded-full ${dotColor} shrink-0`} />
-                    <span className="w-px flex-1 bg-v2-border-sub mt-1" />
+                    <span className="w-px flex-1 bg-v2-surface-alt mt-1" />
                   </div>
                   {/* Content */}
                   <div className="flex-1 min-w-0 pb-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[12px] font-semibold text-v2-text-1">{tx.symbol}</span>
-                      <span className="text-[10px] font-bold text-v2-text-3">{tx.action.replace('_', ' ')}</span>
-                      <span className="text-[10px] tnum text-v2-text-3 ml-auto shrink-0">{timeStr}</span>
+                      <span className="text-ds-sm font-bold text-v2-text-1">{tx.symbol}</span>
+                      <span className="text-ds-caption font-bold text-v2-text-3">{tx.action.replace('_', ' ')}</span>
+                      <span className="text-ds-caption tnum text-v2-text-3 ml-auto shrink-0">{timeStr}</span>
                     </div>
-                    <div className="text-[11px] text-v2-text-3 tnum">
+                    <div className="text-ds-sm text-v2-text-3 tnum">
                       {tx.quantity}x @ ${fmtNum(tx.price)}
                       {isOption && tx.option_type && (
                         <span className="ml-1">

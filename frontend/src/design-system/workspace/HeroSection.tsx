@@ -51,21 +51,21 @@ export default memo(function HeroSection({ metrics, isEn, isLoading = false }: P
   const m = metrics
 
   return (
-    <div className="bg-v2-surface rounded-v2-xl shadow-v2-sm p-6 md:p-8">
+    <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6 md:p-8">
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
         {/* ── Left: Hero value ───────────────────────────────── */}
         <div className="min-w-0">
-          <div className="text-[11px] font-medium uppercase tracking-widest text-v2-text-3 mb-1.5">
+          <div className="text-ds-sm font-normal uppercase text-v2-text-3 mb-1.5">
             {isEn ? 'Portfolio Value' : '投资组合价值'}
           </div>
-          <div className="text-[2rem] md:text-[2.5rem] font-semibold tracking-tighter text-v2-text-1 tnum leading-none">
+          <div className="text-ds-display text-v2-text-1 tnum leading-none">
             {isLoading ? (
               <span className="inline-block w-48 h-10 bg-v2-surface-alt rounded-v2-sm animate-pulse" />
             ) : (
               m.portfolioValue !== 0 ? fmtUSD(String(Math.round(m.portfolioValue))) : '—'
             )}
           </div>
-          <div className="text-[12px] text-v2-text-3 mt-1.5">
+          <div className="text-ds-sm text-v2-text-3 mt-1.5">
             {isEn ? 'Stocks MtM + Options cost basis' : '股票市值 + 期权持仓成本'}
           </div>
         </div>

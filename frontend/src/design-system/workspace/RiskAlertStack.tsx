@@ -52,7 +52,7 @@ export default memo(function RiskAlertStack({ alerts, isEn }: Props) {
         title={isEn ? 'Risk Alerts' : '风险警报'}
         action={
           alerts.length > 0 ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-v2-negative-bg text-v2-negative font-bold">
+            <span className="text-ds-caption px-1.5 py-0.5 rounded-full bg-v2-negative-bg text-v2-negative font-bold">
               {alerts.length}
             </span>
           ) : undefined
@@ -74,10 +74,10 @@ export default memo(function RiskAlertStack({ alerts, isEn }: Props) {
                   <div className="flex items-start gap-2.5">
                     <span className={`w-2 h-2 rounded-full ${styles.dot} shrink-0 mt-1`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[12px] text-v2-text-1 font-medium leading-relaxed">
+                      <p className="text-ds-sm text-v2-text-1 font-normal leading-relaxed">
                         {alert}
                       </p>
-                      <p className={`text-[11px] ${styles.text} font-semibold mt-1`}>
+                      <p className={`text-ds-sm ${styles.text} font-bold mt-1`}>
                         → {isEn ? styles.action : styles.actionZh}
                       </p>
                     </div>

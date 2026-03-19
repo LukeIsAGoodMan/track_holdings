@@ -29,9 +29,9 @@ export default function EmptyState({
       {icon && (
         <div className="text-v2-text-3 mb-4">{icon}</div>
       )}
-      <p className="text-base font-medium text-v2-text-2">{message}</p>
+      <p className="text-ds-body-r text-v2-text-2">{message}</p>
       {hint && (
-        <p className="text-sm text-v2-text-3 mt-1 max-w-sm">{hint}</p>
+        <p className="text-ds-sm text-v2-text-3 mt-1 max-w-sm">{hint}</p>
       )}
       {action && <div className="mt-4">{action}</div>}
     </div>

@@ -48,12 +48,12 @@ export default memo(function RiskHeatmap({ holdings, isEn, isLoading = false }: 
               return (
                 <div key={symbol}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[12px] font-semibold text-v2-text-1">{symbol}</span>
-                    <span className={`text-[11px] tnum font-semibold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
+                    <span className="text-ds-sm font-bold text-v2-text-1">{symbol}</span>
+                    <span className={`text-ds-sm tnum font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
                       {isLong ? '+' : ''}{fmtNum(String(delta.toFixed(2)))}
                     </span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-v2-border-sub overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-v2-surface-alt overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${isLong ? 'bg-v2-positive/60' : 'bg-v2-negative/60'}`}
                       style={{ width: `${pct}%` }}

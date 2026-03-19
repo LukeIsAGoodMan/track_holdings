@@ -5,6 +5,9 @@
  *   line   — single horizontal bar (default)
  *   block  — rectangular area
  *   circle — avatar / icon placeholder
+ *
+ * Uses surface-alt for skeleton bg (frozen token).
+ * Skeleton radius matches target component radius (sm by default).
  */
 import type { CSSProperties } from 'react'
 
@@ -26,7 +29,7 @@ export default function SkeletonLoader({
   className = '',
   style,
 }: Props) {
-  const base = 'animate-pulse bg-v2-border-sub rounded-v2-sm'
+  const base = 'animate-pulse bg-v2-surface-alt rounded-v2-sm'
 
   const defaults: Record<string, string> = {
     line:   `${width ?? 'w-full'} ${height ?? 'h-3'}`,

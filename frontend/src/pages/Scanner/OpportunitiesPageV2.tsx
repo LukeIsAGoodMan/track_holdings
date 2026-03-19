@@ -58,28 +58,28 @@ const OpportunityCard = memo(function OpportunityCard({
       className={`w-full text-left rounded-v2-lg border p-4 transition-all duration-150
         ${isSelected
           ? 'border-v2-accent bg-v2-accent-soft/30 shadow-v2-sm'
-          : 'border-v2-border-sub bg-v2-surface hover:bg-v2-surface-hover hover:border-v2-border-sub/80'
+          : 'border-v2-border bg-v2-surface hover:bg-v2-surface-hover hover:border-v2-border/80'
         }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[15px] font-bold text-v2-text-1">{opp.symbol}</span>
-            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
+            <span className="text-ds-h3 font-bold text-v2-text-1">{opp.symbol}</span>
+            <span className={`text-ds-caption font-bold px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
               {isEn ? signal.label : signal.labelZh}
             </span>
           </div>
-          <div className="text-[12px] text-v2-text-2 font-medium">
+          <div className="text-ds-sm text-v2-text-2 font-bold">
             {isEn ? setup.type : setup.typeZh}
           </div>
         </div>
         <div className="text-right shrink-0">
           {opp.spot_price && (
-            <div className="text-[14px] font-semibold tnum text-v2-text-1">
+            <div className="text-ds-body-r font-bold tnum text-v2-text-1">
               ${fmtNum(opp.spot_price)}
             </div>
           )}
-          <div className="text-[11px] tnum text-v2-text-3">
+          <div className="text-ds-sm tnum text-v2-text-3">
             IV Rank: {rank}%
           </div>
         </div>
@@ -87,7 +87,7 @@ const OpportunityCard = memo(function OpportunityCard({
 
       {/* IV bar */}
       <div className="mt-3 flex items-center gap-2">
-        <div className="flex-1 h-1.5 rounded-full bg-v2-border-sub overflow-hidden">
+        <div className="flex-1 h-1.5 rounded-full bg-v2-surface-alt overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-300 ${
               rank > 80 ? 'bg-v2-negative/60' : rank > 60 ? 'bg-v2-caution/60' : rank > 40 ? 'bg-v2-accent/60' : 'bg-v2-positive/60'
@@ -95,7 +95,7 @@ const OpportunityCard = memo(function OpportunityCard({
             style={{ width: `${rank}%` }}
           />
         </div>
-        <span className={`text-[10px] font-semibold ${RISK_COLORS[setup.risk]}`}>
+        <span className={`text-ds-caption font-bold ${RISK_COLORS[setup.risk]}`}>
           {isEn ? setup.risk : setup.risk === 'low' ? '低' : setup.risk === 'medium' ? '中' : '高'}
         </span>
       </div>
@@ -108,7 +108,7 @@ function OpportunityListSkeleton() {
   return (
     <div className="space-y-3">
       {[1, 2, 3, 4, 5, 6].map((i) => (
-        <div key={i} className="rounded-v2-lg border border-v2-border-sub bg-v2-surface p-4 animate-pulse">
+        <div key={i} className="rounded-v2-lg border border-v2-border bg-v2-surface p-4 animate-pulse">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-2 flex-1">
               <div className="flex items-center gap-2">
@@ -165,33 +165,33 @@ const DetailPanel = memo(function DetailPanel({
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className="text-[18px] font-bold text-v2-text-1">{opp.symbol}</span>
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
+          <span className="text-ds-h2 font-bold text-v2-text-1">{opp.symbol}</span>
+          <span className={`text-ds-caption font-bold px-1.5 py-0.5 rounded-md ${signal.bg} ${signal.text}`}>
             {isEn ? signal.label : signal.labelZh}
           </span>
         </div>
         {opp.spot_price && (
-          <span className="text-[16px] font-semibold tnum text-v2-text-1">${fmtNum(opp.spot_price)}</span>
+          <span className="text-ds-h2 font-bold tnum text-v2-text-1">${fmtNum(opp.spot_price)}</span>
         )}
       </div>
 
       {/* Metrics grid */}
       <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
-          <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-1">IV Rank</div>
-          <div className="text-[16px] font-bold tnum text-v2-text-1">{Math.round(rank * 100)}%</div>
+          <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">IV Rank</div>
+          <div className="text-ds-h2 font-bold tnum text-v2-text-1">{Math.round(rank * 100)}%</div>
         </div>
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
-          <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-1">IV Percentile</div>
-          <div className="text-[16px] font-bold tnum text-v2-text-1">{Math.round(pctl * 100)}%</div>
+          <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">IV Percentile</div>
+          <div className="text-ds-h2 font-bold tnum text-v2-text-1">{Math.round(pctl * 100)}%</div>
         </div>
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
-          <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-1">{isEn ? 'Current HV' : '当前HV'}</div>
-          <div className="text-[14px] font-semibold tnum text-v2-text-1">{(hv * 100).toFixed(1)}%</div>
+          <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">{isEn ? 'Current HV' : '当前HV'}</div>
+          <div className="text-ds-body-r font-bold tnum text-v2-text-1">{(hv * 100).toFixed(1)}%</div>
         </div>
         <div className="bg-v2-surface-alt rounded-v2-md p-3">
-          <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-1">{isEn ? '52w Range' : '52周范围'}</div>
-          <div className="text-[12px] font-semibold tnum text-v2-text-2">
+          <div className="text-ds-caption text-v2-text-3 uppercaser mb-1">{isEn ? '52w Range' : '52周范围'}</div>
+          <div className="text-ds-sm font-bold tnum text-v2-text-2">
             {(hvLow * 100).toFixed(1)}% — {(hvHigh * 100).toFixed(1)}%
           </div>
         </div>
@@ -199,10 +199,10 @@ const DetailPanel = memo(function DetailPanel({
 
       {/* HV Range visualization */}
       <div className="mb-5">
-        <div className="text-[10px] text-v2-text-3 uppercase tracking-wider mb-2">
+        <div className="text-ds-caption text-v2-text-3 uppercaser mb-2">
           {isEn ? 'HV Position in 52-Week Range' : 'HV在52周范围内位置'}
         </div>
-        <div className="relative h-2 rounded-full bg-v2-border-sub overflow-hidden">
+        <div className="relative h-2 rounded-full bg-v2-surface-alt overflow-hidden">
           <div
             className="absolute h-full bg-v2-accent/60 rounded-full"
             style={{
@@ -211,7 +211,7 @@ const DetailPanel = memo(function DetailPanel({
             }}
           />
         </div>
-        <div className="flex justify-between text-[10px] text-v2-text-3 mt-1 tnum">
+        <div className="flex justify-between text-ds-caption text-v2-text-3 mt-1 tnum">
           <span>{(hvLow * 100).toFixed(1)}%</span>
           <span>{(hvHigh * 100).toFixed(1)}%</span>
         </div>
@@ -219,13 +219,13 @@ const DetailPanel = memo(function DetailPanel({
 
       {/* Setup suggestion */}
       <div className="bg-v2-surface-alt rounded-v2-md p-4 mb-5">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-v2-text-3 mb-2">
+        <div className="text-ds-sm font-bold uppercaser text-v2-text-3 mb-2">
           {isEn ? 'Suggested Setup' : '建议策略'}
         </div>
-        <div className="text-[13px] font-semibold text-v2-text-1 mb-1">
+        <div className="text-ds-body-r font-bold text-v2-text-1 mb-1">
           {isEn ? setup.type : setup.typeZh}
         </div>
-        <p className="text-[12px] text-v2-text-2 leading-relaxed">
+        <p className="text-ds-sm text-v2-text-2 leading-relaxed">
           {opp.suggestion}
         </p>
       </div>
@@ -235,7 +235,7 @@ const DetailPanel = memo(function DetailPanel({
         <button
           onClick={() => openTradeEntry()}
           className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-v2-sm
-                     bg-v2-accent text-white text-[13px] font-medium
+                     bg-v2-accent text-white text-ds-body-r font-bold
                      hover:bg-v2-accent/90 transition-colors"
         >
           {isEn ? 'Trade' : '交易'}
@@ -243,7 +243,7 @@ const DetailPanel = memo(function DetailPanel({
         <button
           onClick={() => openPriceAlerts({ symbol: opp.symbol, price: parseFloat(opp.spot_price ?? '0') })}
           className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-v2-sm
-                     text-v2-text-2 text-[13px] font-medium border border-v2-border-sub
+                     text-v2-text-2 text-ds-body-r font-bold border border-v2-border
                      hover:bg-v2-surface-alt transition-colors"
         >
           {isEn ? 'Alert' : '警报'}
@@ -311,23 +311,23 @@ export default function OpportunitiesPageV2() {
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex items-end justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-[18px] font-bold text-v2-text-1 tracking-tight">
+          <h2 className="text-ds-h2 font-bold text-v2-text-1">
             {isEn ? 'Opportunities' : '交易机会'}
           </h2>
-          <p className="text-[12px] text-v2-text-3 mt-0.5">
+          <p className="text-ds-sm text-v2-text-3 mt-0.5">
             {isEn ? 'Scan, compare, and act on volatility setups' : '扫描、比较并执行波动率策略'}
           </p>
         </div>
         {!loading && opportunities.length > 0 && (
           <div className="flex items-center gap-4 text-xs tnum">
             <div className="text-right">
-              <div className="text-[10px] text-v2-text-3 uppercase tracking-wider">{isEn ? 'Setups' : '机会'}</div>
-              <span className="text-[14px] font-bold text-v2-text-1">{opportunities.length}</span>
+              <div className="text-ds-caption text-v2-text-3 uppercaser">{isEn ? 'Setups' : '机会'}</div>
+              <span className="text-ds-body-r font-bold text-v2-text-1">{opportunities.length}</span>
             </div>
             {avgRank != null && (
               <div className="text-right">
-                <div className="text-[10px] text-v2-text-3 uppercase tracking-wider">{isEn ? 'Avg IV Rank' : '平均IV'}</div>
-                <span className="text-[14px] font-bold text-v2-text-1">{avgRank}%</span>
+                <div className="text-ds-caption text-v2-text-3 uppercaser">{isEn ? 'Avg IV Rank' : '平均IV'}</div>
+                <span className="text-ds-body-r font-bold text-v2-text-1">{avgRank}%</span>
               </div>
             )}
           </div>
@@ -340,7 +340,7 @@ export default function OpportunitiesPageV2() {
           <span className="text-v2-negative text-sm flex-1">{error}</span>
           <button
             onClick={() => { setError(null); setLoading(true); fetchOpportunities().then(setOpportunities).catch((e: Error) => setError(e.message ?? 'Failed to load')).finally(() => setLoading(false)) }}
-            className="text-[11px] font-semibold text-v2-accent hover:text-v2-text-1 transition-colors"
+            className="text-ds-sm font-bold text-v2-accent hover:text-v2-text-1 transition-colors"
           >
             {isEn ? 'Retry' : '重试'}
           </button>
@@ -353,10 +353,10 @@ export default function OpportunitiesPageV2() {
           <button
             key={key}
             onClick={() => setFilterSignal(key)}
-            className={`px-3 py-1.5 rounded-v2-sm text-[12px] font-medium transition-colors
+            className={`px-3 py-1.5 rounded-v2-sm text-ds-sm font-bold transition-colors
               ${filterSignal === key
                 ? 'bg-v2-accent text-white'
-                : 'bg-v2-surface-alt text-v2-text-2 hover:bg-v2-surface-hover border border-v2-border-sub'
+                : 'bg-v2-surface-alt text-v2-text-2 hover:bg-v2-surface-hover border border-v2-border'
               }`}
           >
             {isEn ? label : labelZh}

@@ -37,7 +37,7 @@ export default function TabsV2({
     onChange?.(key)
   }
 
-  const textSize = size === 'sm' ? 'text-xs' : 'text-sm'
+  const textClass = size === 'sm' ? 'text-ds-sm' : 'text-ds-body-r'
 
   return (
     <div className={`flex items-center gap-1 ${className}`} role="tablist">
@@ -50,7 +50,7 @@ export default function TabsV2({
             aria-selected={isActive}
             onClick={() => handleClick(key)}
             className={`
-              relative px-3 py-2 ${textSize} font-medium transition-colors rounded-v2-sm
+              relative px-3 py-2 ${textClass} font-bold transition-colors rounded-v2-sm
               ${isActive
                 ? 'text-v2-accent'
                 : 'text-v2-text-3 hover:text-v2-text-2'
