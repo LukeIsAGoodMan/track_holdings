@@ -113,3 +113,23 @@ textarea::placeholder {
 /* ── Button resets ──────────────────────────────────────────────────── */
 button { cursor: pointer; transition: background-color 150ms, color 150ms; }
 /* Focus handled by global :focus-visible rule above */
+
+/* ── Skeleton shimmer ──────────────────────────────────────────────── */
+/* Subtle opacity-based shimmer for perceived performance              */
+@keyframes ds-shimmer {
+  0%   { opacity: 0.5; }
+  50%  { opacity: 0.8; }
+  100% { opacity: 0.5; }
+}
+.ds-shimmer {
+  animation: ds-shimmer 1.2s ease-in-out infinite;
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .ds-shimmer { animation: none; opacity: 0.6; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

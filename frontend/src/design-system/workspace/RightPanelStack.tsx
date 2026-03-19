@@ -83,7 +83,7 @@ export const AllocationCard = memo(function AllocationCard({ holdings, isEn }: A
                 </div>
                 <div className="h-1 bg-v2-surface-alt rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-v2-accent rounded-full transition-all duration-300"
+                    className="h-full bg-v2-accent rounded-full transition-[width] duration-200"
                     style={{ width: `${Math.min(pct, 100)}%` }}
                   />
                 </div>

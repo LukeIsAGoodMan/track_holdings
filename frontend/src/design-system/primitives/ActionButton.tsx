@@ -2,7 +2,7 @@
  * ActionButton — primary and secondary button variants.
  *
  * Uses canonical action tokens. Focus via global :focus-visible rule.
- * Two weights only: font-bold (700) for emphasis, font-normal (400) for ghost.
+ * Micro-interaction: active:scale-[0.98] for tactile press feedback.
  */
 import type { ReactNode, ButtonHTMLAttributes } from 'react'
 
@@ -16,10 +16,10 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<string, string> = {
-  primary:   'bg-v2-accent text-white hover:bg-v2-accent-hover active:opacity-90',
-  secondary: 'bg-v2-surface text-v2-text-1 border border-v2-border hover:bg-v2-surface-hover active:bg-v2-surface-alt',
-  ghost:     'bg-transparent text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1',
-  danger:    'bg-v2-negative-bg text-v2-negative border border-v2-border hover:opacity-90',
+  primary:   'bg-v2-accent text-white hover:bg-v2-accent-hover active:scale-[0.98] active:opacity-90',
+  secondary: 'bg-v2-surface text-v2-text-1 border border-v2-border hover:bg-v2-surface-hover active:bg-v2-surface-alt active:scale-[0.98]',
+  ghost:     'bg-transparent text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1 active:scale-[0.98]',
+  danger:    'bg-v2-negative-bg text-v2-negative border border-v2-border hover:opacity-90 active:scale-[0.98]',
 }
 
 const sizeClasses: Record<string, string> = {

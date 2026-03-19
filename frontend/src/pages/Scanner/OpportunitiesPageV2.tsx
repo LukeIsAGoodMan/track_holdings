@@ -55,7 +55,7 @@ const OpportunityCard = memo(function OpportunityCard({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left rounded-v2-lg border p-4 transition-all duration-150
+      className={`w-full text-left rounded-v2-lg border p-4 transition-colors duration-150
         ${isSelected
           ? 'border-v2-accent bg-v2-accent-soft/30 shadow-v2-sm'
           : 'border-v2-border bg-v2-surface hover:bg-v2-surface-hover hover:border-v2-border/80'
@@ -89,7 +89,7 @@ const OpportunityCard = memo(function OpportunityCard({
       <div className="mt-3 flex items-center gap-2">
         <div className="flex-1 h-1.5 rounded-full bg-v2-surface-alt overflow-hidden">
           <div
-            className={`h-full rounded-full transition-all duration-300 ${
+            className={`h-full rounded-full transition-[width] duration-200 ${
               rank > 80 ? 'bg-v2-negative/60' : rank > 60 ? 'bg-v2-caution/60' : rank > 40 ? 'bg-v2-accent/60' : 'bg-v2-positive/60'
             }`}
             style={{ width: `${rank}%` }}

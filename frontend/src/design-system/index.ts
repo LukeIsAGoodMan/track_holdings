@@ -13,6 +13,10 @@ export * from './typography'
 // Motion — duration, easing, skeleton, transition helper (canonical source)
 export * from './motion'
 
+// Interaction — compositional state classes (canonical source)
+export { interactiveClasses, TABLE_ROW_GROUP, TABLE_CELL_HOVER, TRANSITION_FEEDBACK, TRANSITION_EMPHASIS, TRANSITION_LAYOUT, TRANSITION_TRANSFORM } from './interaction'
+export type { InteractionVariant, InteractionConfig } from './interaction'
+
 // Types — ThemeTokens, semantic key unions
 export type * from './types'
 

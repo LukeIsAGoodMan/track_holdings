@@ -1026,7 +1026,7 @@ export default function HoldingsPageV2() {
             <HeroSection metrics={heroMetrics} isEn={isEn} isLoading={loading} />
 
             {/* ── Flex Layout: Main + Right Panel ──────────────── */}
-            <div className="flex gap-5 transition-all duration-300 ease-in-out">
+            <div className="flex gap-5 ">
 
               {/* ── Main Column ─────────────────────────────────── */}
               <div className="flex-1 min-w-0 space-y-5">
@@ -1076,7 +1076,7 @@ export default function HoldingsPageV2() {
                             <button
                               key={p}
                               onClick={() => setPeriod(p)}
-                              className={`px-2.5 py-1 rounded-v2-sm text-xs font-bold transition-all ${
+                              className={`px-2.5 py-1 rounded-v2-sm text-xs font-bold transition-colors ${
                                 period === p
                                   ? 'bg-v2-accent text-white shadow-sm'
                                   : 'text-v2-text-3 hover:text-v2-text-1 hover:bg-v2-surface-alt'
