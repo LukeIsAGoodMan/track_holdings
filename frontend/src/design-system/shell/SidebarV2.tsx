@@ -127,15 +127,10 @@ export default function SidebarV2() {
   const isEn = lang === 'en'
 
   return (
-    <aside
-      className={`
-        shrink-0 bg-v2-surface h-[calc(100vh-3.5rem)] sticky top-14
-        flex flex-col border-r border-v2-border overflow-hidden
-        transition-[width] duration-200 ease-out
-        ${isExpanded ? 'w-v2-sidebar' : 'w-v2-sidebar-sm'}
-      `}
-      style={{ zIndex: 20 }}
-    >
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* SidebarV2 is now a pure content component.
+          Surface, border, radius, sticky, height, width transitions
+          are owned by the SidebarSurface wrapper in AppShellV2. */}
       {/* ═══ Navigation Section (scrollable) ═══════════════════════════ */}
       <nav className="flex-1 py-3 px-2 overflow-y-auto">
         {NAV_GROUPS.map((group, gi) => (
@@ -266,7 +261,7 @@ export default function SidebarV2() {
           </svg>
         </button>
       </div>
-    </aside>
+    </div>
   )
 }
 

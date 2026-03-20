@@ -107,6 +107,8 @@ export const layout = {
   pageGutter:      '1.5rem',     // 24px — px-6
   pageGutterMd:    '2rem',       // 32px — px-8
   sectionGap:      '1.25rem',    // 20px — gap between sections
+  shellGutter:     '1rem',       // 16px — outer page gutter around shell surfaces
+  shellGap:        '1rem',       // 16px — gap between sidebar and main surfaces
 } as const
 
 // ── Z-Index (semantic layering) ───────────────────────────────────────────────
