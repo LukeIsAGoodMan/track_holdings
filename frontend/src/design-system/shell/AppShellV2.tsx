@@ -70,7 +70,8 @@ function ActionPanel() {
 
   return (
     <aside className="w-v2-panel shrink-0 bg-v2-surface border-r border-v2-border
-                      h-[calc(100vh-3.5rem)] sticky top-14 overflow-y-auto">
+                      h-[calc(100vh-3.5rem)] sticky top-14 overflow-y-auto"
+           style={{ zIndex: 20 }}>
       <div className="p-4">
         {/* Panel header with back button */}
         <button

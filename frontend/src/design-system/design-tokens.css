@@ -103,10 +103,11 @@
   --ds-sidebar-collapsed: 64px;
   --ds-sidebar-panel:    520px;
 
-  /* ── Z-Index ──────────────────────────────────────────── */
-  --ds-z-sidebar:  20;
+  /* ── Z-Index (semantic layering) ──────────────────────── */
+  --ds-z-nav:      20;
   --ds-z-topnav:   30;
   --ds-z-dropdown: 40;
   --ds-z-overlay:  50;
   --ds-z-modal:    60;
+  --ds-z-toast:    70;
 }

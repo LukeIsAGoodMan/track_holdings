@@ -1,22 +1,33 @@
 /**
  * SidebarV2 — Workflow-driven navigation sidebar.
  *
- * Mental model: See holdings → Understand risk → Discover opportunities → Deep dive
+ * Design language: Wealthsimple extraction
+ * Container layering: NOT flat — nav groups in distinct sections
+ * Active state: bg-accent-soft + left indicator bar + accent text
+ * Bottom section: workflow actions + collapse toggle, separated from nav
  *
  * Structure:
- *   Group "Portfolio"  → Holdings, Risk
- *   Group "Strategy"   → Opportunities, Analysis
- *   Portfolio Context  → selector tree (expanded only)
- *   Workflow Actions   → New Trade, Alerts
- *
- * Collapsed mode: icon-only + hover tooltips.
- * Transition: 200ms ease-out, synced with AppShellV2 main content.
+ *   ┌─────────────────────┐
+ *   │ Nav Section          │  ← flex-1, scrollable
+ *   │   Group: Portfolio   │
+ *   │     Holdings         │
+ *   │     Risk             │
+ *   │   ─── divider ───    │
+ *   │   Group: Strategy    │
+ *   │     Opportunities    │
+ *   │     Analysis         │
+ *   │   ─── divider ───    │
+ *   │   Portfolios tree    │
+ *   ├─────────────────────┤
+ *   │ Actions (New Trade)  │  ← fixed bottom
+ *   │ Collapse toggle      │
+ *   └─────────────────────┘
  */
-import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useLanguage }   from '@/context/LanguageContext'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useSidebar }    from '@/context/SidebarContext'
+import { interactiveClasses } from '../interaction'
 
 // ── Inline SVG icons (Lucide-style, 20×20, strokeWidth 1.75) ───────────────
 
@@ -89,16 +100,17 @@ const NAV_GROUPS = [
   },
 ] as const
 
-// ── Tooltip ─────────────────────────────────────────────────────────────────
+// ── Tooltip (collapsed mode) ────────────────────────────────────────────────
 
 function Tooltip({ label, show }: { label: string; show: boolean }) {
   if (!show) return null
   return (
-    <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50
-                     bg-v2-text-1 text-white text-ds-sm font-bold
+    <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2
+                     bg-v2-text-1 text-white text-ds-sm
                      px-2.5 py-1 rounded-v2-sm whitespace-nowrap
                      pointer-events-none shadow-v2-md
-                     opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                     opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+          style={{ zIndex: 40 }}>
       {label}
     </span>
   )
@@ -122,39 +134,41 @@ export default function SidebarV2() {
         transition-[width] duration-200 ease-out
         ${isExpanded ? 'w-v2-sidebar' : 'w-v2-sidebar-sm'}
       `}
+      style={{ zIndex: 20 }}
     >
-      {/* ── Navigation Groups ────────────────────────────────────── */}
-      <nav className="flex-1 pt-3 px-2 space-y-1 overflow-y-auto">
+      {/* ═══ Navigation Section (scrollable) ═══════════════════════════ */}
+      <nav className="flex-1 py-3 px-2 overflow-y-auto">
         {NAV_GROUPS.map((group, gi) => (
-          <div key={group.key}>
-            {/* Group divider (between groups, not before first) */}
-            {gi > 0 && <div className="my-2 mx-2 border-t border-v2-border" />}
+          <div key={group.key} className={gi > 0 ? 'mt-4' : ''}>
+            {/* Group divider */}
+            {gi > 0 && <div className="mb-3 mx-2 border-t border-v2-border" />}
 
-            {/* Group title — visible only when expanded */}
+            {/* Group label — expanded only */}
             {isExpanded && (
-              <div className="text-ds-caption uppercase tracking-widest text-v2-text-3 px-3 mb-1.5 mt-1">
+              <div className="text-ds-caption uppercase text-v2-text-3 px-3 mb-2">
                 {isEn ? group.en : group.zh}
               </div>
             )}
 
-            {/* Nav items */}
+            {/* Nav items container */}
             <div className="space-y-0.5">
               {group.items.map(({ key, to, icon, en, zh }) => {
                 const isActive = location.pathname.startsWith(to)
                 const label = isEn ? en : zh
+                const navClasses = interactiveClasses({
+                  variant: 'nav-item',
+                  selected: isActive,
+                })
+
                 return (
                   <NavLink
                     key={key}
                     to={to}
                     className={`
                       flex items-center gap-3 rounded-v2-md
-                      text-ds-body-r transition-colors duration-150
-                      group relative
+                      text-ds-body-r group relative
+                      ${navClasses}
                       ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
-                      ${isActive
-                        ? 'bg-v2-accent-soft text-v2-accent font-bold'
-                        : 'text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1'
-                      }
                     `}
                   >
                     {/* Active indicator bar */}
@@ -174,10 +188,10 @@ export default function SidebarV2() {
           </div>
         ))}
 
-        {/* ── Portfolio Context ────────────────────────────────────── */}
+        {/* ═══ Portfolio Context ═══════════════════════════════════════ */}
         {isExpanded && (
-          <div className="pt-2 mt-2 border-t border-v2-border">
-            <div className="text-ds-caption uppercase tracking-widest text-v2-text-3 px-3 mb-1.5">
+          <div className="mt-4 pt-3 border-t border-v2-border">
+            <div className="text-ds-caption uppercase text-v2-text-3 px-3 mb-2">
               {isEn ? 'Portfolios' : '投资组合'}
             </div>
             <div className="space-y-0.5 max-h-44 overflow-y-auto">
@@ -200,14 +214,15 @@ export default function SidebarV2() {
         )}
       </nav>
 
-      {/* ── Workflow Actions ──────────────────────────────────────── */}
+      {/* ═══ Bottom Actions Section (fixed) ═════════════════════════ */}
       <div className={`border-t border-v2-border ${isExpanded ? 'p-3' : 'p-2'} space-y-1`}>
         <button
           onClick={() => openTradeEntry()}
           className={`
-            flex items-center gap-2.5 w-full rounded-v2-md transition-colors duration-150
-            text-v2-accent hover:bg-v2-accent-soft group relative
-            ${isExpanded ? 'px-3 py-2 text-ds-body-r font-bold' : 'justify-center py-2.5'}
+            flex items-center gap-2.5 w-full rounded-v2-md
+            text-v2-accent group relative
+            ${interactiveClasses({ variant: 'button-ghost' })}
+            ${isExpanded ? 'px-3 py-2 text-ds-body-r' : 'justify-center py-2.5'}
           `}
         >
           {icons.trade}
@@ -220,8 +235,9 @@ export default function SidebarV2() {
         <button
           onClick={() => openPriceAlerts()}
           className={`
-            flex items-center gap-2.5 w-full rounded-v2-md transition-colors duration-150
-            text-v2-text-2 hover:bg-v2-surface-alt hover:text-v2-text-1 group relative
+            flex items-center gap-2.5 w-full rounded-v2-md
+            text-v2-text-2 group relative
+            ${interactiveClasses({ variant: 'button-ghost' })}
             ${isExpanded ? 'px-3 py-2 text-ds-body-r' : 'justify-center py-2.5'}
           `}
         >
@@ -234,13 +250,12 @@ export default function SidebarV2() {
         </button>
       </div>
 
-      {/* ── Collapse toggle ──────────────────────────────────────── */}
+      {/* ═══ Collapse Toggle ═══════════════════════════════════════════ */}
       <div className="border-t border-v2-border p-2">
         <button
           onClick={toggleExpand}
-          className="flex items-center justify-center w-full py-2 rounded-v2-sm
-                     text-v2-text-3 hover:bg-v2-surface-alt hover:text-v2-text-1
-                     transition-colors duration-150"
+          className={`flex items-center justify-center w-full py-2 rounded-v2-sm
+                     text-v2-text-3 ${interactiveClasses({ variant: 'button-ghost' })}`}
           aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <svg
@@ -276,7 +291,7 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
           flex items-center gap-2 w-full rounded-v2-sm text-left text-ds-sm
           py-1.5 transition-colors duration-150
           ${isSelected
-            ? 'bg-v2-accent-soft text-v2-accent font-bold'
+            ? 'bg-v2-accent-soft text-v2-accent'
             : 'text-v2-text-2 hover:bg-v2-surface-alt'
           }
         `}

@@ -109,11 +109,13 @@ export const layout = {
   sectionGap:      '1.25rem',    // 20px — gap between sections
 } as const
 
-// ── Z-Index ───────────────────────────────────────────────────────────────────
+// ── Z-Index (semantic layering) ───────────────────────────────────────────────
+// Named by purpose, not arbitrary number. Use these exclusively.
 export const zIndex = {
-  sidebar:  20,
-  topNav:   30,
-  dropdown: 40,
-  overlay:  50,
-  modal:    60,
+  nav:      20,       // sidebar, bottom nav
+  topNav:   30,       // sticky top bar (above nav)
+  dropdown: 40,       // menus, popovers, tooltips
+  overlay:  50,       // modal backdrops, drawers
+  modal:    60,       // modal content
+  toast:    70,       // notifications, snackbars
 } as const

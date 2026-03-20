@@ -61,9 +61,10 @@ export default function TopNavV2() {
 
   return (
     <header
-      className="sticky top-0 z-30 h-14 bg-v2-surface/80 backdrop-blur-xl
+      className="sticky top-0 h-14 bg-v2-surface/80 backdrop-blur-xl
                  flex items-center justify-between px-6
                  border-b border-v2-border select-none"
+      style={{ zIndex: 30 }}
     >
       {/* ── Left: Brand + Page Title ────────────────────────────────── */}
       <div className="flex items-center gap-4">
