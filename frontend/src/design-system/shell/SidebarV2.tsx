@@ -20,51 +20,51 @@ const IC = 'w-[18px] h-[18px]'
 
 const icons = {
   holdings: (
-    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
       <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   ),
   risk: (
-    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
       <path d="M12 8v4" /><circle cx="12" cy="16" r="0.5" fill="currentColor" />
     </svg>
   ),
   opportunities: (
-    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
     </svg>
   ),
   analysis: (
-    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 2a10 10 0 1 0 10 10" /><path d="M12 12V2" /><path d="M12 12l7.07-7.07" />
       <path d="M16 8h6V2" />
     </svg>
   ),
   plus: (
-    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
+    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
     </svg>
   ),
   bell: (
-    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
+    <svg className={IC} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">
       <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" />
     </svg>
   ),
   folderPlus: (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
       <path d="M12 11v6M9 14h6" />
     </svg>
   ),
   folder: (
-    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
     </svg>
   ),
   briefcase: (
-    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
     </svg>
   ),
@@ -112,15 +112,9 @@ export default function SidebarV2() {
       <div className={`${isExpanded ? 'px-3 pt-4 pb-2' : 'px-2 pt-3 pb-2'} space-y-1`}>
         <button
           onClick={() => openTradeEntry()}
-          className={`
-            flex items-center gap-2.5 w-full rounded-v2-md
-            text-white text-sm font-medium
-            transition-colors duration-150 group relative
-            ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}
-          `}
-          style={{ background: 'rgba(255, 255, 255, 0.08)' }}
-          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)')}
-          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+          className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
+            text-white/50 hover:text-white/85 hover:bg-white/5 transition-colors duration-150 group relative
+            ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
         >
           {icons.plus}
           {isExpanded ? <span>{isEn ? 'New Trade' : '新建交易'}</span> : <Tooltip label={isEn ? 'New Trade' : '新建交易'} show />}
@@ -168,7 +162,7 @@ export default function SidebarV2() {
                   text-sm font-medium transition-colors duration-150
                   ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
                   ${isActive
-                    ? 'bg-white/10 text-white'
+                    ? 'bg-white/6 text-white'
                     : 'text-white/50 hover:text-white/85 hover:bg-white/5'
                   }
                 `}
@@ -267,7 +261,7 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
           flex items-center gap-2 w-full rounded-v2-sm text-left text-xs font-medium
           py-1.5 transition-colors duration-150
           ${isSelected
-            ? 'bg-white/10 text-white'
+            ? 'bg-white/6 text-white'
             : 'text-white/40 hover:text-white/70 hover:bg-white/5'
           }
         `}

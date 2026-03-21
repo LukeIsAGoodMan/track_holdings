@@ -8,7 +8,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   AreaChart, Area, Tooltip,
-  ResponsiveContainer, CartesianGrid,
+  ResponsiveContainer,
 } from 'recharts'
 import { fetchPortfolioHistory } from '@/api/holdings'
 import type { PortfolioHistoryPoint } from '@/types'
@@ -92,17 +92,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
             </linearGradient>
           </defs>
 
-          {/* Extremely subtle horizontal guides only */}
-          <CartesianGrid
-            strokeDasharray="0"
-            stroke="rgba(0,0,0,0.03)"
-            vertical={false}
-            horizontalCoordinatesGenerator={({ yAxis }) => {
-              const { y, height } = yAxis as { y: number; height: number }
-              return [y + height * 0.25, y + height * 0.5, y + height * 0.75]
-            }}
-          />
-
+          {/* Pure curve — no grid, no axes, just signal */}
           <Tooltip content={<ChartTooltip />} />
 
           <Area

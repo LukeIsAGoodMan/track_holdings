@@ -64,23 +64,21 @@ export default function TopNavV2() {
                  select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(135deg, #52525b 0%, #27272a 50%, #18181b 100%)',
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.14) 0%, #52525b 20%, #27272a 55%, #18181b 100%)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       }}
     >
       {/* ── Left: Brand + Context ──────────────────────────────── */}
       <div className="flex items-center gap-5">
         <div className="flex items-center gap-3">
-          {/* Brand icon — 18px, strokeWidth 2 */}
           <div className="w-7 h-7 rounded-v2-sm bg-white/8 flex items-center justify-center text-white shrink-0">
-            <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <svg className="w-[16px] h-[16px]" viewBox="0 0 20 20" fill="none" aria-hidden="true" strokeWidth={1.8}>
               <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.5" />
               <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.75" />
               <rect x="13" y="2" width="4" height="16" rx="1" fill="currentColor" />
             </svg>
           </div>
-          {/* Brand text — identity anchor */}
-          <span className="text-lg font-semibold text-white hidden sm:inline" style={{ letterSpacing: '-0.02em' }}>
+          <span className="text-white hidden sm:inline font-semibold" style={{ fontSize: '17px', letterSpacing: '-0.015em' }}>
             Track Holdings
           </span>
         </div>

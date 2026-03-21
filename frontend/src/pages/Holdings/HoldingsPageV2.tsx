@@ -55,13 +55,13 @@ const PERIOD_LABELS: Record<Period, { en: string; zh: string }> = {
 
 // ── Treemap helpers ──────────────────────────────────────────────────────────
 function perfColor(pct: number | null | undefined): string {
-  if (pct == null || !isFinite(pct)) return '#e2e8f0'
-  if (pct >=  4) return '#059669'
-  if (pct >=  2) return '#34d399'
-  if (pct >=  0) return '#a7f3d0'
-  if (pct >= -2) return '#fecaca'
-  if (pct >= -4) return '#f87171'
-  return '#e11d48'
+  if (pct == null || !isFinite(pct)) return '#a1a1aa'  // zinc-400 neutral
+  if (pct >=  4) return '#3d7a5a'  // deep muted green
+  if (pct >=  2) return '#5f9c7b'  // mid muted green
+  if (pct >=  0) return '#8ab8a0'  // light muted green
+  if (pct >= -2) return '#c49a97'  // light muted red
+  if (pct >= -4) return '#b55a55'  // mid muted red
+  return '#944a46'                  // deep muted red
 }
 
 function getEffectivePerf(g: HoldingGroup, period: Period): number | null {
