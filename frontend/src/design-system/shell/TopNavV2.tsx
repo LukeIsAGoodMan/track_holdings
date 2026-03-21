@@ -64,7 +64,7 @@ export default function TopNavV2() {
                  select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.14) 0%, #52525b 20%, #27272a 55%, #18181b 100%)',
+        background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, #5a5a60 25%, #3a3a3f 55%, #232326 100%)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       }}
     >
@@ -72,13 +72,13 @@ export default function TopNavV2() {
       <div className="flex items-center gap-5">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-v2-sm bg-white/8 flex items-center justify-center text-white shrink-0">
-            <svg className="w-[16px] h-[16px]" viewBox="0 0 20 20" fill="none" aria-hidden="true" strokeWidth={1.8}>
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.5" />
               <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.75" />
               <rect x="13" y="2" width="4" height="16" rx="1" fill="currentColor" />
             </svg>
           </div>
-          <span className="text-white hidden sm:inline font-semibold" style={{ fontSize: '17px', letterSpacing: '-0.015em' }}>
+          <span className="text-white hidden sm:inline font-semibold" style={{ fontSize: '20px', letterSpacing: '-0.02em' }}>
             Track Holdings
           </span>
         </div>
