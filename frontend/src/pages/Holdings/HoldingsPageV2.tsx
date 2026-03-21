@@ -932,49 +932,29 @@ export default function HoldingsPageV2() {
             <div className="h-72 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
           </div>
         ) : (
-          <div className="space-y-8">
-            {/* ── Hero — dominant, breathing space ────────────── */}
-            <HeroSection metrics={heroMetrics} portfolioId={selectedPortfolioId} isEn={isEn} isLoading={loading} />
+          <div className="space-y-10">
+            {/* ── Hero — dominant, maximum breathing space ────── */}
+            <div className="pt-2">
+              <HeroSection metrics={heroMetrics} portfolioId={selectedPortfolioId} isEn={isEn} isLoading={loading} />
+            </div>
 
-            {/* ── NLV Chart — full width ──────────────────────── */}
+            {/* ── NLV Chart — pure curve, no container ───────── */}
             <PortfolioHistoryChart portfolioId={selectedPortfolioId} />
 
-            {/* ── Exposure Treemap — full width, expanded ─────── */}
-            <SectionCard noPadding>
-              <div className="flex items-center justify-between px-5 py-3 flex-wrap gap-2">
-                <span className="text-ds-body-r text-v2-text-2">
-                  {isEn ? 'Exposure Map' : '敞口热力图'}
-                </span>
-                <div className="flex items-center gap-1 shrink-0">
-                  {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setPeriod(p)}
-                      className={`px-2.5 py-1 rounded-v2-sm text-ds-sm transition-colors ${
-                        period === p
-                          ? 'bg-v2-accent text-white'
-                          : 'text-v2-text-3 hover:text-v2-text-1 hover:bg-v2-surface-alt'
-                      }`}
-                    >
-                      {PERIOD_LABELS[p]?.[lang === 'zh' ? 'zh' : 'en'] ?? p}
-                    </button>
-                  ))}
-                </div>
+            {/* ── Treemap — raw surface, no card wrapper ─────── */}
+            {treemapData.length === 0 ? (
+              <div className="h-72 flex items-center justify-center text-v2-text-3 text-xs">
+                {isEn ? 'No positions' : '暂无持仓'}
               </div>
-              {treemapData.length === 0 ? (
-                <div className="h-72 flex flex-col items-center justify-center text-v2-text-3 text-ds-sm gap-1">
-                  <span>{isEn ? 'No positions with exposure data' : '暂无敞口数据'}</span>
-                </div>
-              ) : (
-                <div className="p-3">
-                  <ResponsiveContainer width="100%" height={320}>
-                    <Treemap data={treemapData} dataKey="size" aspectRatio={4/3} stroke="#fff" content={CustomCell}>
-                      <Tooltip content={TreemapTooltip} />
-                    </Treemap>
-                  </ResponsiveContainer>
-                </div>
-              )}
-            </SectionCard>
+            ) : (
+              <div className="rounded-v2-lg overflow-hidden">
+                <ResponsiveContainer width="100%" height={340}>
+                  <Treemap data={treemapData} dataKey="size" aspectRatio={4/3} stroke="#fff" content={CustomCell}>
+                    <Tooltip content={TreemapTooltip} />
+                  </Treemap>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
         )
       )}

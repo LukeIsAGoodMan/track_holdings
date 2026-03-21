@@ -1,21 +1,17 @@
 /**
- * PortfolioHistoryChart — 30-day portfolio NLV equity curve (light theme)
+ * PortfolioHistoryChart — Minimal equity curve.
+ *
+ * Pure signal: smooth curve, no axes, no labels, no grid, no brush.
+ * Only extremely subtle horizontal reference lines (opacity < 0.1).
+ * Feels like a data surface, not a financial chart.
  */
 import { useState, useEffect, useMemo } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, Brush, CartesianGrid,
+  AreaChart, Area, Tooltip,
+  ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { fetchPortfolioHistory } from '@/api/holdings'
-import { useLanguage } from '@/context/LanguageContext'
 import type { PortfolioHistoryPoint } from '@/types'
-
-function fmtDate(iso: string): string {
-  const parts = iso?.split('-') ?? []
-  if (parts.length < 3) return iso ?? ''
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${months[parseInt(parts[1]) - 1] ?? 'N/A'} ${parseInt(parts[2])}`
-}
 
 function fmtNlv(val: string | number): string {
   const n = typeof val === 'string' ? parseFloat(val) : val
@@ -26,15 +22,21 @@ function fmtNlv(val: string | number): string {
   }).format(n)
 }
 
-// ── Custom tooltip (light theme) ──────────────────────────────────────────────
+function fmtDate(iso: string): string {
+  const parts = iso?.split('-') ?? []
+  if (parts.length < 3) return iso ?? ''
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[parseInt(parts[1]) - 1] ?? ''} ${parseInt(parts[2])}`
+}
+
 function ChartTooltip({ active, payload, label }: {
   active?: boolean; payload?: Array<{ value: number }>; label?: string
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs shadow-lg">
-      <div className="text-slate-400 mb-0.5">{label}</div>
-      <div className="text-slate-900 font-bold tabular-nums">{fmtNlv(payload[0].value)}</div>
+    <div className="bg-v2-surface border border-v2-border rounded-v2-md px-3 py-2 text-xs">
+      <div className="text-v2-text-3 mb-0.5">{label}</div>
+      <div className="text-v2-text-1 font-medium tnum">{fmtNlv(payload[0].value)}</div>
     </div>
   )
 }
@@ -42,17 +44,15 @@ function ChartTooltip({ active, payload, label }: {
 interface Props { portfolioId?: number | null }
 
 export default function PortfolioHistoryChart({ portfolioId }: Props) {
-  const { t } = useLanguage()
-  const [loading,   setLoading]   = useState(true)
-  const [points,    setPoints]    = useState<PortfolioHistoryPoint[]>([])
-  const [returnPct, setReturnPct] = useState<string | null>(null)
-  const [error,     setError]     = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [points,  setPoints]  = useState<PortfolioHistoryPoint[]>([])
+  const [error,   setError]   = useState(false)
 
   useEffect(() => {
     setLoading(true)
     setError(false)
     fetchPortfolioHistory(portfolioId, 30)
-      .then((r) => { setPoints(r.series); setReturnPct(r.return_pct) })
+      .then((r) => setPoints(r.series))
       .catch(() => setError(true))
       .finally(() => setLoading(false))
   }, [portfolioId])
@@ -62,88 +62,59 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
     [points],
   )
 
-  const returnNum    = returnPct != null ? parseFloat(returnPct) : null
-  const isPos        = returnNum != null && returnNum >= 0
-  const strokeColor  = isPos ? '#059669' : '#e11d48'
-  const gradientStop = isPos ? '#059669' : '#e11d48'
-  const returnColor  = isPos ? 'text-emerald-600 bg-emerald-50 border-emerald-200' : 'text-rose-600 bg-rose-50 border-rose-200'
+  const isPos = useMemo(() => {
+    if (chartData.length < 2) return true
+    return chartData[chartData.length - 1].nlv >= chartData[0].nlv
+  }, [chartData])
+
+  const strokeColor = isPos ? '#4a9a6b' : '#c05c56'
 
   if (loading) {
-    return (
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 animate-pulse">
-        <div className="flex items-center justify-between mb-3">
-          <div className="h-4 w-40 bg-slate-100 rounded" />
-          <div className="h-5 w-16 bg-slate-100 rounded-full" />
-        </div>
-        <div className="h-36 bg-slate-50 rounded-xl" />
-      </div>
-    )
+    return <div className="h-40 bg-v2-surface-alt rounded-v2-lg ds-shimmer" />
   }
 
   if (error || chartData.length === 0) {
     return (
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm px-5 py-6 text-center text-slate-400 text-xs">
-        {t('hist_no_data')}
+      <div className="h-40 flex items-center justify-center text-v2-text-3 text-xs">
+        No chart data available
       </div>
     )
   }
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-          {t('hist_title')}
-        </span>
-        {returnNum != null && (
-          <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${returnColor}`}>
-            {isPos ? '▲' : '▼'} {isPos ? '+' : ''}{returnNum.toFixed(2)}%
-          </span>
-        )}
-      </div>
-
+    <div className="w-full">
       <ResponsiveContainer width="100%" height={160}>
-        <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+        <AreaChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
           <defs>
             <linearGradient id="histNlvGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%"  stopColor={gradientStop} stopOpacity={0.15} />
-              <stop offset="95%" stopColor={gradientStop} stopOpacity={0.01} />
+              <stop offset="5%"  stopColor={strokeColor} stopOpacity={0.08} />
+              <stop offset="95%" stopColor={strokeColor} stopOpacity={0.01} />
             </linearGradient>
           </defs>
 
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-
-          <XAxis
-            dataKey="date"
-            tick={{ fill: '#94a3b8', fontSize: 10 }}
-            tickLine={false} axisLine={false}
-            interval={Math.floor(chartData.length / 5)}
-          />
-
-          <YAxis
-            tick={{ fill: '#94a3b8', fontSize: 10 }}
-            tickLine={false} axisLine={false}
-            tickFormatter={(v: number) => `$${(v / 1000).toFixed(0)}k`}
-            width={46} domain={['auto', 'auto']}
+          {/* Extremely subtle horizontal guides only */}
+          <CartesianGrid
+            strokeDasharray="0"
+            stroke="rgba(0,0,0,0.04)"
+            vertical={false}
+            horizontalCoordinatesGenerator={({ yAxis }) => {
+              const { y, height } = yAxis as { y: number; height: number }
+              return [y + height * 0.25, y + height * 0.5, y + height * 0.75]
+            }}
           />
 
           <Tooltip content={<ChartTooltip />} />
 
           <Area
-            type="monotone" dataKey="nlv"
-            stroke={strokeColor} strokeWidth={2}
+            type="monotone"
+            dataKey="nlv"
+            stroke={strokeColor}
+            strokeWidth={1.5}
             fill="url(#histNlvGrad)"
-            dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: strokeColor }}
+            dot={false}
+            activeDot={{ r: 3, strokeWidth: 0, fill: strokeColor }}
             isAnimationActive={false}
           />
-
-          {chartData.length > 10 && (
-            <Brush
-              dataKey="date" height={18}
-              stroke="#e2e8f0" fill="#f8fafc"
-              travellerWidth={6}
-              startIndex={Math.max(0, chartData.length - 20)}
-            />
-          )}
         </AreaChart>
       </ResponsiveContainer>
     </div>

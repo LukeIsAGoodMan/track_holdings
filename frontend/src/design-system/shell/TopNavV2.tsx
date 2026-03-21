@@ -55,11 +55,12 @@ export default function TopNavV2() {
   return (
     <header
       className="sticky top-0 h-14 backdrop-blur-xl
-                 flex items-center justify-between px-8
-                 border-b border-white/6 select-none"
+                 flex items-center justify-between px-10
+                 border-b select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
+        background: 'linear-gradient(135deg, #3f3f46 0%, #18181b 100%)',
+        borderColor: 'rgba(255, 255, 255, 0.06)',
       }}
     >
       {/* ── Left: Brand + Context ──────────────────────────────── */}
