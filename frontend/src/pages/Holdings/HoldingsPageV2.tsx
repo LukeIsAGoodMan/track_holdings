@@ -1023,7 +1023,7 @@ export default function HoldingsPageV2() {
         ) : (
           <div className="space-y-5">
             {/* ── Hero Section ───────────────────────────────────── */}
-            <HeroSection metrics={heroMetrics} isEn={isEn} isLoading={loading} />
+            <HeroSection metrics={heroMetrics} portfolioId={selectedPortfolioId} isEn={isEn} isLoading={loading} />
 
             {/* ── Flex Layout: Main + Right Panel ──────────────── */}
             <div className="flex gap-5 ">

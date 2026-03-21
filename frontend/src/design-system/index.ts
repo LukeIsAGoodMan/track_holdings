@@ -46,6 +46,7 @@ export { default as RightPanel }     from './shell/RightPanel'
 
 // Workspace
 export { default as HeroSection }         from './workspace/HeroSection'
+export { default as HeroSparkline }      from './workspace/HeroSparkline'
 export { default as HoldingsActionBar }   from './workspace/HoldingsActionBar'
 export { default as TradeRecordTimeline } from './workspace/TradeRecordTimeline'
 export { default as ActivityPanel }       from './workspace/ActivityPanel'

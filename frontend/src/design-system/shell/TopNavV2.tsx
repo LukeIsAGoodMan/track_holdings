@@ -1,12 +1,10 @@
 /**
  * TopNavV2 — Dark metallic navigation bar.
  *
- * Premium dark frame: gradient from #1e293b → #0f172a
- * White typography at reduced opacity for calm hierarchy.
- * Maintains: sticky, WS status, breadcrumb, language, user.
+ * Owns: brand, page context, WS status, language toggle.
+ * Does NOT own: user identity (moved to Sidebar bottom).
  */
 import { useLocation } from 'react-router-dom'
-import { useAuth }      from '@/context/AuthContext'
 import { useLanguage }  from '@/context/LanguageContext'
 import { usePortfolio } from '@/context/PortfolioContext'
 import { useWebSocket } from '@/context/WebSocketContext'
@@ -28,7 +26,6 @@ function usePageTitle(pathname: string, isEn: boolean): string {
 export default function TopNavV2() {
   const location = useLocation()
   const { lang, toggle } = useLanguage()
-  const { user, logout } = useAuth()
   const { socketState, connected } = useWebSocket()
   const { portfolios, selectedPortfolioId } = usePortfolio()
 
@@ -64,7 +61,7 @@ export default function TopNavV2() {
         background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)',
       }}
     >
-      {/* ── Left: Brand + Page Title ────────────────────────────────── */}
+      {/* ── Left: Brand + Page Context ─────────────────────────────── */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-3">
           <div className="w-7 h-7 rounded-v2-sm bg-white/10 flex items-center justify-center text-white shrink-0">
@@ -97,7 +94,7 @@ export default function TopNavV2() {
         )}
       </div>
 
-      {/* ── Right: Status + Controls ──────────────────────────────── */}
+      {/* ── Right: Status + Language ───────────────────────────────── */}
       <div className="flex items-center gap-3">
         {/* WS status */}
         <div
@@ -120,26 +117,6 @@ export default function TopNavV2() {
           <span className="text-v2-shell-divider mx-0.5">/</span>
           <span className={lang === 'zh' ? 'text-white' : ''}>中</span>
         </button>
-
-        {/* User avatar + logout */}
-        {user && (
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center
-                            text-ds-caption text-white/80 uppercase">
-              {user.username.charAt(0)}
-            </div>
-            <span className="text-ds-sm text-v2-shell-text max-w-[70px] truncate hidden md:inline">
-              {user.username}
-            </span>
-            <button
-              onClick={logout}
-              className="text-ds-sm text-v2-shell-text hover:text-v2-negative transition-colors duration-150
-                         px-1.5 py-0.5 rounded-v2-sm hover:bg-v2-negative/10"
-            >
-              {isEn ? 'Logout' : '退出'}
-            </button>
-          </div>
-        )}
       </div>
     </header>
   )
