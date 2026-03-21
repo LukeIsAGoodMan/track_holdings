@@ -90,7 +90,7 @@ export default memo(function TradeRecordTimeline({ portfolioId, isFolder }: Prop
     return (
       <div className="space-y-5">
         {/* Table header skeleton */}
-        <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm overflow-hidden">
+        <div className="bg-v2-surface border border-v2-border rounded-v2-lg overflow-hidden">
           <div className="h-10 border-b border-v2-border bg-v2-surface-alt ds-shimmer" />
           {[1, 2, 3, 4, 5].map(i => (
             <div key={i} className="flex items-center gap-4 px-5 py-3 border-b border-v2-border last:border-0">

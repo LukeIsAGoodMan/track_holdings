@@ -1000,22 +1000,22 @@ export default function HoldingsPageV2() {
             {/* Hero skeleton — 4 metric blocks */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-24 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+                <div key={i} className="h-24 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
               ))}
             </div>
             {/* Chart skeleton */}
-            <div className="h-64 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+            <div className="h-64 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
             {/* Flex skeleton: table + right panel */}
             <div className="flex gap-5">
               <div className="flex-1 min-w-0 space-y-4">
                 <div className="h-10 w-48 bg-v2-surface rounded-v2-md ds-shimmer" />
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-14 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+                  <div key={i} className="h-14 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
                 ))}
               </div>
               <RightPanel>
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-32 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+                  <div key={i} className="h-32 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
                 ))}
               </RightPanel>
             </div>
@@ -1150,7 +1150,7 @@ export default function HoldingsPageV2() {
         loading ? (
           <div className="space-y-4">
             {[1, 2].map((i) => (
-              <div key={i} className="h-48 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+              <div key={i} className="h-48 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
             ))}
           </div>
         ) : (

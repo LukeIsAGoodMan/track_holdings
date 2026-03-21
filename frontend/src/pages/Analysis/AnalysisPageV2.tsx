@@ -55,7 +55,7 @@ function AnalysisPageSkeleton() {
   return (
     <div className="space-y-5">
       {/* Hero skeleton */}
-      <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6 ds-shimmer">
+      <div className="bg-v2-surface border border-v2-border rounded-v2-lg p-6 ds-shimmer">
         <div className="flex items-end justify-between gap-4">
           <div className="space-y-2">
             <div className="h-5 w-24 bg-v2-surface-alt rounded-v2-sm" />
@@ -73,12 +73,12 @@ function AnalysisPageSkeleton() {
       <div className="flex gap-5">
         <div className="flex-1 min-w-0 space-y-5">
           {/* Chart skeleton */}
-          <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm overflow-hidden ds-shimmer">
+          <div className="bg-v2-surface border border-v2-border rounded-v2-lg overflow-hidden ds-shimmer">
             <div className="px-5 pt-4 pb-2 h-5 w-40 bg-v2-surface-alt rounded-v2-sm" />
             <div className="h-80 mx-5 mb-4 bg-v2-surface-alt rounded-v2-md" />
           </div>
           {/* Battle report skeleton */}
-          <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-5 ds-shimmer space-y-3">
+          <div className="bg-v2-surface border border-v2-border rounded-v2-lg p-5 ds-shimmer space-y-3">
             <div className="h-4 w-32 bg-v2-surface-alt rounded-v2-sm" />
             <div className="h-3 w-full bg-v2-surface-alt rounded-v2-sm" />
             <div className="h-3 w-3/4 bg-v2-surface-alt rounded-v2-sm" />
@@ -87,7 +87,7 @@ function AnalysisPageSkeleton() {
         </div>
         <RightPanel>
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-5 ds-shimmer">
+            <div key={i} className="bg-v2-surface border border-v2-border rounded-v2-lg p-5 ds-shimmer">
               <div className="h-4 w-24 bg-v2-surface-alt rounded-v2-sm mb-3" />
               <div className="space-y-2">
                 {[1, 2, 3].map((j) => <div key={j} className="h-3 bg-v2-surface-alt rounded-v2-sm" />)}
@@ -404,7 +404,7 @@ export default function AnalysisPageV2() {
       {result && !loading && (
         <>
           {/* ── Analysis Hero ──────────────────────────────── */}
-          <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6">
+          <div className="bg-v2-surface border border-v2-border rounded-v2-lg p-6">
             <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">

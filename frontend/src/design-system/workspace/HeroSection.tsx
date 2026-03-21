@@ -1,13 +1,15 @@
 /**
- * HeroSection — Bloomberg-style portfolio summary bar.
+ * HeroSection (V3) — Portfolio summary as a structured surface.
  *
- * Large typography, whitespace-driven, zero decoration.
- * Portfolio value as the hero number, with P&L metrics alongside.
- * All numbers use tabular-nums for zero layout shift.
+ * NOT a boxed widget. This is a calm, breathable region at the top
+ * of the workspace. Uses spacing and typography to create hierarchy,
+ * not shadows or borders.
  *
  * Layout:
- *   Left:  Portfolio value (hero size) + subtitle
- *   Right: 4 metric blocks (Daily P&L, Total P&L, Net Exposure, Realized)
+ *   Left:  Portfolio value (hero) + subtitle
+ *   Right: 4 metric blocks separated by spacing (not borders)
+ *
+ * Surface: bg-v2-surface + border + rounded — blends with main container.
  */
 import { memo } from 'react'
 import MetricBlock from '../primitives/MetricBlock'
@@ -52,14 +54,14 @@ export default memo(function HeroSection({ metrics, isEn, isLoading = false }: P
   const m = metrics
 
   return (
-    <div className="bg-v2-surface rounded-v2-lg shadow-v2-sm p-6 md:p-8">
+    <div className="bg-v2-surface border border-v2-border rounded-v2-lg p-5 md:p-6">
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
         {/* ── Left: Hero value ───────────────────────────────── */}
         <div className="min-w-0">
-          <div className="text-ds-caption uppercase text-v2-text-3 mb-1.5">
+          <div className="text-ds-caption uppercase text-v2-text-2">
             {isEn ? 'Portfolio Value' : '投资组合价值'}
           </div>
-          <div className="text-ds-display text-v2-text-1 tnum leading-none">
+          <div className="text-ds-display text-v2-text-1 tnum leading-none mt-1">
             {isLoading ? (
               <SkeletonLoader variant="block" width="w-48" height="h-10" />
             ) : (
@@ -68,12 +70,12 @@ export default memo(function HeroSection({ metrics, isEn, isLoading = false }: P
                 : '—'
             )}
           </div>
-          <div className="text-ds-sm text-v2-text-3 mt-1.5">
+          <div className="text-ds-sm text-v2-text-3 mt-1">
             {isEn ? 'Stocks MtM + Options cost basis' : '股票市值 + 期权持仓成本'}
           </div>
         </div>
 
-        {/* ── Right: Metric blocks ──────────────────────────── */}
+        {/* ── Right: Metric blocks — separated by gap, no borders ── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-4 shrink-0">
           <MetricBlock
             label={isEn ? 'Day P&L' : '日盈亏'}

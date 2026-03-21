@@ -1,14 +1,27 @@
 /**
- * SectionCard — primary container for page sections.
+ * SectionCard (V3) — surface subdivision, not a boxed widget.
  *
- * Surface: surfaceRaised (#f9f9f9), radius: lg (16px), shadow: card.
- * Supports loading state with stable min-height to prevent layout shift.
+ * Cards are subdivisions of an existing surface, not components
+ * sitting on top of the UI. They define structure through spacing
+ * and subtle borders, not shadows or elevation.
  *
- * Usage:
+ * Surface rules:
+ *   bg-v2-surface (same as parent — blends, doesn't float)
+ *   border border-v2-border (very subtle, defines edges)
+ *   rounded-v2-lg (consistent radius)
+ *   p-5 default (breathable internal padding)
+ *   NO shadow (cards are surface divisions, not elevated panels)
+ *
+ * Compound API:
  *   <SectionCard>
  *     <SectionCard.Header title="Holdings" action={<button>...</button>} />
- *     <SectionCard.Body>{children}</SectionCard.Body>
+ *     <SectionCard.Content>{children}</SectionCard.Content>
+ *     <SectionCard.Footer>{footer}</SectionCard.Footer>
  *   </SectionCard>
+ *
+ * Spacing > borders: sections separated by spacing (gap/mt), not dividers.
+ * Header → Content spacing: mb-4
+ * Content → Footer spacing: mt-4
  */
 import type { ReactNode, CSSProperties } from 'react'
 import SkeletonLoader from './SkeletonLoader'
@@ -25,6 +38,8 @@ interface CardProps {
   minHeight?: string
   /** Remove default padding (for tables/charts that need edge-to-edge) */
   noPadding?: boolean
+  /** Interactive card — subtle hover response */
+  interactive?: boolean
 }
 
 function SectionCardRoot({
@@ -34,12 +49,14 @@ function SectionCardRoot({
   isLoading = false,
   minHeight,
   noPadding = false,
+  interactive = false,
 }: CardProps) {
   return (
     <div
       className={`
-        bg-v2-surface-raised rounded-v2-lg shadow-v2-sm
-        ${noPadding ? '' : 'p-6'}
+        bg-v2-surface border border-v2-border rounded-v2-lg
+        ${noPadding ? '' : 'p-5'}
+        ${interactive ? 'transition-colors duration-150 hover:bg-v2-surface-hover cursor-pointer' : ''}
         ${className}
       `}
       style={{ minHeight, ...style }}
@@ -75,15 +92,26 @@ function CardHeader({ title, subtitle, action, className = '' }: HeaderProps) {
   )
 }
 
-// ── Body ──────────────────────────────────────────────────────────────────────
+// ── Content ───────────────────────────────────────────────────────────────────
 
-interface BodyProps {
+interface ContentProps {
   children: ReactNode
   className?: string
 }
 
-function CardBody({ children, className = '' }: BodyProps) {
+function CardContent({ children, className = '' }: ContentProps) {
   return <div className={className}>{children}</div>
+}
+
+// ── Footer ────────────────────────────────────────────────────────────────────
+
+interface FooterProps {
+  children: ReactNode
+  className?: string
+}
+
+function CardFooter({ children, className = '' }: FooterProps) {
+  return <div className={`mt-4 pt-4 border-t border-v2-border ${className}`}>{children}</div>
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -102,8 +130,10 @@ function CardSkeleton() {
 // ── Compound export ───────────────────────────────────────────────────────────
 
 const SectionCard = Object.assign(SectionCardRoot, {
-  Header: CardHeader,
-  Body:   CardBody,
+  Header:  CardHeader,
+  Body:    CardContent,   // backward compat alias
+  Content: CardContent,
+  Footer:  CardFooter,
 })
 
 export default SectionCard

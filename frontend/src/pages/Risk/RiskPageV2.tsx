@@ -707,22 +707,22 @@ export default function RiskPageV2() {
       {loading ? (
         <div className="space-y-5">
           {/* Hero skeleton — VaR headline + 4 greek metrics */}
-          <div className="h-16 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+          <div className="h-16 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-20 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+              <div key={i} className="h-20 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
             ))}
           </div>
           {/* Flex skeleton: main + right panel */}
           <div className="flex gap-5">
             <div className="flex-1 min-w-0 space-y-4">
-              <div className="h-48 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
-              <div className="h-36 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
-              <div className="h-44 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+              <div className="h-48 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
+              <div className="h-36 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
+              <div className="h-44 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
             </div>
             <RightPanel>
               {[1, 2, 3].map((i) => (
-                <div key={i} className="h-28 bg-v2-surface rounded-v2-lg shadow-v2-sm ds-shimmer" />
+                <div key={i} className="h-28 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
               ))}
             </RightPanel>
           </div>

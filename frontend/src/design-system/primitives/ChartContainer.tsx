@@ -38,7 +38,7 @@ export default function ChartContainer({
   className = '',
 }: Props) {
   return (
-    <div className={`bg-v2-surface-raised rounded-v2-lg shadow-v2-sm overflow-hidden ${className}`}>
+    <div className={`bg-v2-surface border border-v2-border rounded-v2-lg overflow-hidden ${className}`}>
       {(title || action) && (
         <div className="flex items-center justify-between px-6 pt-4 pb-2">
           {title && (

@@ -25,8 +25,8 @@ interface Props {
 }
 
 const variantClasses: Record<string, string> = {
-  default:  'bg-v2-surface-raised rounded-v2-lg shadow-v2-sm',
-  outlined: 'bg-v2-surface-raised rounded-v2-lg border border-v2-border',
+  default:  'bg-v2-surface border border-v2-border rounded-v2-lg',
+  outlined: 'bg-v2-surface border border-v2-border rounded-v2-lg',
   subtle:   'bg-v2-surface-alt rounded-v2-lg',
 }
 
