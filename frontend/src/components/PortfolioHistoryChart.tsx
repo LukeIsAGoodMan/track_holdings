@@ -95,7 +95,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
           {/* Extremely subtle horizontal guides only */}
           <CartesianGrid
             strokeDasharray="0"
-            stroke="rgba(0,0,0,0.04)"
+            stroke="rgba(0,0,0,0.03)"
             vertical={false}
             horizontalCoordinatesGenerator={({ yAxis }) => {
               const { y, height } = yAxis as { y: number; height: number }

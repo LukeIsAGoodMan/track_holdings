@@ -98,24 +98,21 @@ function CustomCell(props: Record<string, unknown>) {
   const fontSize    = Math.min(13, Math.max(8, width / 6))
   const subFontSize = Math.min(11, Math.max(8, width / 8))
   const showText    = width > 36 && height > 22
-  const shadowStyle = { paintOrder: 'stroke fill' } as React.CSSProperties
 
   return (
     <g>
       <rect
         x={x + 1} y={y + 1}
         width={Math.max(0, width - 2)} height={Math.max(0, height - 2)}
-        fill={fill} rx={6} stroke="#ffffff" strokeWidth={2}
+        fill={fill} rx={8} stroke="rgba(255,255,255,0.15)" strokeWidth={1}
       />
       {showText && (
         <>
           <text
-            x={x + width / 2} y={y + height / 2 - (height > 40 ? 9 : 0)}
+            x={x + width / 2} y={y + height / 2 - (height > 40 ? 8 : 0)}
             textAnchor="middle" dominantBaseline="middle"
-            fill="white"
-            stroke="rgba(0,0,0,0.45)" strokeWidth={2.5} strokeLinejoin="round"
-            style={shadowStyle}
-            fontSize={fontSize} fontWeight="800" fontFamily="Plus Jakarta Sans, sans-serif"
+            fill="rgba(255,255,255,0.9)"
+            fontSize={fontSize} fontWeight="500" fontFamily="Inter, sans-serif"
           >
             {label || '?'}
           </text>
@@ -123,12 +120,10 @@ function CustomCell(props: Record<string, unknown>) {
             <text
               x={x + width / 2} y={y + height / 2 + 10}
               textAnchor="middle" dominantBaseline="middle"
-              fill="white"
-              stroke="rgba(0,0,0,0.35)" strokeWidth={2} strokeLinejoin="round"
-              style={shadowStyle}
-              fontSize={subFontSize} fontWeight="700" fontFamily="Plus Jakarta Sans, sans-serif"
+              fill="rgba(255,255,255,0.7)"
+              fontSize={subFontSize} fontWeight="400" fontFamily="Inter, sans-serif"
             >
-              {perf >= 0 ? '+' : ''}{perf.toFixed(2)}%
+              {perf >= 0 ? '+' : ''}{perf.toFixed(1)}%
             </text>
           )}
         </>

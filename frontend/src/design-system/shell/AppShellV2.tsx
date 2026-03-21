@@ -92,8 +92,9 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
         position: 'sticky',
         top: STICKY_TOP,
         height: PANEL_HEIGHT,
-        background: 'linear-gradient(180deg, #27272a 0%, #18181b 100%)',
+        background: 'linear-gradient(180deg, #3a3a3c 0%, #2a2a2e 40%, #18181b 100%)',
         borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.04)',
         boxShadow: 'inset -1px 0 0 rgba(255, 255, 255, 0.04)',
       }}
     >
@@ -126,8 +127,9 @@ function ActionPanelSurface() {
         position: 'sticky',
         top: STICKY_TOP,
         height: PANEL_HEIGHT,
-        background: 'linear-gradient(180deg, #27272a 0%, #18181b 100%)',
+        background: 'linear-gradient(180deg, #3a3a3c 0%, #2a2a2e 40%, #18181b 100%)',
         borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.04)',
         boxShadow: 'inset -1px 0 0 rgba(255, 255, 255, 0.04)',
       }}
     >

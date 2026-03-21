@@ -1,9 +1,14 @@
 /**
- * TopNavV2 — Premium dark metallic frame.
+ * TopNavV2 — Metallic silver navigation frame.
  *
- * Feels like a frame, not a toolbar.
- * Typography: brand ~16px font-medium, breadcrumb ~13px reduced opacity.
- * Spacious gaps, minimal controls.
+ * Typography hierarchy:
+ *   Brand: text-lg font-semibold tracking-tight — product identity anchor
+ *   Page:  text-sm font-medium text-white/60
+ *   Portfolio: text-xs text-white/40
+ *   Status/Lang: text-xs
+ *
+ * Icon: 18px, strokeWidth 2
+ * Gradient: 3-stop zinc metallic (#52525b → #27272a → #18181b)
  */
 import { useLocation } from 'react-router-dom'
 import { useLanguage }  from '@/context/LanguageContext'
@@ -56,24 +61,26 @@ export default function TopNavV2() {
     <header
       className="sticky top-0 h-14 backdrop-blur-xl
                  flex items-center justify-between px-10
-                 border-b select-none"
+                 select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(135deg, #3f3f46 0%, #18181b 100%)',
-        borderColor: 'rgba(255, 255, 255, 0.06)',
+        background: 'linear-gradient(135deg, #52525b 0%, #27272a 50%, #18181b 100%)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       }}
     >
       {/* ── Left: Brand + Context ──────────────────────────────── */}
       <div className="flex items-center gap-5">
         <div className="flex items-center gap-3">
+          {/* Brand icon — 18px, strokeWidth 2 */}
           <div className="w-7 h-7 rounded-v2-sm bg-white/8 flex items-center justify-center text-white shrink-0">
-            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.5" />
               <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.75" />
               <rect x="13" y="2" width="4" height="16" rx="1" fill="currentColor" />
             </svg>
           </div>
-          <span className="text-base font-medium text-white hidden sm:inline" style={{ letterSpacing: '-0.01em' }}>
+          {/* Brand text — identity anchor */}
+          <span className="text-lg font-semibold text-white hidden sm:inline" style={{ letterSpacing: '-0.02em' }}>
             Track Holdings
           </span>
         </div>
@@ -98,7 +105,6 @@ export default function TopNavV2() {
 
       {/* ── Right: Status + Language ───────────────────────────── */}
       <div className="flex items-center gap-4">
-        {/* WS status — minimal */}
         <div
           className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-v2-sm transition-colors duration-200
             ${isOffline ? 'bg-v2-negative/20 text-v2-negative' : 'text-white/40'}
@@ -109,7 +115,6 @@ export default function TopNavV2() {
           <span className="hidden sm:inline">{statusLabel}</span>
         </div>
 
-        {/* Language toggle */}
         <button
           onClick={toggle}
           className="text-xs text-white/40 hover:text-white/80
