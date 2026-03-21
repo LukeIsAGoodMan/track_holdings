@@ -64,7 +64,7 @@ export default function TopNavV2() {
                  select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(135deg, rgba(255,255,255,0.08) 0%, #5a5a60 25%, #3a3a3f 55%, #232326 100%)',
+        background: 'linear-gradient(135deg, #8a8a90 0%, #6e6e74 24%, #515158 58%, #3f3f45 100%)',
         borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       }}
     >
