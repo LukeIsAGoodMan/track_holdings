@@ -3,7 +3,7 @@
  *
  * Layout (flex):
  *   Main column (flex-1): Hero → Chart → Treemap → Holdings Table
- *   RightPanel (shell): Risk, Allocation, Cash, AI
+ *   Hero → NLV Chart → Treemap (full width)
  *
  * Focus mode: chart expands to full-width, right panel collapses.
  * All V1 business logic preserved — this is a visual-only rebuild.
@@ -16,7 +16,6 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
 } from 'recharts'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useLanguage }   from '@/context/LanguageContext'
@@ -33,15 +32,10 @@ import type {
 } from '@/types'
 import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
-import AiInsightPanel        from '@/components/AiInsightPanel'
 import HeroSection           from '@/design-system/workspace/HeroSection'
-import HoldingsActionBar     from '@/design-system/workspace/HoldingsActionBar'
 import TradeRecordTimeline   from '@/design-system/workspace/TradeRecordTimeline'
-import ActivityPanel         from '@/design-system/workspace/ActivityPanel'
-import { QuickRiskCard, AllocationCard, CashCard } from '@/design-system/workspace/RightPanelStack'
 import SectionCard           from '@/design-system/primitives/SectionCard'
 import TabsV2               from '@/design-system/primitives/TabsV2'
-import RightPanel            from '@/design-system/shell/RightPanel'
 
 // ── Safe helpers ──────────────────────────────────────────────────────────────
 function safeFloat(v: string | number | null | undefined): number | null {
@@ -661,66 +655,6 @@ const SECTOR_FALLBACK_PALETTE = [
   '#f59e0b', '#ec4899', '#84cc16', '#22d3ee',
 ]
 
-interface ChartDatum { key: string; label: string; value: number; color: string }
-
-function SectorMiniChart({ sectorExp, isEn }: { sectorExp: Record<string, string> | null | undefined; isEn: boolean }) {
-  const data = useMemo<ChartDatum[]>(() => {
-    if (!sectorExp) return []
-    const sectorMap: Record<string, number> = {}
-    let otherTotal = 0
-    for (const [key, deltaStr] of Object.entries(sectorExp)) {
-      const val = Math.abs(parseFloat(deltaStr) || 0)
-      if (val < 0.001) continue
-      if (ASSET_CLASS_KEYS.has(key)) { otherTotal += val } else { sectorMap[key] = (sectorMap[key] ?? 0) + val }
-    }
-    if (otherTotal > 0.001) sectorMap['Other / Diversified'] = (sectorMap['Other / Diversified'] ?? 0) + otherTotal
-    let palIdx = 0
-    return Object.entries(sectorMap)
-      .map(([key, value]) => ({
-        key, label: key, value,
-        color: SECTOR_NAMED_COLORS[key] ?? SECTOR_FALLBACK_PALETTE[palIdx++ % SECTOR_FALLBACK_PALETTE.length],
-      }))
-      .sort((a, b) => b.value - a.value)
-  }, [sectorExp])
-
-  if (data.length === 0) return null
-  const total = data.reduce((s, d) => s + d.value, 0)
-
-  return (
-    <SectionCard>
-      <SectionCard.Header title={isEn ? 'Sector Breakdown' : '行业分布'} />
-      <SectionCard.Body>
-        <div className="flex items-center gap-4">
-          <div className="w-20 h-20 shrink-0">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={data} dataKey="value" cx="50%" cy="50%" innerRadius={22} outerRadius={38} strokeWidth={1} stroke="#fff">
-                  {data.map((d) => <Cell key={d.key} fill={d.color} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex-1 min-w-0 space-y-1">
-            {data.slice(0, 5).map(d => {
-              const pct = total > 0 ? Math.round(d.value / total * 100) : 0
-              return (
-                <div key={d.key} className="flex items-center gap-2 text-ds-sm">
-                  <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: d.color }} />
-                  <span className="truncate flex-1 text-v2-text-2">{d.label}</span>
-                  <span className="tnum font-bold text-v2-text-1 shrink-0">{pct}%</span>
-                </div>
-              )
-            })}
-            {data.length > 5 && (
-              <div className="text-ds-caption text-v2-text-3">+{data.length - 5} more</div>
-            )}
-          </div>
-        </div>
-      </SectionCard.Body>
-    </SectionCard>
-  )
-}
-
 // ══════════════════════════════════════════════════════════════════════════════
 // ── Page Component ───────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
@@ -759,7 +693,6 @@ export default function HoldingsPageV2() {
   const [loading,         setLoading]         = useState(true)
   const [period,          setPeriod]          = useState<Period>('1d')
   const [lifecycleResult, setLifecycleResult] = useState<LifecycleResult | null>(null)
-  const [focusMode,       setFocusMode]       = useState(false)
 
   const lastValidHoldings = useRef<HoldingGroup[]>([])
 
@@ -983,12 +916,9 @@ export default function HoldingsPageV2() {
         </div>
       )}
 
-      {/* ── Tab Navigation + Action Bar ──────────────────────────── */}
+      {/* ── Tab Navigation ──────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <TabsV2 tabs={TAB_ITEMS} activeKey={activeTab} onChange={handleTabChange} />
-        {activeTab !== 'records' && (
-          <HoldingsActionBar isEn={isEn} hasPositions={holdings.length > 0} />
-        )}
       </div>
 
       {/* ════════════════════════════════════════════════════════════ */}
@@ -996,149 +926,55 @@ export default function HoldingsPageV2() {
       {/* ════════════════════════════════════════════════════════════ */}
       {activeTab === 'overview' && (
         loading ? (
-          <div className="space-y-5">
-            {/* Hero skeleton — 4 metric blocks */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="h-24 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
-              ))}
-            </div>
-            {/* Chart skeleton */}
+          <div className="space-y-8">
+            <div className="h-32 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
             <div className="h-64 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
-            {/* Flex skeleton: table + right panel */}
-            <div className="flex gap-5">
-              <div className="flex-1 min-w-0 space-y-4">
-                <div className="h-10 w-48 bg-v2-surface rounded-v2-md ds-shimmer" />
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="h-14 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
-                ))}
-              </div>
-              <RightPanel>
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-32 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
-                ))}
-              </RightPanel>
-            </div>
+            <div className="h-72 bg-v2-surface border border-v2-border rounded-v2-lg ds-shimmer" />
           </div>
         ) : (
-          <div className="space-y-5">
-            {/* ── Hero Section ───────────────────────────────────── */}
+          <div className="space-y-8">
+            {/* ── Hero — dominant, breathing space ────────────── */}
             <HeroSection metrics={heroMetrics} portfolioId={selectedPortfolioId} isEn={isEn} isLoading={loading} />
 
-            {/* ── Flex Layout: Main + Right Panel ──────────────── */}
-            <div className="flex gap-5 ">
+            {/* ── NLV Chart — full width ──────────────────────── */}
+            <PortfolioHistoryChart portfolioId={selectedPortfolioId} />
 
-              {/* ── Main Column ─────────────────────────────────── */}
-              <div className="flex-1 min-w-0 space-y-5">
-
-                {/* Chart with focus toggle */}
-                <div className="relative">
-                  <PortfolioHistoryChart portfolioId={selectedPortfolioId} />
-                  <button
-                    onClick={() => setFocusMode(f => !f)}
-                    className="absolute top-3 right-3 z-10 p-1.5 rounded-v2-sm
-                               bg-v2-surface/80 backdrop-blur-sm border border-v2-border
-                               text-v2-text-3 hover:text-v2-text-1 hover:bg-v2-surface
-                               transition-colors"
-                    title={focusMode ? 'Exit focus' : 'Focus mode'}
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                      {focusMode ? (
-                        <>
-                          <path d="M4 14h6v6" /><path d="M20 10h-6V4" />
-                          <path d="M14 10l7-7" /><path d="M3 21l7-7" />
-                        </>
-                      ) : (
-                        <>
-                          <path d="M15 3h6v6" /><path d="M9 21H3v-6" />
-                          <path d="M21 3l-7 7" /><path d="M3 21l7-7" />
-                        </>
-                      )}
-                    </svg>
-                  </button>
+            {/* ── Exposure Treemap — full width, expanded ─────── */}
+            <SectionCard noPadding>
+              <div className="flex items-center justify-between px-5 py-3 flex-wrap gap-2">
+                <span className="text-ds-body-r text-v2-text-2">
+                  {isEn ? 'Exposure Map' : '敞口热力图'}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setPeriod(p)}
+                      className={`px-2.5 py-1 rounded-v2-sm text-ds-sm transition-colors ${
+                        period === p
+                          ? 'bg-v2-accent text-white'
+                          : 'text-v2-text-3 hover:text-v2-text-1 hover:bg-v2-surface-alt'
+                      }`}
+                    >
+                      {PERIOD_LABELS[p]?.[lang === 'zh' ? 'zh' : 'en'] ?? p}
+                    </button>
+                  ))}
                 </div>
-
-                {!focusMode && (
-                  <>
-                    {/* Exposure Treemap */}
-                    <SectionCard noPadding>
-                      <div className="flex items-center justify-between px-5 py-3 border-b border-v2-border flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm text-v2-text-1">
-                            {isEn ? 'Exposure Map' : '敞口热力图'}
-                          </span>
-                          <span className="text-ds-caption text-v2-text-3 uppercaser hidden sm:block">
-                            {isEn ? 'Area = Notional · Color = P&L · (S) = Short' : '面积=名义 · 颜色=盈亏 · (S)=空头'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
-                            <button
-                              key={p}
-                              onClick={() => setPeriod(p)}
-                              className={`px-2.5 py-1 rounded-v2-sm text-xs font-bold transition-colors ${
-                                period === p
-                                  ? 'bg-v2-accent text-white shadow-sm'
-                                  : 'text-v2-text-3 hover:text-v2-text-1 hover:bg-v2-surface-alt'
-                              }`}
-                            >
-                              {PERIOD_LABELS[p]?.[lang === 'zh' ? 'zh' : 'en'] ?? p}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      {treemapData.length === 0 ? (
-                        <div className="h-64 flex flex-col items-center justify-center text-v2-text-3 text-sm gap-1">
-                          <span>{isEn ? 'No positions with exposure data' : '暂无敞口数据'}</span>
-                        </div>
-                      ) : (
-                        <div className="p-3">
-                          <ResponsiveContainer width="100%" height={280}>
-                            <Treemap data={treemapData} dataKey="size" aspectRatio={4/3} stroke="#fff" content={CustomCell}>
-                              <Tooltip content={TreemapTooltip} />
-                            </Treemap>
-                          </ResponsiveContainer>
-                        </div>
-                      )}
-                      {/* Color legend */}
-                      <div className="flex items-center justify-center gap-3 px-5 pb-3 pt-1 flex-wrap">
-                        {[
-                          { color: '#059669', label: '>+4%' },
-                          { color: '#34d399', label: '+2~4%' },
-                          { color: '#a7f3d0', label: '0~2%' },
-                          { color: '#e2e8f0', label: 'N/A' },
-                          { color: '#fecaca', label: '-2~0%' },
-                          { color: '#f87171', label: '-4~-2%' },
-                          { color: '#e11d48', label: '<-4%' },
-                        ].map(({ color, label }) => (
-                          <div key={label} className="flex items-center gap-1">
-                            <div className="w-3 h-3 rounded-sm shrink-0" style={{ background: color }} />
-                            <span className="text-ds-caption text-v2-text-3">{label}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </SectionCard>
-
-                    {/* Holdings Table */}
-                    <HoldingsTableV2 groups={holdings} />
-
-                    {/* AI Insights */}
-                    <AiInsightPanel holdings={holdings} />
-                  </>
-                )}
               </div>
-
-              {/* ── Right Panel (shell component) ────────────────── */}
-              {!focusMode && (
-                <RightPanel>
-                  <QuickRiskCard riskDash={riskDash} isEn={isEn} />
-                  <AllocationCard holdings={holdings} isEn={isEn} />
-                  <SectorMiniChart sectorExp={riskDash?.sector_exposure} isEn={isEn} />
-                  <CashCard cash={cash} isEn={isEn} />
-                  <ActivityPanel portfolioId={selectedPortfolioId} isEn={isEn} />
-                </RightPanel>
+              {treemapData.length === 0 ? (
+                <div className="h-72 flex flex-col items-center justify-center text-v2-text-3 text-ds-sm gap-1">
+                  <span>{isEn ? 'No positions with exposure data' : '暂无敞口数据'}</span>
+                </div>
+              ) : (
+                <div className="p-3">
+                  <ResponsiveContainer width="100%" height={320}>
+                    <Treemap data={treemapData} dataKey="size" aspectRatio={4/3} stroke="#fff" content={CustomCell}>
+                      <Tooltip content={TreemapTooltip} />
+                    </Treemap>
+                  </ResponsiveContainer>
+                </div>
               )}
-            </div>
+            </SectionCard>
           </div>
         )
       )}
