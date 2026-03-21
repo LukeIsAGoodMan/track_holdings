@@ -82,12 +82,19 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
   return (
     <div
       className={`
-        shrink-0 bg-v2-surface border border-v2-border rounded-v2-lg
+        shrink-0 rounded-v2-lg
         flex flex-col overflow-hidden
         transition-[width] duration-200 ease-out
         ${isExpanded ? 'w-v2-sidebar' : 'w-v2-sidebar-sm'}
       `}
-      style={{ zIndex: 20, position: 'sticky', top: STICKY_TOP, height: PANEL_HEIGHT }}
+      style={{
+        zIndex: 20,
+        position: 'sticky',
+        top: STICKY_TOP,
+        height: PANEL_HEIGHT,
+        background: 'linear-gradient(180deg, #1e293b 0%, #0f172a 100%)',
+        borderRight: '1px solid rgba(255, 255, 255, 0.06)',
+      }}
     >
       <SidebarV2 />
     </div>

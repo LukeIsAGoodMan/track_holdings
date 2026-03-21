@@ -60,6 +60,14 @@ export default {
           'overlay-btn':        'rgba(0, 0, 0, 0.06)',
           'overlay-badge-blue': 'rgba(169, 188, 229, 0.22)',
           'overlay-badge-yellow':'rgba(218, 201, 103, 0.24)',
+          // Shell chrome (dark metallic frame)
+          'shell-dark':     '#0f172a',
+          'shell-mid':      '#1e293b',
+          'shell-edge':     'rgba(255, 255, 255, 0.06)',
+          'shell-text':     'rgba(255, 255, 255, 0.50)',
+          'shell-text-h':   'rgba(255, 255, 255, 0.85)',
+          'shell-text-act': '#ffffff',
+          'shell-divider':  'rgba(255, 255, 255, 0.08)',
         },
       },
       fontFamily: {
@@ -70,6 +78,7 @@ export default {
       // Usage: text-ds-display, text-ds-h1, text-ds-body, etc.
       // Canonical source: typography.ts → Figma extraction
       fontSize: {
+        'ds-hero':     ['2.625rem',  { lineHeight: '3rem',     letterSpacing: '-0.025em', fontWeight: '600' }],  // 42px — hero metric
         'ds-display':  ['1.75rem',   { lineHeight: '2.25rem',  letterSpacing: '-0.02em',  fontWeight: '700' }],  // 28px
         'ds-h1':       ['1.5rem',    { lineHeight: '2rem',     letterSpacing: '-0.01em',  fontWeight: '700' }],  // 24px
         'ds-h2':       ['1.0625rem', { lineHeight: '1.625rem', letterSpacing: '-0.01em',  fontWeight: '700' }],  // 17px

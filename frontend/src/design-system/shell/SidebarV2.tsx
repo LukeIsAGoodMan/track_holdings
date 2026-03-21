@@ -1,35 +1,28 @@
 /**
- * SidebarV2 — Workflow-driven navigation sidebar.
- *
- * Design language: Wealthsimple extraction
- * Container layering: NOT flat — nav groups in distinct sections
- * Active state: bg-accent-soft + left indicator bar + accent text
- * Bottom section: workflow actions + collapse toggle, separated from nav
+ * SidebarV2 — Dark metallic command center.
  *
  * Structure:
  *   ┌─────────────────────┐
- *   │ Nav Section          │  ← flex-1, scrollable
- *   │   Group: Portfolio   │
- *   │     Holdings         │
- *   │     Risk             │
- *   │   ─── divider ───    │
- *   │   Group: Strategy    │
- *   │     Opportunities    │
- *   │     Analysis         │
- *   │   ─── divider ───    │
- *   │   Portfolios tree    │
+ *   │ PRIMARY ACTIONS      │  ← New Trade (glass), New Portfolio, Alerts
  *   ├─────────────────────┤
- *   │ Actions (New Trade)  │  ← fixed bottom
- *   │ Collapse toggle      │
+ *   │ NAVIGATION           │  ← Holdings, Risk, Opportunities, Analysis
+ *   ├─────────────────────┤
+ *   │ PORTFOLIOS           │  ← folder/portfolio tree
+ *   ├─────────────────────┤
+ *   │ USER                 │  ← avatar + name + logout
+ *   │ COLLAPSE             │
  *   └─────────────────────┘
+ *
+ * Typography: white at 50% opacity (idle), 85% (hover), 100% (active)
+ * Surface: inherits dark gradient from SidebarSurface in AppShellV2
  */
 import { NavLink, useLocation } from 'react-router-dom'
 import { useLanguage }   from '@/context/LanguageContext'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useSidebar }    from '@/context/SidebarContext'
-import { interactiveClasses } from '../interaction'
+import { useAuth }       from '@/context/AuthContext'
 
-// ── Inline SVG icons (Lucide-style, 20×20, strokeWidth 1.75) ───────────────
+// ── Icons ───────────────────────────────────────────────────────────────────
 
 const icons = {
   holdings: (
@@ -55,12 +48,12 @@ const icons = {
       <path d="M16 8h6V2" />
     </svg>
   ),
-  trade: (
+  plus: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
     </svg>
   ),
-  alerts: (
+  bell: (
     <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round">
       <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 01-3.46 0" />
     </svg>
@@ -70,43 +63,33 @@ const icons = {
       <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
     </svg>
   ),
-  portfolio: (
+  briefcase: (
     <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
       <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
     </svg>
   ),
+  folderPlus: (
+    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+      <path d="M12 11v6M9 14h6" />
+    </svg>
+  ),
 }
 
-// ── Nav group configs ───────────────────────────────────────────────────────
-
-const NAV_GROUPS = [
-  {
-    key: 'portfolio',
-    en: 'Portfolio',
-    zh: '投资组合',
-    items: [
-      { key: 'holdings', to: '/holdings', icon: icons.holdings, en: 'Holdings', zh: '持仓' },
-      { key: 'risk',     to: '/risk',     icon: icons.risk,     en: 'Risk',     zh: '风险' },
-    ],
-  },
-  {
-    key: 'strategy',
-    en: 'Strategy',
-    zh: '策略',
-    items: [
-      { key: 'opportunities', to: '/opportunities', icon: icons.opportunities, en: 'Opportunities', zh: '机会' },
-      { key: 'analysis',      to: '/analysis',      icon: icons.analysis,      en: 'Analysis',      zh: '分析' },
-    ],
-  },
+const NAV_ITEMS = [
+  { key: 'holdings',      to: '/holdings',      icon: icons.holdings,      en: 'Holdings',      zh: '持仓' },
+  { key: 'risk',          to: '/risk',          icon: icons.risk,          en: 'Risk',          zh: '风险' },
+  { key: 'opportunities', to: '/opportunities', icon: icons.opportunities, en: 'Opportunities', zh: '机会' },
+  { key: 'analysis',      to: '/analysis',      icon: icons.analysis,      en: 'Analysis',      zh: '分析' },
 ] as const
 
-// ── Tooltip (collapsed mode) ────────────────────────────────────────────────
+// ── Tooltip ─────────────────────────────────────────────────────────────────
 
 function Tooltip({ label, show }: { label: string; show: boolean }) {
   if (!show) return null
   return (
     <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2
-                     bg-v2-text-1 text-white text-ds-sm
+                     bg-v2-shell-dark text-white text-ds-sm
                      px-2.5 py-1 rounded-v2-sm whitespace-nowrap
                      pointer-events-none shadow-v2-md
                      opacity-0 group-hover:opacity-100 transition-opacity duration-150"
@@ -116,77 +99,126 @@ function Tooltip({ label, show }: { label: string; show: boolean }) {
   )
 }
 
-// ── Component ───────────────────────────────────────────────────────────────
+// ── Main component ──────────────────────────────────────────────────────────
 
 export default function SidebarV2() {
   const { lang }     = useLanguage()
   const location     = useLocation()
+  const { user, logout } = useAuth()
   const { portfolios, selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
-  const { isExpanded, toggleExpand, openTradeEntry, openPriceAlerts } = useSidebar()
+  const { isExpanded, toggleExpand, openTradeEntry, openPriceAlerts, openPortfolioCreate } = useSidebar()
 
   const isEn = lang === 'en'
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* SidebarV2 is now a pure content component.
-          Surface, border, radius, sticky, height, width transitions
-          are owned by the SidebarSurface wrapper in AppShellV2. */}
-      {/* ═══ Navigation Section (scrollable) ═══════════════════════════ */}
-      <nav className="flex-1 py-3 px-2 overflow-y-auto">
-        {NAV_GROUPS.map((group, gi) => (
-          <div key={group.key} className={gi > 0 ? 'mt-4' : ''}>
-            {/* Group divider */}
-            {gi > 0 && <div className="mb-3 mx-2 border-t border-v2-border" />}
 
-            {/* Group label — expanded only */}
-            {isExpanded && (
-              <div className="text-ds-caption uppercase text-v2-text-3 px-3 mb-2">
-                {isEn ? group.en : group.zh}
-              </div>
-            )}
+      {/* ═══ PRIMARY ACTIONS ══════════════════════════════════════════ */}
+      <div className={`${isExpanded ? 'p-3' : 'p-2'} space-y-1.5`}>
+        {/* New Trade — glassmorphism primary */}
+        <button
+          onClick={() => openTradeEntry()}
+          className={`
+            flex items-center gap-2.5 w-full rounded-v2-md
+            text-white transition-colors duration-150 group relative
+            ${isExpanded ? 'px-3 py-2.5 text-ds-body-r' : 'justify-center py-2.5'}
+          `}
+          style={{ background: 'rgba(255, 255, 255, 0.08)', backdropFilter: 'blur(8px)' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.14)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)')}
+        >
+          {icons.plus}
+          {isExpanded ? (
+            <span>{isEn ? 'New Trade' : '新建交易'}</span>
+          ) : (
+            <Tooltip label={isEn ? 'New Trade' : '新建交易'} show />
+          )}
+        </button>
 
-            {/* Nav items container */}
-            <div className="space-y-0.5">
-              {group.items.map(({ key, to, icon, en, zh }) => {
-                const isActive = location.pathname.startsWith(to)
-                const label = isEn ? en : zh
-                const navClasses = interactiveClasses({
-                  variant: 'nav-item',
-                  selected: isActive,
-                })
+        {/* New Portfolio */}
+        <button
+          onClick={() => openPortfolioCreate()}
+          className={`
+            flex items-center gap-2.5 w-full rounded-v2-md
+            text-v2-shell-text hover:text-v2-shell-text-h
+            hover:bg-white/5 transition-colors duration-150 group relative
+            ${isExpanded ? 'px-3 py-2 text-ds-body-r' : 'justify-center py-2.5'}
+          `}
+        >
+          {icons.folderPlus}
+          {isExpanded ? (
+            <span>{isEn ? 'New Portfolio' : '新建组合'}</span>
+          ) : (
+            <Tooltip label={isEn ? 'New Portfolio' : '新建组合'} show />
+          )}
+        </button>
 
-                return (
-                  <NavLink
-                    key={key}
-                    to={to}
-                    className={`
-                      flex items-center gap-3 rounded-v2-md
-                      text-ds-body-r group relative
-                      ${navClasses}
-                      ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
-                    `}
-                  >
-                    {/* Active indicator bar */}
-                    {isActive && (
-                      <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-v2-accent rounded-r-full" />
-                    )}
-                    <span className="shrink-0">{icon}</span>
-                    {isExpanded ? (
-                      <span className="truncate">{label}</span>
-                    ) : (
-                      <Tooltip label={label} show />
-                    )}
-                  </NavLink>
-                )
-              })}
-            </div>
-          </div>
-        ))}
+        {/* Alerts */}
+        <button
+          onClick={() => openPriceAlerts()}
+          className={`
+            flex items-center gap-2.5 w-full rounded-v2-md
+            text-v2-shell-text hover:text-v2-shell-text-h
+            hover:bg-white/5 transition-colors duration-150 group relative
+            ${isExpanded ? 'px-3 py-2 text-ds-body-r' : 'justify-center py-2.5'}
+          `}
+        >
+          {icons.bell}
+          {isExpanded ? (
+            <span>{isEn ? 'Alerts' : '警报'}</span>
+          ) : (
+            <Tooltip label={isEn ? 'Alerts' : '警报'} show />
+          )}
+        </button>
+      </div>
 
-        {/* ═══ Portfolio Context ═══════════════════════════════════════ */}
+      {/* ═══ NAVIGATION ════════════════════════════════════════════════ */}
+      <nav className="flex-1 px-2 py-2 overflow-y-auto">
+        <div className="border-t border-v2-shell-divider mb-3" />
+
         {isExpanded && (
-          <div className="mt-4 pt-3 border-t border-v2-border">
-            <div className="text-ds-caption uppercase text-v2-text-3 px-3 mb-2">
+          <div className="text-ds-caption uppercase text-v2-shell-text px-3 mb-2">
+            {isEn ? 'Navigate' : '导航'}
+          </div>
+        )}
+
+        <div className="space-y-0.5">
+          {NAV_ITEMS.map(({ key, to, icon, en, zh }) => {
+            const isActive = location.pathname.startsWith(to)
+            const label = isEn ? en : zh
+
+            return (
+              <NavLink
+                key={key}
+                to={to}
+                className={`
+                  flex items-center gap-3 rounded-v2-md group relative
+                  text-ds-body-r transition-colors duration-150
+                  ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
+                  ${isActive
+                    ? 'bg-white/10 text-white'
+                    : 'text-v2-shell-text hover:text-v2-shell-text-h hover:bg-white/5'
+                  }
+                `}
+              >
+                {isActive && (
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-white rounded-r-full" />
+                )}
+                <span className="shrink-0">{icon}</span>
+                {isExpanded ? (
+                  <span className="truncate">{label}</span>
+                ) : (
+                  <Tooltip label={label} show />
+                )}
+              </NavLink>
+            )
+          })}
+        </div>
+
+        {/* ═══ PORTFOLIOS ═══════════════════════════════════════════ */}
+        {isExpanded && (
+          <div className="mt-4 pt-3 border-t border-v2-shell-divider">
+            <div className="text-ds-caption uppercase text-v2-shell-text px-3 mb-2">
               {isEn ? 'Portfolios' : '投资组合'}
             </div>
             <div className="space-y-0.5 max-h-44 overflow-y-auto">
@@ -200,7 +232,7 @@ export default function SidebarV2() {
                 />
               ))}
               {portfolios.length === 0 && (
-                <div className="text-ds-sm text-v2-text-3 px-3 py-2 italic">
+                <div className="text-ds-sm text-v2-shell-text px-3 py-2 italic">
                   {isEn ? 'No portfolios' : '暂无组合'}
                 </div>
               )}
@@ -209,48 +241,34 @@ export default function SidebarV2() {
         )}
       </nav>
 
-      {/* ═══ Bottom Actions Section (fixed) ═════════════════════════ */}
-      <div className={`border-t border-v2-border ${isExpanded ? 'p-3' : 'p-2'} space-y-1`}>
-        <button
-          onClick={() => openTradeEntry()}
-          className={`
-            flex items-center gap-2.5 w-full rounded-v2-md
-            text-v2-accent group relative
-            ${interactiveClasses({ variant: 'button-ghost' })}
-            ${isExpanded ? 'px-3 py-2 text-ds-body-r' : 'justify-center py-2.5'}
-          `}
-        >
-          {icons.trade}
-          {isExpanded ? (
-            <span>{isEn ? 'New Trade' : '新建交易'}</span>
-          ) : (
-            <Tooltip label={isEn ? 'New Trade' : '新建交易'} show />
-          )}
-        </button>
-        <button
-          onClick={() => openPriceAlerts()}
-          className={`
-            flex items-center gap-2.5 w-full rounded-v2-md
-            text-v2-text-2 group relative
-            ${interactiveClasses({ variant: 'button-ghost' })}
-            ${isExpanded ? 'px-3 py-2 text-ds-body-r' : 'justify-center py-2.5'}
-          `}
-        >
-          {icons.alerts}
-          {isExpanded ? (
-            <span>{isEn ? 'Alerts' : '警报'}</span>
-          ) : (
-            <Tooltip label={isEn ? 'Alerts' : '警报'} show />
-          )}
-        </button>
-      </div>
+      {/* ═══ USER SECTION ═════════════════════════════════════════════ */}
+      <div className={`border-t border-v2-shell-divider ${isExpanded ? 'p-3' : 'p-2'}`}>
+        {user ? (
+          <div className={`flex items-center ${isExpanded ? 'gap-3' : 'justify-center'}`}>
+            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center
+                            text-ds-sm text-white/80 uppercase shrink-0">
+              {user.username.charAt(0)}
+            </div>
+            {isExpanded && (
+              <div className="flex-1 min-w-0">
+                <div className="text-ds-sm text-v2-shell-text-h truncate">{user.username}</div>
+                <button
+                  onClick={logout}
+                  className="text-ds-caption text-v2-shell-text hover:text-white transition-colors duration-150"
+                >
+                  {isEn ? 'Logout' : '退出'}
+                </button>
+              </div>
+            )}
+          </div>
+        ) : null}
 
-      {/* ═══ Collapse Toggle ═══════════════════════════════════════════ */}
-      <div className="border-t border-v2-border p-2">
+        {/* Collapse toggle */}
         <button
           onClick={toggleExpand}
           className={`flex items-center justify-center w-full py-2 rounded-v2-sm
-                     text-v2-text-3 ${interactiveClasses({ variant: 'button-ghost' })}`}
+                     text-v2-shell-text hover:text-white hover:bg-white/5
+                     transition-colors duration-150 ${isExpanded ? 'mt-2' : 'mt-1'}`}
           aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <svg
@@ -286,14 +304,14 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
           flex items-center gap-2 w-full rounded-v2-sm text-left text-ds-sm
           py-1.5 transition-colors duration-150
           ${isSelected
-            ? 'bg-v2-accent-soft text-v2-accent'
-            : 'text-v2-text-2 hover:bg-v2-surface-alt'
+            ? 'bg-white/10 text-white'
+            : 'text-v2-shell-text hover:text-v2-shell-text-h hover:bg-white/5'
           }
         `}
         style={{ paddingLeft: `${12 + pl}px` }}
       >
         <span className="shrink-0 opacity-60">
-          {portfolio.is_folder ? icons.folder : icons.portfolio}
+          {portfolio.is_folder ? icons.folder : icons.briefcase}
         </span>
         <span className="truncate">{portfolio.name}</span>
       </button>
