@@ -81,15 +81,20 @@ export default function TopNavV2() {
                  select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(180deg, #e7e5e4 0%, #d6d3d1 60%, #ccc9c6 100%)',
+        backgroundImage: [
+          'radial-gradient(120% 65% at 50% -35%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.10) 28%, rgba(255,255,255,0.00) 62%)',
+          'linear-gradient(180deg, #e7e5e4 0%, #ddd9d6 38%, #d1ccc8 72%, #c7c2bd 100%)',
+        ].join(', '),
       }}
     >
-      {/* Chamfer edge — micro gradient at bottom simulating machined edge light */}
+      {/* Chamfer edge — subpixel-thin machined edge reflection */}
       <div
         className="absolute bottom-0 left-0 right-0 pointer-events-none"
         style={{
           height: '1px',
-          background: 'linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.08) 100%)',
+          transform: 'scaleY(0.5)',
+          transformOrigin: 'top',
+          background: 'linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.05) 18%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.05) 82%, rgba(255,255,255,0.00) 100%)',
         }}
       />
 

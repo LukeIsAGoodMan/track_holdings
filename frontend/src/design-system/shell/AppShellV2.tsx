@@ -79,10 +79,13 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
         position: 'sticky',
         top: SIDEBAR_TOP,
         height: SIDEBAR_HEIGHT,
-        background: 'linear-gradient(180deg, #d6d3d1 0%, #ccc9c6 40%, #c4c1be 100%)',
+        backgroundImage: [
+          'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.00) 60%)',
+          'linear-gradient(180deg, #d9d6d3 0%, #cfcbc7 42%, #c6c1bc 100%)',
+        ].join(', '),
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
-        boxShadow: '2px 0 12px -8px rgba(0, 0, 0, 0.06), inset -1px 0 0 rgba(255, 255, 255, 0.06)',
+        boxShadow: '1px 0 0 rgba(0,0,0,0.035), 6px 0 18px -12px rgba(0,0,0,0.07), inset -1px 0 0 rgba(255,255,255,0.05)',
       }}
     >
       <SidebarV2 />
@@ -114,10 +117,13 @@ function ActionPanelSurface() {
         position: 'sticky',
         top: SIDEBAR_TOP,
         height: SIDEBAR_HEIGHT,
-        background: 'linear-gradient(180deg, #d6d3d1 0%, #ccc9c6 40%, #c4c1be 100%)',
+        backgroundImage: [
+          'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.00) 60%)',
+          'linear-gradient(180deg, #d9d6d3 0%, #cfcbc7 42%, #c6c1bc 100%)',
+        ].join(', '),
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
-        boxShadow: '2px 0 12px -8px rgba(0, 0, 0, 0.06), inset -1px 0 0 rgba(255, 255, 255, 0.06)',
+        boxShadow: '1px 0 0 rgba(0,0,0,0.035), 6px 0 18px -12px rgba(0,0,0,0.07), inset -1px 0 0 rgba(255,255,255,0.05)',
       }}
     >
       <div className="flex-1 overflow-y-auto p-4">
