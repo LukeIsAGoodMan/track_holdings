@@ -621,10 +621,13 @@ export default function TradeEntryForm({
             label={t('conviction')}
           />
 
-          {/* Trade Journal — clear affordance */}
+          {/* Trade Journal — expandable utility drawer */}
           <div>
             <label className={LBL} style={LBL_COLOR}>
-              {t('trade_reason_lbl')}
+              <span className="flex items-center gap-1">
+                {t('trade_reason_lbl')}
+                <svg className="w-3 h-3 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
+              </span>
               <span className="ml-1 normal-case font-normal text-xs text-stone-600">{t('tech_optional')}</span>
             </label>
             <textarea
@@ -632,7 +635,7 @@ export default function TradeEntryForm({
               placeholder={t('coach_reason_ph')}
               value={form.tradeReason}
               onChange={e => set('tradeReason', e.target.value)}
-              className="w-full text-xs rounded-v2-md border border-stone-300/40 bg-white/60 px-3 py-2 text-stone-800 placeholder:text-stone-500/65 focus:outline-none focus:ring-1 focus:ring-stone-400/30 focus:bg-white/95 resize-none ds-bg"
+              className="w-full text-xs rounded-v2-md border border-stone-300/40 bg-white/60 px-3 py-2 text-stone-800 placeholder:text-stone-500/65 focus:outline-none focus:ring-1 focus:ring-stone-400/30 focus:bg-white/95 resize-y min-h-[4rem] max-h-[12rem] ds-bg"
             />
           </div>
 

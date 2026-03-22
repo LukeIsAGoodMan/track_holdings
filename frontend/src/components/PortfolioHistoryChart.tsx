@@ -1,12 +1,11 @@
 /**
  * PortfolioHistoryChart — 30-day NLV equity curve with date axis.
  *
- * Minimal but meaningful:
- *   - Smooth monotone curve (pure signal)
+ * Features:
+ *   - Smooth monotone curve
  *   - X-axis: dates (Mar 10, Mar 11 etc.) — light, recessive
- *   - No Y-axis (values in tooltip only)
- *   - Tooltip: [Date] | [$Value] formatted cleanly
- *   - No grid, no brush
+ *   - Tooltip: Date | $Value | (+$change, +X.X%)
+ *   - No Y-axis, no grid, no brush
  */
 import { useState, useEffect, useMemo } from 'react'
 import {
@@ -16,13 +15,12 @@ import {
 import { fetchPortfolioHistory } from '@/api/holdings'
 import type { PortfolioHistoryPoint } from '@/types'
 
-function fmtNlv(val: string | number): string {
-  const n = typeof val === 'string' ? parseFloat(val) : val
-  if (!isFinite(n)) return '—'
+function fmtNlv(val: number): string {
+  if (!isFinite(val)) return '—'
   return new Intl.NumberFormat('en-US', {
     style: 'currency', currency: 'USD',
     minimumFractionDigits: 0, maximumFractionDigits: 0,
-  }).format(n)
+  }).format(val)
 }
 
 function fmtDate(iso: string): string {
@@ -32,14 +30,25 @@ function fmtDate(iso: string): string {
   return `${months[parseInt(parts[1]) - 1] ?? ''} ${parseInt(parts[2])}`
 }
 
+interface ChartDatum { date: string; nlv: number; prevNlv: number | null }
+
 function ChartTooltip({ active, payload, label }: {
-  active?: boolean; payload?: Array<{ value: number }>; label?: string
+  active?: boolean; payload?: Array<{ payload: ChartDatum }>; label?: string
 }) {
   if (!active || !payload?.length) return null
+  const d = payload[0].payload
+  const change = d.prevNlv != null ? d.nlv - d.prevNlv : null
+  const changePct = d.prevNlv != null && d.prevNlv !== 0 ? ((d.nlv - d.prevNlv) / d.prevNlv) * 100 : null
+
   return (
-    <div className="rounded-v2-md px-3 py-2 text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.92)', border: '1px solid rgba(0,0,0,0.06)' }}>
+    <div className="rounded-v2-md px-3 py-2 text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.94)', border: '1px solid rgba(0,0,0,0.06)' }}>
       <div className="text-stone-500 mb-0.5">{label}</div>
-      <div className="text-stone-800 font-medium tnum">{fmtNlv(payload[0].value)}</div>
+      <div className="text-stone-800 font-medium tnum">{fmtNlv(d.nlv)}</div>
+      {change != null && changePct != null && (
+        <div className={`tnum mt-0.5 ${change >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+          {change >= 0 ? '+' : ''}{fmtNlv(change)} ({change >= 0 ? '+' : ''}{changePct.toFixed(1)}%)
+        </div>
+      )}
     </div>
   )
 }
@@ -60,8 +69,12 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
       .finally(() => setLoading(false))
   }, [portfolioId])
 
-  const chartData = useMemo(() =>
-    points.map((p) => ({ date: fmtDate(p.date), nlv: parseFloat(p.nlv) })),
+  const chartData = useMemo<ChartDatum[]>(() =>
+    points.map((p, i) => ({
+      date: fmtDate(p.date),
+      nlv: parseFloat(p.nlv),
+      prevNlv: i > 0 ? parseFloat(points[i - 1].nlv) : null,
+    })),
     [points],
   )
 
@@ -95,7 +108,6 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
             </linearGradient>
           </defs>
 
-          {/* X-axis: dates — light, recessive, no line */}
           <XAxis
             dataKey="date"
             tick={{ fill: '#a8a29e', fontSize: 10 }}

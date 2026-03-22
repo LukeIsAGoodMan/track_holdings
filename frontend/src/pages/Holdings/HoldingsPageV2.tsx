@@ -16,6 +16,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell,
 } from 'recharts'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useLanguage }   from '@/context/LanguageContext'
@@ -651,6 +652,72 @@ const SECTOR_FALLBACK_PALETTE = [
   '#f59e0b', '#ec4899', '#84cc16', '#22d3ee',
 ]
 
+// ── Sector Donut Chart ───────────────────────────────────────────────────────
+
+const SECTOR_PALETTE = [
+  '#8b8b92', '#a19d98', '#7a7a80', '#b0aba6',
+  '#6b6b72', '#c4bfba', '#9a9590', '#d1ccc8',
+]
+
+const ASSET_CLASS_KEYS_SET = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
+
+function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | null | undefined; isEn: boolean }) {
+  const data = useMemo(() => {
+    if (!sectorExp) return []
+    const map: Record<string, number> = {}
+    let otherTotal = 0
+    for (const [key, v] of Object.entries(sectorExp)) {
+      const val = Math.abs(parseFloat(v) || 0)
+      if (val < 0.01) continue
+      if (ASSET_CLASS_KEYS_SET.has(key)) { otherTotal += val } else { map[key] = (map[key] ?? 0) + val }
+    }
+    if (otherTotal > 0.01) map['Other'] = (map['Other'] ?? 0) + otherTotal
+    return Object.entries(map)
+      .map(([name, value], i) => ({ name, value, color: SECTOR_PALETTE[i % SECTOR_PALETTE.length] }))
+      .sort((a, b) => b.value - a.value)
+  }, [sectorExp])
+
+  if (data.length === 0) return null
+  const total = data.reduce((s, d) => s + d.value, 0)
+
+  return (
+    <div className="flex items-start gap-4">
+      {/* Donut */}
+      <div className="w-28 h-28 shrink-0">
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data} dataKey="value" cx="50%" cy="50%"
+              innerRadius="65%" outerRadius="95%"
+              strokeWidth={1} stroke="rgba(255,255,255,0.6)"
+              isAnimationActive={false}
+            >
+              {data.map((d, i) => <Cell key={d.name} fill={d.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Legend */}
+      <div className="flex-1 min-w-0 space-y-1.5 pt-1">
+        {data.slice(0, 6).map(d => {
+          const pct = total > 0 ? Math.round(d.value / total * 100) : 0
+          return (
+            <div key={d.name} className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: d.color }} />
+              <span className="truncate flex-1 text-stone-600">{d.name}</span>
+              <span className="tnum text-stone-500 shrink-0">{pct}%</span>
+            </div>
+          )
+        })}
+        {data.length > 6 && (
+          <div className="text-xs text-stone-400">+{data.length - 6} {isEn ? 'more' : '更多'}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ── Page Component ───────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
@@ -952,50 +1019,36 @@ export default function HoldingsPageV2() {
               </div>
             )}
 
-            {/* ── Scroll hint ───────────────────────────────────── */}
-            <div className="flex justify-center py-2">
-              <svg className="w-5 h-5 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
-                <path d="M6 9l6 6 6-6" />
-              </svg>
+            {/* ── Divider + scroll hint ───────────────────────── */}
+            <div className="pt-6 pb-2">
+              <div className="border-t border-stone-200/40" />
+              <div className="flex justify-center pt-3">
+                <svg className="w-4 h-4 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </div>
             </div>
 
-            {/* ═══ DEEP DIVE — Below the fold ═══════════════════ */}
-            <div className="space-y-8 pt-4">
+            {/* ═══ DEEP DIVE — 2-column below the fold ══════════ */}
+            <div className="flex gap-8 pt-2">
 
-              {/* Sector Exposure */}
-              {riskDash && Object.keys(riskDash.sector_exposure ?? {}).length > 0 && (
-                <div>
-                  <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
-                    {isEn ? 'Sector Exposure' : '行业敞口'}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                    {Object.entries(riskDash.sector_exposure ?? {})
-                      .filter(([, v]) => Math.abs(parseFloat(v)) > 0.01)
-                      .sort((a, b) => Math.abs(parseFloat(b[1])) - Math.abs(parseFloat(a[1])))
-                      .slice(0, 8)
-                      .map(([sector, delta]) => {
-                        const val = parseFloat(delta)
-                        return (
-                          <div key={sector} className="p-3 rounded-v2-md bg-stone-50/50">
-                            <div className="text-xs text-stone-500 truncate">{sector}</div>
-                            <div className={`text-sm font-medium tnum mt-1 ${val >= 0 ? 'text-stone-700' : 'text-stone-600'}`}>
-                              {val >= 0 ? '+' : ''}{fmtNum(String(val.toFixed(2)))}
-                            </div>
-                          </div>
-                        )
-                      })
-                    }
-                  </div>
-                </div>
-              )}
-
-              {/* Recent Activity */}
-              <div>
+              {/* Left column (60%) — Recent Activity */}
+              <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
                   {isEn ? 'Recent Activity' : '最近动态'}
                 </div>
                 <ActivityPanel portfolioId={selectedPortfolioId} isEn={isEn} />
               </div>
+
+              {/* Right column (40%) — Sector Donut */}
+              {riskDash && Object.keys(riskDash.sector_exposure ?? {}).length > 0 && (
+                <div className="w-[40%] shrink-0">
+                  <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
+                    {isEn ? 'Sector Exposure' : '行业敞口'}
+                  </div>
+                  <SectorDonut sectorExp={riskDash.sector_exposure} isEn={isEn} />
+                </div>
+              )}
             </div>
           </div>
         )
