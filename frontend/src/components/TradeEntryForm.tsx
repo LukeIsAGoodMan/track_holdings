@@ -3,7 +3,7 @@
  *
  * Three labelled sections: Asset Context · Execution Details · Analysis & Review.
  * Star-rating conviction selector with hover preview.
- * Technical Levels moved to Analysis section.
+ * {t('tech_levels')} moved to Analysis section.
  * gap-y-6 breathing between sections; mb-1.5 label → input spacing throughout.
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -143,7 +143,7 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
 
   return (
     <div>
-      <label className={LBL}>Conviction</label>
+      <label className={LBL} style={LBL_COLOR}>{t('conviction')}</label>
       {/* Single row — whitespace-nowrap on label prevents wrap at any sidebar width */}
       <div className="flex items-center gap-3 min-w-0">
         <div
@@ -488,19 +488,19 @@ export default function TradeEntryForm({
       <form onSubmit={handleSubmit} className="flex flex-col gap-y-6 w-full">
 
         {/* ══ ASSET CONTEXT ══════════════════════════════════════════════ */}
-        <Section title="Asset Context" accent="text-blue-500">
+        <Section title={t('section_asset')} accent="text-blue-500">
 
           {/* Instrument type */}
           <CToggle
             options={['OPTION', 'STOCK'] as InstrumentType[]}
             value={form.instrumentType}
             onChange={v => set('instrumentType', v)}
-            labelMap={{ OPTION: 'Option', STOCK: 'Stock / ETF' }}
+            labelMap={{ OPTION: t('option'), STOCK: t('stock') }}
           />
 
           {/* Symbol */}
           <div>
-            <label className={LBL}>Symbol</label>
+            <label className={LBL} style={LBL_COLOR}>{t('symbol')}</label>
             <SymbolAutocomplete
               value={form.symbol}
               onChange={v => { set('symbol', v); setSymbolValid(null); setSelectedSuggestion(null) }}
@@ -539,7 +539,7 @@ export default function TradeEntryForm({
               />
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className={LBL}>Strike</label>
+                  <label className={LBL} style={LBL_COLOR}>{t('strike')}</label>
                   <input
                     type="number" step="0.01" min="0" placeholder="600"
                     value={form.strike} onChange={e => set('strike', e.target.value)}
@@ -549,11 +549,14 @@ export default function TradeEntryForm({
                 <div>
                   <label className={LBL} style={LBL_COLOR}>Expiry</label>
                   <input
-                    type="date" value={form.expiry}
+                    type="text"
+                    value={form.expiry}
                     onChange={e => set('expiry', e.target.value)}
-                    required={isOption} className={INP}
-                    lang="en"
-                    placeholder="YYYY / MM / DD"
+                    required={isOption}
+                    className={INP}
+                    placeholder="YYYY-MM-DD"
+                    pattern="\d{4}-\d{2}-\d{2}"
+                    maxLength={10}
                   />
                 </div>
               </div>
@@ -562,13 +565,13 @@ export default function TradeEntryForm({
         </Section>
 
         {/* ══ EXECUTION DETAILS ══════════════════════════════════════════ */}
-        <Section title="Execution Details" accent="text-stone-500">
+        <Section title={t('section_execution')} accent="text-stone-500">
 
           {/* Action — Smart BUY/SELL (server resolves OPEN/CLOSE) */}
           <div>
             <label className={LBL} style={LBL_COLOR}>{t('action')}</label>
             <CToggle
-              options={SMART_ACTIONS}
+              options={SMART_ACTIONS} labelMap={{ BUY: t('buy'), SELL: t('sell') }}
               value={form.action as 'BUY' | 'SELL'}
               onChange={v => set('action', v)}
             />
@@ -577,7 +580,7 @@ export default function TradeEntryForm({
           {/* Qty + Price */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={LBL}>{isOption ? 'Contracts' : 'Shares'}</label>
+              <label className={LBL}>{t('quantity')}</label>
               <input
                 type="number" min="1" step="1" value={form.quantity}
                 onChange={e => set('quantity', e.target.value)} required
@@ -585,7 +588,7 @@ export default function TradeEntryForm({
               />
             </div>
             <div>
-              <label className={LBL}>{isOption ? 'Premium' : 'Price'}</label>
+              <label className={LBL}>{t('price')}</label>
               <input
                 type="number" step="0.01" min="0"
                 placeholder={isOption ? '5.00' : '195.00'}
@@ -609,7 +612,7 @@ export default function TradeEntryForm({
         </Section>
 
         {/* ══ ANALYSIS & REVIEW ══════════════════════════════════════════ */}
-        <Section title="Analysis & Review" accent="text-amber-500">
+        <Section title={t('section_analysis')} accent="text-amber-500">
 
           {/* Conviction — 5-star rating with hover preview */}
           <StarRating
@@ -617,15 +620,15 @@ export default function TradeEntryForm({
             onChange={v => set('confidenceScore', v)}
           />
 
-          {/* Technical Levels */}
+          {/* {t('tech_levels')} */}
           <div>
             <label className={LBL}>
-              Technical Levels
-              <span className="ml-1 normal-case font-normal text-xs text-stone-500">(optional)</span>
+              {t('tech_levels')}
+              <span className="ml-1 normal-case font-normal text-xs text-stone-500">{t('tech_optional')}</span>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-emerald-600 ds-sharp-label" style={{ textShadow: "none" }}>S</span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-emerald-600 ds-sharp-label" style={{ isolation: 'isolate', mixBlendMode: 'normal', filter: 'none', textShadow: 'none', WebkitTextStroke: '0px transparent' }}>S</span>
                 <input
                   type="number" step="0.01" min="0" placeholder="Support"
                   value={form.support} onChange={e => set('support', e.target.value)}
@@ -633,7 +636,7 @@ export default function TradeEntryForm({
                 />
               </div>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-rose-600 ds-sharp-label" style={{ textShadow: "none" }}>R</span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-rose-600 ds-sharp-label" style={{ isolation: 'isolate', mixBlendMode: 'normal', filter: 'none', textShadow: 'none', WebkitTextStroke: '0px transparent' }}>R</span>
                 <input
                   type="number" step="0.01" min="0" placeholder="Resistance"
                   value={form.resistance} onChange={e => set('resistance', e.target.value)}
@@ -647,7 +650,7 @@ export default function TradeEntryForm({
           <div>
             <label className={LBL}>
               Trade Reason
-              <span className="ml-1 normal-case font-normal text-xs text-stone-500">(optional)</span>
+              <span className="ml-1 normal-case font-normal text-xs text-stone-500">{t('tech_optional')}</span>
             </label>
             <textarea
               rows={3}
@@ -660,7 +663,7 @@ export default function TradeEntryForm({
 
           {/* Strategy Tags */}
           <div>
-            <label className={LBL}>Strategy Tags</label>
+            <label className={LBL} style={LBL_COLOR}>{t('strategy_tags_lbl')}</label>
             <TagPicker
               selected={form.strategyTags}
               onChange={tags => set('strategyTags', tags)}

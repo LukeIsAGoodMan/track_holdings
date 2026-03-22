@@ -73,6 +73,30 @@ export const TRANSLATIONS = {
   notes:           { en: 'Notes',           zh: '备注' },
   record_trade:    { en: 'Record Trade',    zh: '记录交易' },
   recording:       { en: 'Recording…',     zh: '记录中…' },
+  trade_recorded:  { en: 'Trade Recorded!',zh: '交易已记录！' },
+
+  // Trade form sections
+  section_asset:     { en: 'Asset Context',      zh: '资产信息' },
+  section_execution: { en: 'Execution Details',  zh: '执行详情' },
+  section_analysis:  { en: 'Analysis & Review',  zh: '分析与回顾' },
+
+  // Trade form fields
+  buy:               { en: 'Buy',               zh: '买入' },
+  sell:              { en: 'Sell',               zh: '卖出' },
+  stock:             { en: 'Stock / ETF',       zh: '股票 / ETF' },
+  option:            { en: 'Option',            zh: '期权' },
+  conviction:        { en: 'Conviction',        zh: '信心评级' },
+  tech_levels:       { en: 'Technical Levels',  zh: '技术位' },
+  tech_optional:     { en: '(optional)',        zh: '（可选）' },
+  trade_reason_lbl:  { en: 'Trade Reason',      zh: '交易理由' },
+  strategy_tags_lbl: { en: 'Strategy Tags',     zh: '策略标签' },
+  clipboard_import:  { en: 'Clipboard Import',  zh: '剪贴板导入' },
+  clipboard_ph:      { en: 'Paste trade data…', zh: '粘贴交易数据…' },
+  clipboard_apply:   { en: 'Apply',             zh: '应用' },
+  clipboard_clear:   { en: 'Clear',             zh: '清除' },
+  clipboard_no_match:{ en: 'No fields matched', zh: '未匹配到任何字段' },
+  cash_impact_lbl:   { en: 'Cash Impact',       zh: '现金影响' },
+  select_portfolio:  { en: 'Select a portfolio first', zh: '请先选择一个组合' },
 
   // ── Coach UI ──────────────────────────────────────────────────────────────
   coach_section:   { en: 'Trading Coach',        zh: '交易教练' },
