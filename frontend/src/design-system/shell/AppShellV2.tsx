@@ -17,6 +17,7 @@ import PageContainer from './PageContainer'
 import { useSidebar } from '@/context/SidebarContext'
 import TradeEntryForm    from '@/components/TradeEntryForm'
 import PriceAlertsSidebar from '@/components/PriceAlertsSidebar'
+import { PortfolioCreatePanel, PortfolioEditPanel } from './PortfolioPanels'
 
 export default function AppShellV2() {
   const { mode, isExpanded } = useSidebar()
@@ -80,9 +81,10 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
 
 function ActionPanelSurface() {
   const {
-    mode, pendingClose, alertPrefill,
+    mode, pendingClose, alertPrefill, editTarget,
     exitTradeEntry, exitPriceAlerts,
     exitPortfolioCreate, exitPortfolioEdit,
+    openPortfolioCreate,
   } = useSidebar()
 
   const handleBack = () => {
@@ -110,23 +112,37 @@ function ActionPanelSurface() {
         boxShadow: '1px 0 0 rgba(0,0,0,0.02), 4px 0 16px -10px rgba(0,0,0,0.06), inset -1px 0 0 rgba(255,255,255,0.05)',
       }}
     >
-      <div className="flex-1 overflow-y-auto p-4">
-        <button
-          onClick={handleBack}
-          className="flex items-center gap-1.5 text-ds-sm text-stone-500
-                     hover:text-stone-700 mb-4 transition-colors duration-150"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          Back to navigation
-        </button>
-
-        {mode === 'trade_entry' && (
-          <TradeEntryForm closeState={pendingClose} onSuccess={exitTradeEntry} />
+      <div className="flex-1 overflow-y-auto flex flex-col">
+        {/* Trade / Alerts modes — generic back + content */}
+        {(mode === 'trade_entry' || mode === 'price_alerts') && (
+          <div className="p-4">
+            <button
+              onClick={handleBack}
+              className="flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-700 mb-4 ds-color"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+              Back
+            </button>
+            {mode === 'trade_entry' && <TradeEntryForm closeState={pendingClose} onSuccess={exitTradeEntry} />}
+            {mode === 'price_alerts' && <PriceAlertsSidebar prefill={alertPrefill} />}
+          </div>
         )}
-        {mode === 'price_alerts' && (
-          <PriceAlertsSidebar prefill={alertPrefill} />
+
+        {/* Portfolio panels — own header with back */}
+        {mode === 'portfolio_create' && (
+          <PortfolioCreatePanel onBack={exitPortfolioCreate} />
+        )}
+        {mode === 'portfolio_edit' && editTarget && (
+          <PortfolioEditPanel
+            target={editTarget}
+            onBack={exitPortfolioEdit}
+            onAddChild={() => {
+              exitPortfolioEdit()
+              setTimeout(() => openPortfolioCreate(), 50)
+            }}
+          />
         )}
       </div>
     </div>

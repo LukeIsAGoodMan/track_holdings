@@ -118,7 +118,7 @@ export default function SidebarV2() {
   const { user, logout } = useAuth()
   const { socketState, connected } = useWebSocket()
   const { portfolios, selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
-  const { isExpanded, toggleExpand, openTradeEntry, openPriceAlerts, openPortfolioCreate } = useSidebar()
+  const { isExpanded, toggleExpand, openTradeEntry, openPriceAlerts, openPortfolioCreate, openPortfolioEdit } = useSidebar()
 
   const isEn = lang === 'en'
   const isLive = socketState === 'ready'
@@ -208,7 +208,7 @@ export default function SidebarV2() {
             </div>
             <div className="space-y-0.5 max-h-44 overflow-y-auto">
               {portfolios.map((p) => (
-                <PortfolioItem key={p.id} portfolio={p} selectedId={selectedPortfolioId} onSelect={setSelectedPortfolioId} depth={0} />
+                <PortfolioItem key={p.id} portfolio={p} selectedId={selectedPortfolioId} onSelect={setSelectedPortfolioId} onEdit={openPortfolioEdit} depth={0} />
               ))}
               {portfolios.length === 0 && (
                 <div className="text-xs text-stone-400 px-3 py-2 italic">
@@ -327,34 +327,52 @@ interface PortfolioItemProps {
   portfolio: { id: number; name: string; is_folder: boolean; children: PortfolioItemProps['portfolio'][] }
   selectedId: number | null
   onSelect: (id: number | null) => void
+  onEdit: (node: any) => void
   depth: number
 }
 
-function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItemProps) {
+function PortfolioItem({ portfolio, selectedId, onSelect, onEdit, depth }: PortfolioItemProps) {
   const isSelected = portfolio.id === selectedId
   const pl = depth * 12
 
   return (
     <>
-      <button
-        onClick={() => onSelect(portfolio.id)}
-        className={`
-          flex items-center gap-2 w-full rounded-v2-sm text-left text-xs font-medium
-          py-1.5 ds-interact
-          ${isSelected
-            ? 'bg-stone-500/12 text-stone-800'
-            : 'text-stone-400 hover:text-stone-600 hover:bg-stone-500/8'
-          }
-        `}
-        style={{ paddingLeft: `${12 + pl}px` }}
-      >
-        <span className="shrink-0 opacity-50">
-          {portfolio.is_folder ? icons.folder : icons.briefcase}
-        </span>
-        <span className="truncate">{portfolio.name}</span>
-      </button>
+      <div className="group relative">
+        <button
+          onClick={() => onSelect(portfolio.id)}
+          className={`
+            flex items-center gap-2 w-full rounded-v2-sm text-left text-xs font-medium
+            py-1.5 ds-interact pr-7
+            ${isSelected
+              ? 'bg-stone-500/12 text-stone-800'
+              : 'text-stone-400 hover:text-stone-600 hover:bg-stone-500/8'
+            }
+          `}
+          style={{ paddingLeft: `${12 + pl}px` }}
+        >
+          <span className="shrink-0 opacity-50">
+            {portfolio.is_folder ? icons.folder : icons.briefcase}
+          </span>
+          <span className="truncate">{portfolio.name}</span>
+        </button>
+        {/* Action button — appears on hover */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onEdit(portfolio) }}
+          className="absolute right-1 top-1/2 -translate-y-1/2
+                     w-5 h-5 flex items-center justify-center rounded
+                     text-stone-400 hover:text-stone-700 hover:bg-stone-500/10
+                     opacity-0 group-hover:opacity-100 ds-fade"
+          title="Edit"
+        >
+          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+            <circle cx="5" cy="12" r="1.5" />
+            <circle cx="12" cy="12" r="1.5" />
+            <circle cx="19" cy="12" r="1.5" />
+          </svg>
+        </button>
+      </div>
       {portfolio.children?.map((child) => (
-        <PortfolioItem key={child.id} portfolio={child} selectedId={selectedId} onSelect={onSelect} depth={depth + 1} />
+        <PortfolioItem key={child.id} portfolio={child} selectedId={selectedId} onSelect={onSelect} onEdit={onEdit} depth={depth + 1} />
       ))}
     </>
   )
