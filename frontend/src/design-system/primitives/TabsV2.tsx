@@ -56,7 +56,7 @@ export default function TabsV2({
             onClick={() => handleClick(key)}
             className={`
               relative px-3 py-2 ${textSize} font-medium
-              transition-colors duration-150 rounded-v2-sm
+              ds-color rounded-v2-sm
               ${isActive
                 ? 'text-v2-text-1'
                 : 'text-v2-text-3 hover:text-v2-text-2'

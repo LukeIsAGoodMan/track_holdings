@@ -81,52 +81,54 @@ function fromClose(cs: ClosePositionState): FormState {
   }
 }
 
-// ── Shared input class ────────────────────────────────────────────────────────
+// ── V3.5 Warm aluminum input styling ─────────────────────────────────────────
 const INP = [
-  'w-full text-xs rounded-lg border border-slate-200 bg-white',
-  'px-3 py-2 text-slate-700 placeholder-slate-300',
-  'focus:outline-none focus:ring-1 focus:ring-primary/30',
+  'w-full text-xs rounded-v2-md bg-white/60',
+  'px-3 py-2 text-stone-700',
+  'placeholder:text-stone-400/60',
+  'focus:outline-none focus:ring-1 focus:ring-stone-400/20',
 ].join(' ')
+const INP_BORDER = 'border border-stone-400/[0.06]'
 
-// Shared label class — consistent across all sections
-const LBL = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5'
+// Label — receding context, not bold authority
+const LBL = 'block text-[10px] font-medium uppercase tracking-wider mb-1.5'
+const LBL_COLOR = { color: 'rgba(68, 64, 60, 0.56)' } as const
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
-// No overflow-hidden on the outer div — lets autocomplete dropdowns escape.
+// ── Section wrapper — warm aluminum surface, no heavy box ────────────────────
 function Section({
-  title, accent = 'text-slate-400', children,
+  title, children,
 }: {
   title: string; accent?: string; children: React.ReactNode
 }) {
   return (
-    <div className="rounded-xl border border-slate-200">
-      <div className={`px-4 py-2 border-b border-slate-100 bg-slate-50 rounded-t-xl text-[10px] font-bold uppercase tracking-widest ${accent}`}>
+    <div>
+      <div className="text-[10px] font-medium uppercase tracking-widest mb-3"
+           style={{ color: 'rgba(68, 64, 60, 0.56)' }}>
         {title}
       </div>
-      <div className="px-4 py-4 space-y-4">
+      <div className="space-y-3">
         {children}
       </div>
     </div>
   )
 }
 
-// ── Compact toggle group ──────────────────────────────────────────────────────
-// overflow-hidden is intentional here — clips button bg to the rounded border.
+// ── Compact toggle — neutral color-only, no blue boxes ───────────────────────
 function CToggle<T extends string>({
   options, value, onChange, labelMap,
 }: {
   options: T[]; value: T; onChange: (v: T) => void; labelMap?: Record<string, string>
 }) {
   return (
-    <div className="flex rounded-lg border border-slate-200 overflow-hidden bg-slate-50 text-[11px]">
+    <div className={`flex rounded-v2-md overflow-hidden bg-stone-100/50 text-[11px] ${INP_BORDER}`}>
       {options.map((opt) => (
         <button
           key={opt} type="button" onClick={() => onChange(opt)}
           className={[
-            'flex-1 py-1.5 font-semibold transition-colors',
+            'flex-1 py-1.5 font-medium ds-color',
             value === opt
-              ? 'bg-primary-soft text-primary'
-              : 'text-slate-500 hover:text-slate-700 hover:bg-white',
+              ? 'bg-white text-stone-700 shadow-sm'
+              : 'text-stone-400 hover:text-stone-600',
           ].join(' ')}
         >
           {labelMap?.[opt] ?? opt}
@@ -161,17 +163,17 @@ function StarRating({ value, onChange }: { value: number; onChange: (v: number) 
               <Star
                 size={18}
                 strokeWidth={1.5}
-                className={`transition-colors duration-100 ${
+                className={`ds-color duration-100 ${
                   n <= display
                     ? 'text-amber-400 fill-amber-400'
-                    : 'text-slate-200 fill-slate-200 hover:text-slate-300 hover:fill-slate-300'
+                    : 'text-stone-200 fill-stone-200 hover:text-stone-300 hover:fill-stone-300'
                 }`}
               />
             </button>
           ))}
         </div>
         {display > 0 && (
-          <span className="text-[11px] text-slate-500 whitespace-nowrap shrink-0">
+          <span className="text-[11px] text-stone-500 whitespace-nowrap shrink-0">
             {STAR_LABELS[display]}
           </span>
         )}
@@ -196,10 +198,10 @@ function TagPicker({
         <button
           key={tag} type="button" onClick={() => toggle(tag)}
           className={[
-            'px-2.5 py-0.5 rounded-full text-[10px] font-semibold border transition-colors',
+            'px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ds-color',
             selected.includes(tag)
               ? 'bg-primary-soft border-primary/30 text-primary'
-              : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600',
+              : 'bg-white border-stone-400/[0.06] text-stone-400 hover:border-stone-300 hover:text-stone-600',
           ].join(' ')}
         >{tag}</button>
       ))}
@@ -210,12 +212,12 @@ function TagPicker({
 // ── Collapsible section (Clipboard Import) ────────────────────────────────────
 // Padding on the wrapper ensures the toggle label is never flush against an edge.
 function CollapseSection({
-  label, color = 'text-slate-400', open, onToggle, children,
+  label, color = 'text-stone-400', open, onToggle, children,
 }: {
   label: string; color?: string; open: boolean; onToggle: () => void; children: React.ReactNode
 }) {
   return (
-    <div className="border-t border-slate-100 pt-2 px-1">
+    <div className="border-t border-stone-400/[0.04] pt-2 px-1">
       <button
         type="button" onClick={onToggle}
         className={`w-full flex items-center justify-between text-[10px] font-bold uppercase tracking-wider px-1 py-1.5 hover:opacity-80 transition-opacity ${color}`}
@@ -324,21 +326,21 @@ function SymbolAutocomplete({
         spellCheck={false}
       />
       {open && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-lg">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white border border-stone-400/[0.06] rounded-v2-md shadow-lg">
           {suggestions.map((s) => (
             <button
               key={s.symbol}
               type="button"
               onMouseDown={e => { e.preventDefault(); select(s) }}
-              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-slate-50 transition-colors first:rounded-t-xl last:rounded-b-xl"
+              className="w-full flex items-center justify-between px-3 py-2 text-left hover:bg-stone-100/50 ds-color first:rounded-t-xl last:rounded-b-xl"
             >
               <div className="min-w-0 mr-2">
-                <div className="font-mono font-bold text-[12px] text-slate-800">{s.symbol}</div>
+                <div className="font-mono font-bold text-[12px] text-stone-800">{s.symbol}</div>
                 {s.name && (
-                  <div className="text-[10px] text-slate-400 truncate max-w-[200px]">{s.name}</div>
+                  <div className="text-[10px] text-stone-400 truncate max-w-[200px]">{s.name}</div>
                 )}
               </div>
-              <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[s.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+              <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[s.type] ?? 'bg-stone-100/50 text-stone-500 border-stone-400/[0.06]'}`}>
                 {ASSET_CLASS_LABEL[s.type] ?? s.type}
               </span>
             </button>
@@ -464,7 +466,7 @@ export default function TradeEntryForm({
 
       {/* Closing mode banner */}
       {closeState && (
-        <div className="px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px]">
+        <div className="px-4 py-2.5 rounded-v2-md bg-amber-50 border border-amber-200 text-[11px]">
           <div className="font-bold uppercase tracking-wider text-amber-700 mb-0.5">
             Closing Position
           </div>
@@ -479,7 +481,7 @@ export default function TradeEntryForm({
 
       {/* Error */}
       {error && (
-        <div className="px-4 py-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-[11px]">
+        <div className="px-4 py-2.5 rounded-v2-md bg-rose-50 border border-rose-200 text-rose-600 text-[11px]">
           {error}
         </div>
       )}
@@ -513,11 +515,11 @@ export default function TradeEntryForm({
             {selectedSuggestion && symbolValid === true && (
               <div className="mt-2 flex items-center gap-2 flex-wrap">
                 {selectedSuggestion.name && (
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-stone-500">
                     {selectedSuggestion.name}
                   </span>
                 )}
-                <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[selectedSuggestion.type] ?? 'bg-slate-50 text-slate-500 border-slate-200'}`}>
+                <span className={`shrink-0 text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded border ${ASSET_CLASS_STYLE[selectedSuggestion.type] ?? 'bg-stone-100/50 text-stone-500 border-stone-400/[0.06]'}`}>
                   {ASSET_CLASS_LABEL[selectedSuggestion.type] ?? selectedSuggestion.type}
                 </span>
               </div>
@@ -560,7 +562,7 @@ export default function TradeEntryForm({
         </Section>
 
         {/* ══ EXECUTION DETAILS ══════════════════════════════════════════ */}
-        <Section title="Execution Details" accent="text-slate-500">
+        <Section title="Execution Details" accent="text-stone-500">
 
           {/* Action */}
           <div>
@@ -623,7 +625,7 @@ export default function TradeEntryForm({
           <div>
             <label className={LBL}>
               Technical Levels
-              <span className="ml-1 normal-case font-normal text-slate-300">(optional)</span>
+              <span className="ml-1 normal-case font-normal text-stone-300">(optional)</span>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div className="relative">
@@ -649,14 +651,14 @@ export default function TradeEntryForm({
           <div>
             <label className={LBL}>
               Trade Reason
-              <span className="ml-1 normal-case font-normal text-slate-300">(optional)</span>
+              <span className="ml-1 normal-case font-normal text-stone-300">(optional)</span>
             </label>
             <textarea
               rows={3}
               placeholder={t('coach_reason_ph')}
               value={form.tradeReason}
               onChange={e => set('tradeReason', e.target.value)}
-              className="w-full text-xs rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-700 placeholder-slate-300 focus:outline-none focus:ring-1 focus:ring-primary/30 resize-none"
+              className="w-full text-xs rounded-lg border border-stone-400/[0.06] bg-white/60 px-3 py-2 text-stone-700 placeholder:text-stone-400/60 focus:outline-none focus:ring-1 focus:ring-stone-400/20 resize-none"
             />
           </div>
 
@@ -675,7 +677,7 @@ export default function TradeEntryForm({
           type="submit"
           disabled={submitState !== 'idle' || symbolValid === false}
           className={[
-            'w-full py-3 rounded-xl text-sm font-bold transition-all duration-300 shadow-sm select-none',
+            'w-full py-3 rounded-v2-md text-sm font-bold ds-color shadow-sm select-none',
             submitState === 'success'
               ? 'bg-emerald-500 text-white scale-[0.98] cursor-default'
               : submitState === 'loading'
@@ -713,19 +715,19 @@ export default function TradeEntryForm({
           onChange={e => handleClip(e.target.value)}
           onPaste={e => handleClip(e.clipboardData.getData('text'))}
           placeholder={t('clipboard_ph')}
-          className="w-full font-mono text-[10px] rounded-lg border border-slate-200 px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+          className="w-full font-mono text-[10px] rounded-lg border border-stone-400/[0.06] px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-stone-400/20"
         />
         {clipText.trim() && parsed && parsed.matched.length > 0 && (
           <div className="flex gap-1.5">
             <button
               type="button" onClick={applyClip}
-              className="flex-1 py-1.5 rounded-lg bg-primary-soft text-primary border border-primary/20 text-[10px] font-semibold hover:bg-primary/15 transition-colors"
+              className="flex-1 py-1.5 rounded-lg bg-white text-stone-700 shadow-sm border border-primary/20 text-[10px] font-semibold hover:bg-primary/15 ds-color"
             >
               Apply {parsed.matched.length} fields
             </button>
             <button
               type="button" onClick={() => { setClipText(''); setParsed(null) }}
-              className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-500 text-[10px] font-semibold hover:bg-slate-50 transition-colors"
+              className="px-3 py-1.5 rounded-lg bg-white border border-stone-400/[0.06] text-stone-500 text-[10px] font-semibold hover:bg-stone-100/50 ds-color"
             >
               Clear
             </button>

@@ -355,16 +355,16 @@ function PortfolioItem({ portfolio, selectedId, onSelect, onEdit, depth }: Portf
           </span>
           <span className="truncate">{portfolio.name}</span>
         </button>
-        {/* Action button — appears on hover */}
+        {/* Action button — always subtly visible, elevates on row hover */}
         <button
           onClick={(e) => { e.stopPropagation(); onEdit(portfolio) }}
           className="absolute right-1 top-1/2 -translate-y-1/2
-                     w-5 h-5 flex items-center justify-center rounded
+                     w-6 h-6 flex items-center justify-center rounded
                      text-stone-400 hover:text-stone-700 hover:bg-stone-500/10
-                     opacity-0 group-hover:opacity-100 ds-fade"
+                     opacity-35 group-hover:opacity-100 ds-fade"
           title="Edit"
         >
-          <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
             <circle cx="5" cy="12" r="1.5" />
             <circle cx="12" cy="12" r="1.5" />
             <circle cx="19" cy="12" r="1.5" />
