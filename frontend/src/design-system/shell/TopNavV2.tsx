@@ -64,8 +64,8 @@ export default function TopNavV2() {
                  select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(135deg, #8a8a90 0%, #6e6e74 24%, #515158 58%, #3f3f45 100%)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+        background: 'linear-gradient(135deg, #9a9aa0 0%, #7f7f86 38%, #68686f 78%, #56565d 100%)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.025)',
       }}
     >
       {/* ═══ LEFT: Brand unit + Breadcrumb ═══════════════════════ */}
