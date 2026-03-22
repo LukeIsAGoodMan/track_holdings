@@ -125,6 +125,15 @@ button { cursor: pointer; transition: background-color 150ms, color 150ms; }
   animation: ds-shimmer 1.2s ease-in-out infinite;
 }
 
+/* ── V4 Motion — Apple-grade restraint ────────────────────────────── */
+/* Global transition timing: calm, precise, 180ms ease-out            */
+/* Overrides Tailwind's default 150ms for a more deliberate feel      */
+.transition-colors {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  transition-duration: 180ms;
+}
+
 /* ── Electronic ink — data update transition ─────────────────────── */
 /* Opacity-only: 0→1 in ~100ms. No number animation, no scale.       */
 .ds-ink {

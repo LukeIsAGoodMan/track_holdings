@@ -155,7 +155,7 @@ export default function SidebarV2() {
             key={en}
             onClick={onClick}
             className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-              text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 transition-colors duration-150 group relative
+              text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 transition-colors group relative
               ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
           >
             {icon}
@@ -182,7 +182,7 @@ export default function SidebarV2() {
                 to={to}
                 className={`
                   flex items-center gap-3 rounded-v2-md group relative
-                  text-sm font-medium transition-colors duration-150
+                  text-sm font-medium transition-colors
                   ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
                   ${isActive
                     ? 'bg-stone-500/12 text-stone-800'
@@ -235,7 +235,8 @@ export default function SidebarV2() {
                 <div className="text-sm font-medium text-stone-600 truncate">{user.username}</div>
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-600 transition-colors duration-150 mt-0.5"
+                  className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 mt-0.5"
+                  style={{ transition: 'color 180ms ease-out' }}
                 >
                   {icons.bolt}
                   <span>{isEn ? 'Logout' : '退出'}</span>
@@ -245,8 +246,11 @@ export default function SidebarV2() {
           </div>
         )}
 
-        {/* Status */}
-        <div className={`flex items-center ${isExpanded ? 'gap-1.5 px-1' : 'justify-center'}`} style={{ fontSize: '11px', color: 'rgba(68,64,60,0.40)' }}>
+        {/* Status — always readable */}
+        <div
+          className={`flex items-center ${isExpanded ? 'gap-1.5 px-1' : 'justify-center'}`}
+          style={{ fontSize: '11px', color: 'rgba(68, 64, 60, 0.58)' }}
+        >
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor} ${isReconnecting ? 'animate-pulse' : ''}`} />
           {isExpanded && <span>{isLive ? 'Live' : isReconnecting ? (isEn ? 'Reconnecting...' : '重连中...') : (isEn ? 'Disconnected' : '已断开')}</span>}
         </div>
@@ -255,8 +259,8 @@ export default function SidebarV2() {
         {isExpanded && (
           <button
             onClick={toggleLang}
-            className="text-stone-400 hover:text-stone-600 transition-colors duration-150 px-1"
-            style={{ fontSize: '11px' }}
+            className="text-stone-500 hover:text-stone-700 px-1"
+            style={{ fontSize: '11px', transition: 'color 180ms ease-out' }}
           >
             <span className={lang === 'en' ? 'text-stone-600' : ''}>EN</span>
             <span className="text-stone-300 mx-1">/</span>
@@ -264,16 +268,17 @@ export default function SidebarV2() {
           </button>
         )}
 
-        {/* Collapse */}
+        {/* Collapse — always present, mechanical feel */}
         <button
           onClick={toggleExpand}
           className="flex items-center justify-center w-full py-1.5 rounded-v2-sm
-                     text-stone-400 hover:text-stone-600 hover:bg-stone-500/8
-                     transition-colors duration-150"
+                     text-stone-500 hover:text-stone-700 hover:bg-stone-500/6"
+          style={{ transition: 'color 180ms ease-out, background-color 220ms ease-out 40ms' }}
           aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <svg
-            className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? '' : 'rotate-180'}`}
+            className={`w-3.5 h-3.5 ${isExpanded ? '' : 'rotate-180'}`}
+            style={{ transition: 'transform 160ms ease-out' }}
             viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"
           >
             <path d="M15 18l-6-6 6-6" />
@@ -303,7 +308,7 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
         onClick={() => onSelect(portfolio.id)}
         className={`
           flex items-center gap-2 w-full rounded-v2-sm text-left text-xs font-medium
-          py-1.5 transition-colors duration-150
+          py-1.5 transition-colors
           ${isSelected
             ? 'bg-stone-500/12 text-stone-800'
             : 'text-stone-400 hover:text-stone-600 hover:bg-stone-500/8'
