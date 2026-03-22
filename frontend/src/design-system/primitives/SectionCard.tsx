@@ -46,7 +46,7 @@ function SectionCardRoot({
       className={`
         rounded-v2-lg
         ${noPadding ? '' : 'p-5'}
-        ${interactive ? 'transition-colors duration-150 hover:bg-black/[0.02] cursor-pointer' : ''}
+        ${interactive ? 'ds-hover-surface cursor-pointer' : ''}
         ${className}
       `}
       style={{ minHeight, ...style }}
@@ -86,7 +86,7 @@ function CardContent({ children, className = '' }: { children: ReactNode; classN
 // ── Footer ────────────────────────────────────────────────────────────────────
 
 function CardFooter({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`mt-4 pt-4 ${className}`}>{children}</div>
+  return <div className={`mt-6 ${className}`}>{children}</div>
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────

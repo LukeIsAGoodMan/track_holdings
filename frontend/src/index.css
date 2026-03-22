@@ -131,13 +131,20 @@ button { cursor: pointer; transition: background-color 150ms, color 150ms; }
   transition: opacity 100ms ease-out;
 }
 
+/* ── Subtle hover surface — felt, not seen ───────────────────────── */
+.ds-hover-surface {
+  transition: background-color 300ms ease-out;
+}
+.ds-hover-surface:hover {
+  background-color: rgba(0, 0, 0, 0.015);
+}
+
 /* ── Table hover row — zebra on hover only ───────────────────────── */
-/* No persistent stripes, no vertical lines, no grid.                 */
 .ds-table-row {
-  transition: background-color 100ms ease-out;
+  transition: background-color 300ms ease-out;
 }
 .ds-table-row:hover {
-  background-color: rgba(0, 0, 0, 0.02);
+  background-color: rgba(0, 0, 0, 0.015);
 }
 
 /* ── Reduced motion ────────────────────────────────────────────────── */

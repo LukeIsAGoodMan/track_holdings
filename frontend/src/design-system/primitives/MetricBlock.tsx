@@ -1,52 +1,42 @@
 /**
- * MetricBlock (V3) — single financial metric display.
+ * MetricBlock (V3.5) — metric as text, not component.
  *
- * Strict hierarchy:
- *   [label]   — text-ds-caption, text-v2-text-2, uppercase
- *   [value]   — text-ds-* (size-dependent), font-semibold, tnum
- *   [delta]   — text-ds-sm, semantic color, opacity-70
+ * No box feel. No minHeight enforcement. Layout defines height.
+ * Electronic-ink value transition: old fades out, new fades in.
+ * Stable layout — no width jump, no baseline shift during transitions.
  *
- * Spacing contract:
- *   label → value: mt-1 (tight)
- *   value → delta: mt-1
- *
- * All numeric values use tabular-nums for alignment stability.
- * Wrapped with React.memo to prevent re-renders under frequent WS updates.
- * Zero-value guard: uses isPresent() — treats 0 as valid, null/undefined as missing.
+ * Hierarchy:
+ *   [label] — caption, muted
+ *   [value] — size-dependent, tnum, electronic-ink refresh
+ *   [delta] — small, semantic color, reduced opacity
  */
-import { memo } from 'react'
+import { memo, useState, useEffect, useRef } from 'react'
 import SkeletonLoader from './SkeletonLoader'
 
-/** Zero-safe presence check: 0 is valid, null/undefined are not */
 function isPresent(v: unknown): boolean {
   return v !== null && v !== undefined
 }
 
 interface Props {
-  /** Small muted label above the value */
   label: string
-  /** Primary display value — typically formatted currency */
   value: string
-  /** Optional secondary context (percentage, change, etc.) */
   delta?: string | null
-  /** Color coding for the value */
   sentiment?: 'positive' | 'negative' | 'neutral'
-  /** Size variant */
   size?: 'sm' | 'md' | 'lg'
-  /** Loading state */
   isLoading?: boolean
   className?: string
 }
 
-/**
- * Size config — enforced typography + min-height for CLS.
- * font-semibold (600) is the ONLY weight for metric values.
- * This provides emphasis without the heaviness of font-bold (700).
- */
-const sizeConfig: Record<string, { classes: string; minHeight: string; skeletonH: string }> = {
-  sm: { classes: 'text-ds-h2 tnum',      minHeight: '2.75rem',  skeletonH: 'h-5' },
-  md: { classes: 'text-ds-h1 tnum',      minHeight: '3.25rem',  skeletonH: 'h-6' },
-  lg: { classes: 'text-ds-display tnum',  minHeight: '3.75rem',  skeletonH: 'h-8' },
+const sizeClasses: Record<string, string> = {
+  sm: 'text-ds-h2 tnum',
+  md: 'text-ds-h1 tnum',
+  lg: 'text-ds-display tnum',
+}
+
+const skeletonH: Record<string, string> = {
+  sm: 'h-5',
+  md: 'h-6',
+  lg: 'h-8',
 }
 
 const sentimentClasses: Record<string, string> = {
@@ -64,30 +54,53 @@ export default memo(function MetricBlock({
   isLoading = false,
   className = '',
 }: Props) {
-  const cfg = sizeConfig[size]
+  // Electronic-ink: track previous value for cross-fade
+  const [displayValue, setDisplayValue] = useState(value)
+  const [opacity, setOpacity] = useState(1)
+  const prevValue = useRef(value)
+
+  useEffect(() => {
+    if (value === prevValue.current) return
+    prevValue.current = value
+    // Fade out, swap, fade in
+    setOpacity(0)
+    const t = setTimeout(() => {
+      setDisplayValue(value)
+      setOpacity(1)
+    }, 80)
+    return () => clearTimeout(t)
+  }, [value])
+
+  // Sync on first render / loading transition
+  useEffect(() => {
+    if (!isLoading) {
+      setDisplayValue(value)
+      setOpacity(1)
+    }
+  }, [isLoading, value])
 
   if (isLoading) {
     return (
-      <div className={`${className}`} style={{ minHeight: cfg.minHeight }}>
+      <div className={className}>
         <SkeletonLoader width="w-16" height="h-2.5" />
         <div className="mt-1">
-          <SkeletonLoader width="w-24" height={cfg.skeletonH} />
+          <SkeletonLoader width="w-24" height={skeletonH[size]} />
         </div>
       </div>
     )
   }
 
   return (
-    <div className={className} style={{ minHeight: cfg.minHeight }}>
-      {/* Label — always muted, caption scale */}
+    <div className={className}>
       <div className="text-ds-caption uppercase text-v2-text-2">
         {label}
       </div>
-      {/* Value — primary emphasis, tnum for stability, electronic-ink transition */}
-      <div className={`${cfg.classes} ${sentimentClasses[sentiment]} leading-none mt-1 ds-ink`}>
-        {value}
+      <div
+        className={`${sizeClasses[size]} ${sentimentClasses[sentiment]} leading-none mt-1`}
+        style={{ opacity, transition: 'opacity 100ms ease-out' }}
+      >
+        {displayValue}
       </div>
-      {/* Delta — secondary, reduced opacity */}
       {isPresent(delta) && (
         <div className={`text-ds-sm tnum mt-1 ${sentimentClasses[sentiment]} opacity-70`}>
           {delta}
