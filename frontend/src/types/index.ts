@@ -101,7 +101,7 @@ export interface HoldingGroup {
 }
 
 // ── Trades ───────────────────────────────────────────────────────────────────
-export type TradeAction   = 'SELL_OPEN' | 'BUY_OPEN' | 'BUY_CLOSE' | 'SELL_CLOSE'
+export type TradeAction   = 'BUY' | 'SELL' | 'SELL_OPEN' | 'BUY_OPEN' | 'BUY_CLOSE' | 'SELL_CLOSE'
 export type InstrumentType = 'STOCK' | 'OPTION'
 export type OptionType     = 'CALL' | 'PUT'
 

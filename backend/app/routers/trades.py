@@ -10,7 +10,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, case, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -124,6 +124,33 @@ async def create_trade(
             detail=f"Portfolio {body.portfolio_id} not found",
         )
 
+    # ── 0b. Smart BUY/SELL → OPEN/CLOSE resolution ─────────────────────
+    resolved_action = body.action
+    if body.action in ("BUY", "SELL"):
+        # Look up current net position for this instrument
+        instrument_check = await _get_or_create_instrument(db, body)
+        net_q = select(
+            func.sum(
+                case(
+                    (TradeEvent.action.in_(["BUY_OPEN", "BUY_CLOSE"]), TradeEvent.quantity),
+                    else_=-TradeEvent.quantity,
+                )
+            )
+        ).where(
+            TradeEvent.portfolio_id == body.portfolio_id,
+            TradeEvent.instrument_id == instrument_check.id,
+        )
+        net_result = await db.execute(net_q)
+        current_net = net_result.scalar() or 0
+
+        if body.action == "BUY":
+            resolved_action = "BUY_CLOSE" if current_net < 0 else "BUY_OPEN"
+        else:  # SELL
+            resolved_action = "SELL_CLOSE" if current_net > 0 else "SELL_OPEN"
+
+    # Override body action for downstream logic
+    body_action = resolved_action
+
     # ── 1-5. Atomic write ─────────────────────────────────────────────────
     trade: TradeEvent
     cash_impact: Decimal
@@ -151,7 +178,7 @@ async def create_trade(
             portfolio_id=body.portfolio_id,
             user_id=user.id,
             instrument_id=instrument.id,
-            action=TradeAction(body.action),
+            action=TradeAction(body_action),
             quantity=body.quantity,
             price=body.price,
             underlying_price_at_trade=body.underlying_price_at_trade,
@@ -165,7 +192,7 @@ async def create_trade(
 
         # 3. Signed cash impact
         cash_impact = _compute_cash_impact(
-            body.action, body.price, body.quantity, instrument.multiplier
+            body_action, body.price, body.quantity, instrument.multiplier
         )
 
         # 4. Append to cash ledger (append-only, never updated/deleted)
@@ -182,7 +209,7 @@ async def create_trade(
             trade_event_id=trade.id,
             amount=cash_impact,
             description=(
-                f"{body.action} {body.quantity}x {sym_desc}{detail_desc}"
+                f"{body_action} {body.quantity}x {sym_desc}{detail_desc}"
                 f" @ ${body.price} | {sign_str}${cash_impact:,.2f}"
             ),
         )
@@ -208,7 +235,7 @@ async def create_trade(
 
     # ── 7. If position is now flat after a closing action, mark opening
     #       trades as CLOSED immediately (don't wait for lifecycle sweep).
-    if net_after == 0 and body.action in (TradeAction.BUY_CLOSE.value, TradeAction.SELL_CLOSE.value):
+    if net_after == 0 and body_action in (TradeAction.BUY_CLOSE.value, TradeAction.SELL_CLOSE.value):
         opening_stmt = select(TradeEvent).where(
             TradeEvent.instrument_id == instrument.id,
             TradeEvent.user_id == user.id,

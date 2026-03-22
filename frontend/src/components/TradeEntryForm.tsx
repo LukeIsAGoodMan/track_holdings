@@ -43,12 +43,9 @@ const STRATEGY_TAGS = [
   'Momentum', 'Wheel', 'Volatility', 'Mean Reversion',
 ] as const
 
-const ACTION_LABELS: Record<TradeAction, string> = {
-  SELL_OPEN:  'Sell Open',
-  BUY_OPEN:   'Buy Open',
-  BUY_CLOSE:  'Buy Close',
-  SELL_CLOSE: 'Sell Close',
-}
+// Smart action: only BUY and SELL exposed to user
+// Backend resolves to OPEN/CLOSE based on current position
+const SMART_ACTIONS: TradeAction[] = ['BUY', 'SELL']
 
 const STAR_LABELS: Record<number, string> = {
   1: 'Minimal',
@@ -60,7 +57,7 @@ const STAR_LABELS: Record<number, string> = {
 
 const INITIAL: FormState = {
   symbol: '', instrumentType: 'OPTION', optionType: 'PUT',
-  strike: '', expiry: '', action: 'SELL_OPEN',
+  strike: '', expiry: '', action: 'SELL',
   quantity: '1', price: '',
   support: '', resistance: '',
   notes: '', tradeReason: '', strategyTags: [],
@@ -84,15 +81,16 @@ function fromClose(cs: ClosePositionState): FormState {
 // ── V3.5 Warm aluminum input styling ─────────────────────────────────────────
 const INP = [
   'w-full text-xs rounded-v2-md bg-white/60',
-  'px-3 py-2 text-stone-700',
-  'placeholder:text-stone-400/60',
-  'focus:outline-none focus:ring-1 focus:ring-stone-400/20',
+  'px-3 py-2 text-stone-800',
+  'placeholder:text-stone-500/65',
+  'focus:outline-none focus:ring-1 focus:ring-stone-400/30 focus:bg-white/95 focus:border-stone-400/30',
+  'ds-bg',
 ].join(' ')
 const INP_BORDER = 'border border-stone-400/[0.06]'
 
-// Label — receding context, not bold authority
+// Label — readable from a distance
 const LBL = 'block text-[10px] font-medium uppercase tracking-wider mb-1.5'
-const LBL_COLOR = { color: 'rgba(68, 64, 60, 0.56)' } as const
+const LBL_COLOR = { color: 'rgba(68, 64, 60, 0.72)' } as const
 
 // ── Section wrapper — warm aluminum surface, no heavy box ────────────────────
 function Section({
@@ -375,7 +373,7 @@ export default function TradeEntryForm({
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isOption = form.instrumentType === 'OPTION'
-  const isSell   = form.action === 'SELL_OPEN' || form.action === 'SELL_CLOSE'
+  const isSell   = form.action === 'SELL' || form.action === 'SELL_OPEN' || form.action === 'SELL_CLOSE'
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(prev => ({ ...prev, [k]: v }))
 
@@ -509,7 +507,7 @@ export default function TradeEntryForm({
               onValidChange={setSymbolValid}
               onSelectSuggestion={s => {
                 setSelectedSuggestion(s)
-                if (s && s.type !== 'option') set('instrumentType', 'STOCK')
+                // Do NOT override instrumentType — user's tab choice is authoritative
               }}
             />
             {selectedSuggestion && symbolValid === true && (
@@ -564,18 +562,14 @@ export default function TradeEntryForm({
         {/* ══ EXECUTION DETAILS ══════════════════════════════════════════ */}
         <Section title="Execution Details" accent="text-stone-500">
 
-          {/* Action */}
+          {/* Action — Smart BUY/SELL (server resolves OPEN/CLOSE) */}
           <div>
-            <label className={LBL}>{t('action')}</label>
-            <select
-              value={form.action}
-              onChange={e => set('action', e.target.value as TradeAction)}
-              className={INP}
-            >
-              {(Object.keys(ACTION_LABELS) as TradeAction[]).map(a => (
-                <option key={a} value={a}>{ACTION_LABELS[a]}</option>
-              ))}
-            </select>
+            <label className={LBL} style={LBL_COLOR}>{t('action')}</label>
+            <CToggle
+              options={SMART_ACTIONS}
+              value={form.action as 'BUY' | 'SELL'}
+              onChange={v => set('action', v)}
+            />
           </div>
 
           {/* Qty + Price */}

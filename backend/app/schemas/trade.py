@@ -16,7 +16,11 @@ class TradeCreate(BaseModel):
     option_type:   Literal["CALL", "PUT"] | None = None
     strike:        Decimal | None = None
     expiry:        date    | None = None
-    action:        Literal["SELL_OPEN", "BUY_OPEN", "BUY_CLOSE", "SELL_CLOSE"]
+
+    # Smart action: accepts "BUY" or "SELL" (resolved server-side)
+    # Also accepts legacy "SELL_OPEN", "BUY_OPEN", "BUY_CLOSE", "SELL_CLOSE" for backward compat
+    action:        Literal["BUY", "SELL", "SELL_OPEN", "BUY_OPEN", "BUY_CLOSE", "SELL_CLOSE"]
+
     quantity:      int     = Field(..., gt=0)
     price:         Decimal = Field(..., ge=Decimal("0"))
     underlying_price_at_trade: Decimal | None = None
