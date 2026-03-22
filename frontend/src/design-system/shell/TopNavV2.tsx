@@ -1,14 +1,10 @@
 /**
- * TopNavV2 — Metallic silver navigation frame.
+ * TopNavV2 — Warm silver metal cap.
  *
- * Typography hierarchy:
- *   Brand: text-lg font-semibold tracking-tight — product identity anchor
- *   Page:  text-sm font-medium text-gray-500
- *   Portfolio: text-xs text-gray-400
- *   Status/Lang: text-xs
- *
- * Icon: 18px, strokeWidth 2
- * Gradient: 3-stop zinc metallic (#52525b → #27272a → #18181b)
+ * Material: warm aluminum (#d6d3d1 base) with subtle tonal modeling.
+ * Form: cap feel via micro-chamfer lower edge (pseudo-element gradient).
+ * Text: deep warm stone (#44403c) with micro text-shadow for engraved feel.
+ * No visible gradient bands, no border-bottom lines, no flat fill.
  */
 import { useLocation } from 'react-router-dom'
 import { useLanguage }  from '@/context/LanguageContext'
@@ -27,6 +23,27 @@ function usePageTitle(pathname: string, isEn: boolean): string {
     if (pathname.startsWith(prefix)) return isEn ? labels.en : labels.zh
   }
   return ''
+}
+
+/** Engraved text style — warm stone on warm metal */
+const engraved: React.CSSProperties = {
+  color: '#44403c',
+  textShadow: '0 0.5px 0 rgba(255, 255, 255, 0.15)',
+}
+
+const engSub: React.CSSProperties = {
+  color: 'rgba(68, 64, 60, 0.72)',
+  textShadow: '0 0.5px 0 rgba(255, 255, 255, 0.12)',
+}
+
+const engMuted: React.CSSProperties = {
+  color: 'rgba(68, 64, 60, 0.48)',
+  textShadow: '0 0.5px 0 rgba(255, 255, 255, 0.10)',
+}
+
+const engRecessive: React.CSSProperties = {
+  color: 'rgba(68, 64, 60, 0.42)',
+  textShadow: '0 0.5px 0 rgba(255, 255, 255, 0.08)',
 }
 
 export default function TopNavV2() {
@@ -59,42 +76,51 @@ export default function TopNavV2() {
 
   return (
     <header
-      className="sticky top-0 h-14 backdrop-blur-xl
+      className="sticky top-0 h-14 relative
                  flex items-center justify-between px-10
                  select-none"
       style={{
         zIndex: 30,
-        backgroundColor: '#d1d5db',
-        boxShadow: 'inset 0 -0.5px 0 rgba(255, 255, 255, 0.05)',
+        background: 'linear-gradient(180deg, #e7e5e4 0%, #d6d3d1 60%, #ccc9c6 100%)',
       }}
     >
-      {/* ═══ LEFT: Brand unit + Breadcrumb ═══════════════════════ */}
+      {/* Chamfer edge — micro gradient at bottom simulating machined edge light */}
+      <div
+        className="absolute bottom-0 left-0 right-0 pointer-events-none"
+        style={{
+          height: '1px',
+          background: 'linear-gradient(90deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.18) 50%, rgba(255,255,255,0.08) 100%)',
+        }}
+      />
+
+      {/* ═══ LEFT: Brand + Breadcrumb ═══════════════════════════ */}
       <div className="flex items-center">
-        {/* Brand unit — icon + name as one cohesive identity mark */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center justify-center text-gray-600 shrink-0" style={{ width: '20px', height: '28px' }}>
+          <div className="flex items-center justify-center shrink-0" style={{ width: '20px', height: '28px', ...engSub }}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.4" />
               <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.65" />
               <rect x="13" y="2" width="4" height="16" rx="1" fill="currentColor" />
             </svg>
           </div>
-          <span className="text-gray-800 hidden sm:inline font-semibold" style={{ fontSize: '20px', letterSpacing: '-0.02em', lineHeight: '1' }}>
+          <span
+            className="hidden sm:inline font-semibold"
+            style={{ fontSize: '20px', letterSpacing: '-0.02em', lineHeight: '1', ...engraved }}
+          >
             Track Holdings
           </span>
         </div>
 
-        {/* Breadcrumb — faint context, distant from brand */}
         {pageTitle && (
           <div className="flex items-center ml-8 gap-2">
-            <span className="text-gray-300 hidden sm:inline" style={{ fontSize: '11px' }}>/</span>
-            <span className="font-medium text-gray-500" style={{ fontSize: '14px' }}>
+            <span className="hidden sm:inline" style={{ fontSize: '11px', ...engMuted }}>/</span>
+            <span className="font-medium" style={{ fontSize: '14px', ...engSub }}>
               {pageTitle}
             </span>
             {selectedName && (
               <>
-                <span className="text-gray-300" style={{ fontSize: '11px' }}>/</span>
-                <span className="text-gray-400 max-w-[120px] truncate" style={{ fontSize: '12px' }}>
+                <span style={{ fontSize: '11px', ...engMuted }}>/</span>
+                <span className="max-w-[120px] truncate" style={{ fontSize: '12px', ...engMuted }}>
                   {selectedName}
                 </span>
               </>
@@ -103,13 +129,13 @@ export default function TopNavV2() {
         )}
       </div>
 
-      {/* ═══ RIGHT: Status + Language (recessive) ════════════════ */}
+      {/* ═══ RIGHT: Status + Language ═══════════════════════════ */}
       <div className="flex items-center gap-4">
         <div
           className={`flex items-center gap-1.5 px-2 py-1 rounded-v2-sm transition-colors duration-200
-            ${isOffline ? 'bg-v2-negative/20 text-v2-negative' : 'text-gray-400'}
+            ${isOffline ? 'bg-v2-negative/20 text-v2-negative' : ''}
           `}
-          style={{ fontSize: '11px' }}
+          style={{ fontSize: '11px', ...(isOffline ? {} : engRecessive) }}
           title={`WebSocket: ${socketState}`}
         >
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor} ${isReconnecting ? 'animate-pulse' : ''}`} />
@@ -118,13 +144,12 @@ export default function TopNavV2() {
 
         <button
           onClick={toggle}
-          className="text-gray-400 hover:text-gray-500
-                     px-2 py-1 rounded-v2-sm hover:bg-white/[0.04] transition-colors duration-150"
+          className="px-2 py-1 rounded-v2-sm hover:bg-black/[0.03] transition-colors duration-150"
           style={{ fontSize: '11px' }}
         >
-          <span className={lang === 'en' ? 'text-gray-500' : ''}>EN</span>
-          <span className="text-gray-300 mx-0.5">/</span>
-          <span className={lang === 'zh' ? 'text-gray-500' : ''}>中</span>
+          <span style={lang === 'en' ? engSub : engRecessive}>EN</span>
+          <span style={{ ...engMuted, margin: '0 2px' }}>/</span>
+          <span style={lang === 'zh' ? engSub : engRecessive}>中</span>
         </button>
       </div>
     </header>
