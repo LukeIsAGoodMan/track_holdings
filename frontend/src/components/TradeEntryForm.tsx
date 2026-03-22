@@ -681,19 +681,30 @@ export default function TradeEntryForm({
 
       </form>
 
-      {/* ── Clipboard import (collapsible) ─────────────────────────────── */}
-      <CollapseSection
-        label="Clipboard Import"
-        open={clipOpen}
-        onToggle={() => setClipOpen(v => !v)}
-      >
-        <textarea
-          rows={3} value={clipText}
-          onChange={e => handleClip(e.target.value)}
-          onPaste={e => handleClip(e.clipboardData.getData('text'))}
-          placeholder={t('clipboard_ph')}
-          className="w-full font-mono text-[10px] rounded-lg border border-stone-400/[0.06] px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-stone-400/20"
-        />
+      {/* ── Clipboard import (clear affordance) ─────────────────────────── */}
+      <div className="border border-stone-200 rounded-v2-md p-3 bg-stone-50/30">
+        <button
+          type="button"
+          onClick={() => setClipOpen(v => !v)}
+          className="w-full flex items-center justify-between text-xs text-stone-700 font-medium hover:bg-stone-100/50 rounded px-1 py-1 ds-color"
+        >
+          <span className="flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5 text-stone-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+            </svg>
+            {t('clipboard_import')}
+          </span>
+          <svg className={`w-3.5 h-3.5 text-stone-400 ${clipOpen ? 'rotate-180' : ''}`} style={{ transition: 'transform 160ms ease-out' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
+        </button>
+        {clipOpen && (
+          <div className="mt-2 space-y-2">
+            <textarea
+              rows={3} value={clipText}
+              onChange={e => handleClip(e.target.value)}
+              onPaste={e => handleClip(e.clipboardData.getData('text'))}
+              placeholder={t('clipboard_ph')}
+              className="w-full font-mono text-[10px] rounded-v2-sm border border-stone-300 bg-white/60 px-3 py-2 resize-none focus:outline-none focus:ring-1 focus:ring-stone-400/30 text-stone-800"
+            />
         {clipText.trim() && parsed && parsed.matched.length > 0 && (
           <div className="flex gap-1.5">
             <button
@@ -710,10 +721,12 @@ export default function TradeEntryForm({
             </button>
           </div>
         )}
-        {clipText.trim() && parsed && parsed.matched.length === 0 && (
-          <p className="text-[10px] text-rose-500">{t('clipboard_no_match')}</p>
+            {clipText.trim() && parsed && parsed.matched.length === 0 && (
+              <p className="text-[10px] text-rose-500">{t('clipboard_no_match')}</p>
+            )}
+          </div>
         )}
-      </CollapseSection>
+      </div>
     </div>
   )
 }

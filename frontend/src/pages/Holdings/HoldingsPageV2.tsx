@@ -654,10 +654,10 @@ const SECTOR_FALLBACK_PALETTE = [
 
 // ── Sector Donut Chart ───────────────────────────────────────────────────────
 
-// High-contrast stone-quant palette
+// Contrast-spaced stone-quant palette (no adjacent similar luminance)
 const SECTOR_PALETTE = [
-  '#44403c', '#78716c', '#a8a29e', '#d6d3d1',
-  '#57534e', '#8a8580', '#bab5af', '#e7e5e4',
+  '#1c1917', '#44403c', '#78716c', '#a8a29e', '#d6d3d1',
+  '#57534e', '#8a8580', '#e7e5e4',
 ]
 
 const ASSET_CLASS_KEYS_SET = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
@@ -684,9 +684,9 @@ function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | 
   const total = data.reduce((s, d) => s + d.value, 0)
 
   return (
-    <div>
-      {/* Donut — centered */}
-      <div className="w-36 h-36 mx-auto relative">
+    <div className="flex items-start gap-6">
+      {/* Donut — left, 55% */}
+      <div className="w-44 h-44 shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -697,13 +697,13 @@ function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | 
               onMouseEnter={(_, idx) => setActiveIdx(idx)}
               onMouseLeave={() => setActiveIdx(null)}
               label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                if (percent < 0.08) return null
+                if (percent < 0.10) return null
                 const RADIAN = Math.PI / 180
                 const r = (Number(innerRadius) + Number(outerRadius)) / 2
                 const x = Number(cx) + r * Math.cos(-midAngle * RADIAN)
                 const y = Number(cy) + r * Math.sin(-midAngle * RADIAN)
                 return (
-                  <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight={500}>
+                  <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={500}>
                     {`${(percent * 100).toFixed(0)}%`}
                   </text>
                 )
@@ -714,7 +714,7 @@ function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | 
                 <Cell
                   key={d.name}
                   fill={d.color}
-                  opacity={activeIdx != null && activeIdx !== i ? 0.4 : 1}
+                  opacity={activeIdx != null && activeIdx !== i ? 0.35 : 1}
                   style={{ transition: 'opacity 150ms ease-out' }}
                 />
               ))}
@@ -723,22 +723,25 @@ function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | 
         </ResponsiveContainer>
       </div>
 
-      {/* Legend — below, horizontal wrap */}
-      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-3">
+      {/* Legend — right, vertical structured list */}
+      <div className="flex-1 min-w-0 space-y-2 pt-3">
         {data.slice(0, 8).map((d, i) => {
           const pct = total > 0 ? Math.round(d.value / total * 100) : 0
+          const isActive = activeIdx === i
           return (
             <button
               key={d.name}
               type="button"
-              className={`flex items-center gap-1.5 text-xs ds-color cursor-pointer ${activeIdx === i ? 'text-stone-800' : 'text-stone-500'}`}
+              className={`flex items-center gap-2.5 w-full text-left ds-color cursor-pointer rounded-v2-sm px-1 py-0.5 ${
+                isActive ? 'bg-stone-100/60' : ''
+              }`}
               onMouseEnter={() => setActiveIdx(i)}
               onMouseLeave={() => setActiveIdx(null)}
               onClick={() => setActiveIdx(activeIdx === i ? null : i)}
             >
-              <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: d.color }} />
-              <span className="truncate max-w-[80px]">{d.name}</span>
-              <span className="tnum shrink-0">{pct}%</span>
+              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: d.color }} />
+              <span className={`truncate flex-1 text-xs ${isActive ? 'text-stone-800' : 'text-stone-600'}`}>{d.name}</span>
+              <span className={`tnum text-xs font-medium shrink-0 ${isActive ? 'text-stone-800' : 'text-stone-500'}`}>{pct}%</span>
             </button>
           )
         })}

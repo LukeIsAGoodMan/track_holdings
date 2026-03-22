@@ -1,11 +1,9 @@
 /**
- * PortfolioHistoryChart — 30-day NLV equity curve with date axis.
+ * PortfolioHistoryChart — 30-day NLV equity curve.
  *
- * Features:
- *   - Smooth monotone curve
- *   - X-axis: dates (Mar 10, Mar 11 etc.) — light, recessive
- *   - Tooltip: Date | $Value | (+$change, +X.X%)
- *   - No Y-axis, no grid, no brush
+ * Tooltip: Full value (no abbreviation) + labeled "Daily Change" with directional color.
+ * X-axis: Dates (Mar 10, Mar 11) — light, recessive.
+ * All numbers use tabular-nums.
  */
 import { useState, useEffect, useMemo } from 'react'
 import {
@@ -15,12 +13,25 @@ import {
 import { fetchPortfolioHistory } from '@/api/holdings'
 import type { PortfolioHistoryPoint } from '@/types'
 
-function fmtNlv(val: number): string {
-  if (!isFinite(val)) return '—'
+/** Full currency — NEVER abbreviated in tooltips */
+function fmtFull(val: number): string {
+  if (!val || isNaN(val)) return '$0'
   return new Intl.NumberFormat('en-US', {
     style: 'currency', currency: 'USD',
     minimumFractionDigits: 0, maximumFractionDigits: 0,
+    signDisplay: 'auto',
   }).format(val)
+}
+
+/** Signed full currency with explicit +/- */
+function fmtFullSigned(val: number): string {
+  if (!val || isNaN(val)) return '$0'
+  const abs = Math.abs(val)
+  const formatted = new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(abs)
+  return val >= 0 ? `+${formatted}` : `-${formatted}`
 }
 
 function fmtDate(iso: string): string {
@@ -30,7 +41,7 @@ function fmtDate(iso: string): string {
   return `${months[parseInt(parts[1]) - 1] ?? ''} ${parseInt(parts[2])}`
 }
 
-interface ChartDatum { date: string; nlv: number; prevNlv: number | null }
+interface ChartDatum { date: string; nlv: number; change: number | null; changePct: number | null }
 
 function ChartTooltip({ active, payload, label }: {
   active?: boolean; payload?: Array<{ payload: ChartDatum }>; label?: string
@@ -38,26 +49,26 @@ function ChartTooltip({ active, payload, label }: {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
 
-  // Daily change: Δ% = (V_today - V_yesterday) / |V_yesterday| × 100
-  // Cap at ±100% unless high-leverage anomaly. Return 0% if prev is zero/undefined.
-  let change: number | null = null
-  let changePct: number | null = null
-  if (d.prevNlv != null) {
-    change = d.nlv - d.prevNlv
-    const absPrev = Math.abs(d.prevNlv)
-    changePct = absPrev > 0.01 ? (change / absPrev) * 100 : 0
-    // Sanity cap
-    if (changePct > 100) changePct = 100
-    if (changePct < -100) changePct = -100
-  }
+  const changeColor = d.change != null
+    ? d.change > 0 ? 'text-emerald-600' : d.change < 0 ? 'text-rose-500' : 'text-stone-500'
+    : ''
 
   return (
-    <div className="rounded-v2-md px-3 py-2 text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.94)', border: '1px solid rgba(0,0,0,0.06)' }}>
-      <div className="text-stone-500 mb-0.5">{label}</div>
-      <div className="text-stone-800 font-medium tnum">{fmtNlv(d.nlv)}</div>
-      {change != null && changePct != null && (
-        <div className={`tnum mt-0.5 ${change >= 0 ? 'text-stone-600' : 'text-stone-500'}`}>
-          {change >= 0 ? '+' : ''}{fmtNlv(change)} ({change >= 0 ? '+' : ''}{changePct.toFixed(1)}%)
+    <div className="rounded-v2-md px-3.5 py-2.5 text-xs tnum" style={{ backgroundColor: 'rgba(255,255,255,0.96)', border: '1px solid rgba(0,0,0,0.06)', minWidth: '140px' }}>
+      <div className="text-stone-400 mb-1" style={{ fontSize: '10px' }}>
+        {label}
+      </div>
+      <div className="text-stone-800 font-medium" style={{ fontSize: '14px' }}>
+        {fmtFull(d.nlv)}
+      </div>
+      {d.change != null && d.changePct != null && (
+        <div className="mt-1.5 pt-1.5" style={{ borderTop: '1px solid rgba(0,0,0,0.04)' }}>
+          <div className="text-stone-400 mb-0.5" style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Daily Change
+          </div>
+          <div className={`font-medium ${changeColor}`}>
+            {fmtFullSigned(d.change)} ({d.changePct >= 0 ? '+' : ''}{d.changePct.toFixed(1)}%)
+          </div>
         </div>
       )}
     </div>
@@ -80,12 +91,28 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
       .finally(() => setLoading(false))
   }, [portfolioId])
 
+  // Memoize all computed deltas — only recompute when points change
   const chartData = useMemo<ChartDatum[]>(() =>
-    points.map((p, i) => ({
-      date: fmtDate(p.date),
-      nlv: parseFloat(p.nlv),
-      prevNlv: i > 0 ? parseFloat(points[i - 1].nlv) : null,
-    })),
+    points.map((p, i) => {
+      const nlv = parseFloat(p.nlv)
+      const prevNlv = i > 0 ? parseFloat(points[i - 1].nlv) : null
+
+      let change: number | null = null
+      let changePct: number | null = null
+
+      if (prevNlv != null && Math.abs(prevNlv) > 0.01) {
+        change = nlv - prevNlv
+        changePct = (change / Math.abs(prevNlv)) * 100
+        // Sanity cap
+        if (changePct > 100) changePct = 100
+        if (changePct < -100) changePct = -100
+      } else if (prevNlv != null) {
+        change = 0
+        changePct = 0
+      }
+
+      return { date: fmtDate(p.date), nlv, change, changePct }
+    }),
     [points],
   )
 
