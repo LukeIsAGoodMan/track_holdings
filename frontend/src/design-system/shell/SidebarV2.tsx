@@ -1,20 +1,32 @@
 /**
- * SidebarV2 — Dark metallic command center.
+ * SidebarV2 — Single shell control panel.
  *
- * Typography system:
- *   Section labels: text-xs, uppercase, opacity ~0.5
- *   Nav items: ~14px, font-medium (NOT bold)
- *   Active: color + bg emphasis (NO font weight change)
- *   User: text-sm name, text-xs logout
- *   Icons: 18px (w-[18px] h-[18px])
+ * Structure (top → bottom, spacing-only separation):
+ *   Brand (BibiFin)
+ *   ···
+ *   Primary Actions (New Trade / Portfolio / Alerts)
+ *   ···
+ *   Navigation (Holdings / Risk / Opportunities / Analysis)
+ *   ···
+ *   Portfolio Tree
+ *   ···
+ *   User (avatar + name + logout)
+ *   Status (Live ●)
+ *   Language (EN / 中)
+ *   Collapse toggle
+ *
+ * No divider lines between major zones.
+ * Generous vertical rhythm creates separation.
+ * Text: warm stone engraved into metal.
  */
 import { NavLink, useLocation } from 'react-router-dom'
 import { useLanguage }   from '@/context/LanguageContext'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useSidebar }    from '@/context/SidebarContext'
 import { useAuth }       from '@/context/AuthContext'
+import { useWebSocket }  from '@/context/WebSocketContext'
 
-// ── Icons (18px) ────────────────────────────────────────────────────────────
+// ── Icons ───────────────────────────────────────────────────────────────────
 
 const IC = 'w-[18px] h-[18px]'
 
@@ -82,13 +94,15 @@ const NAV_ITEMS = [
   { key: 'analysis',      to: '/analysis',      icon: icons.analysis,      en: 'Analysis',      zh: '分析' },
 ] as const
 
+/** Engraved text styles */
+const eng = { color: '#44403c', textShadow: '0 0.5px 0 rgba(255,255,255,0.12)' } as const
+
 function Tooltip({ label, show }: { label: string; show: boolean }) {
   if (!show) return null
   return (
     <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2
                      bg-stone-800 text-white text-xs
-                     px-2.5 py-1 rounded-v2-sm whitespace-nowrap
-                     pointer-events-none
+                     px-2.5 py-1 rounded-v2-sm whitespace-nowrap pointer-events-none
                      opacity-0 group-hover:opacity-100 transition-opacity duration-150"
           style={{ zIndex: 40 }}>
       {label}
@@ -96,53 +110,62 @@ function Tooltip({ label, show }: { label: string; show: boolean }) {
   )
 }
 
+// ── Main component ──────────────────────────────────────────────────────────
+
 export default function SidebarV2() {
-  const { lang }     = useLanguage()
+  const { lang, toggle: toggleLang } = useLanguage()
   const location     = useLocation()
   const { user, logout } = useAuth()
+  const { socketState, connected } = useWebSocket()
   const { portfolios, selectedPortfolioId, setSelectedPortfolioId } = usePortfolio()
   const { isExpanded, toggleExpand, openTradeEntry, openPriceAlerts, openPortfolioCreate } = useSidebar()
 
   const isEn = lang === 'en'
+  const isLive = socketState === 'ready'
+  const isReconnecting = socketState === 'reconnecting' || socketState === 'connecting'
+  const statusColor = isLive ? 'bg-v2-positive' : isReconnecting ? 'bg-v2-caution' : 'bg-v2-negative'
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
 
-      {/* ═══ PRIMARY ACTIONS ════════════════════════════════════ */}
-      <div className={`${isExpanded ? 'px-3 pt-4 pb-2' : 'px-2 pt-3 pb-2'} space-y-1`}>
-        <button
-          onClick={() => openTradeEntry()}
-          className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-            text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 transition-colors duration-150 group relative
-            ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
-        >
-          {icons.plus}
-          {isExpanded ? <span>{isEn ? 'New Trade' : '新建交易'}</span> : <Tooltip label={isEn ? 'New Trade' : '新建交易'} show />}
-        </button>
-        <button
-          onClick={() => openPortfolioCreate()}
-          className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-            text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 transition-colors duration-150 group relative
-            ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
-        >
-          {icons.folderPlus}
-          {isExpanded ? <span>{isEn ? 'New Portfolio' : '新建组合'}</span> : <Tooltip label={isEn ? 'New Portfolio' : '新建组合'} show />}
-        </button>
-        <button
-          onClick={() => openPriceAlerts()}
-          className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-            text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 transition-colors duration-150 group relative
-            ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
-        >
-          {icons.bell}
-          {isExpanded ? <span>{isEn ? 'Alerts' : '警报'}</span> : <Tooltip label={isEn ? 'Alerts' : '警报'} show />}
-        </button>
+      {/* ═══ BRAND ════════════════════════════════════════════════ */}
+      <div className={`${isExpanded ? 'px-4 pt-5 pb-6' : 'px-2 pt-4 pb-5'} flex items-center ${isExpanded ? 'gap-2' : 'justify-center'}`}>
+        <div className="flex items-center justify-center shrink-0" style={{ width: '20px', height: '28px', color: 'rgba(68,64,60,0.7)' }}>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.4" />
+            <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.65" />
+            <rect x="13" y="2" width="4" height="16" rx="1" fill="currentColor" />
+          </svg>
+        </div>
+        {isExpanded && (
+          <span className="font-semibold hidden sm:inline" style={{ fontSize: '20px', letterSpacing: '-0.02em', lineHeight: '1', ...eng }}>
+            BibiFin
+          </span>
+        )}
+      </div>
+
+      {/* ═══ PRIMARY ACTIONS ══════════════════════════════════════ */}
+      <div className={`${isExpanded ? 'px-3 pb-2' : 'px-2 pb-2'} space-y-1`}>
+        {[
+          { onClick: () => openTradeEntry(), icon: icons.plus, en: 'New Trade', zh: '新建交易' },
+          { onClick: () => openPortfolioCreate(), icon: icons.folderPlus, en: 'New Portfolio', zh: '新建组合' },
+          { onClick: () => openPriceAlerts(), icon: icons.bell, en: 'Alerts', zh: '警报' },
+        ].map(({ onClick, icon, en, zh }) => (
+          <button
+            key={en}
+            onClick={onClick}
+            className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
+              text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 transition-colors duration-150 group relative
+              ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
+          >
+            {icon}
+            {isExpanded ? <span>{isEn ? en : zh}</span> : <Tooltip label={isEn ? en : zh} show />}
+          </button>
+        ))}
       </div>
 
       {/* ═══ NAVIGATION ══════════════════════════════════════════ */}
-      <nav className="flex-1 px-2 py-1 overflow-y-auto">
-        <div className="border-t border-stone-400/15 mb-4" />
-
+      <nav className="flex-1 px-2 pt-4 overflow-y-auto">
         {isExpanded && (
           <div className="text-xs uppercase text-stone-400 px-3 mb-3 tracking-wider">
             {isEn ? 'Navigate' : '导航'}
@@ -168,7 +191,7 @@ export default function SidebarV2() {
                 `}
               >
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-gray-700 rounded-r-full" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-stone-700 rounded-r-full" />
                 )}
                 <span className="shrink-0">{icon}</span>
                 {isExpanded ? <span className="truncate">{label}</span> : <Tooltip label={label} show />}
@@ -177,9 +200,9 @@ export default function SidebarV2() {
           })}
         </div>
 
-        {/* ═══ PORTFOLIOS ════════════════════════════════════════ */}
+        {/* ═══ PORTFOLIOS ═══════════════════════════════════════ */}
         {isExpanded && (
-          <div className="mt-5 pt-3 border-t border-stone-400/15">
+          <div className="mt-6">
             <div className="text-xs uppercase text-stone-400 px-3 mb-3 tracking-wider">
               {isEn ? 'Portfolios' : '投资组合'}
             </div>
@@ -197,9 +220,11 @@ export default function SidebarV2() {
         )}
       </nav>
 
-      {/* ═══ USER — refined, compact ═════════════════════════════ */}
-      <div className={`border-t border-stone-400/15 ${isExpanded ? 'px-3 py-3' : 'px-2 py-2'}`}>
-        {user ? (
+      {/* ═══ BOTTOM: User + Status + Language + Collapse ═════════ */}
+      <div className={`${isExpanded ? 'px-3 py-4' : 'px-2 py-3'} space-y-3`}>
+
+        {/* User */}
+        {user && (
           <div className={`flex ${isExpanded ? 'items-center gap-3' : 'flex-col items-center gap-2'}`}>
             <div className="w-7 h-7 rounded-full bg-stone-500/10 flex items-center justify-center
                             text-xs text-stone-600 uppercase shrink-0">
@@ -210,7 +235,7 @@ export default function SidebarV2() {
                 <div className="text-sm font-medium text-stone-600 truncate">{user.username}</div>
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-500 transition-colors duration-150 mt-0.5"
+                  className="flex items-center gap-1 text-xs text-stone-400 hover:text-stone-600 transition-colors duration-150 mt-0.5"
                 >
                   {icons.bolt}
                   <span>{isEn ? 'Logout' : '退出'}</span>
@@ -218,14 +243,33 @@ export default function SidebarV2() {
               </div>
             )}
           </div>
-        ) : null}
+        )}
+
+        {/* Status */}
+        <div className={`flex items-center ${isExpanded ? 'gap-1.5 px-1' : 'justify-center'}`} style={{ fontSize: '11px', color: 'rgba(68,64,60,0.40)' }}>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor} ${isReconnecting ? 'animate-pulse' : ''}`} />
+          {isExpanded && <span>{isLive ? 'Live' : isReconnecting ? (isEn ? 'Reconnecting...' : '重连中...') : (isEn ? 'Disconnected' : '已断开')}</span>}
+        </div>
+
+        {/* Language */}
+        {isExpanded && (
+          <button
+            onClick={toggleLang}
+            className="text-stone-400 hover:text-stone-600 transition-colors duration-150 px-1"
+            style={{ fontSize: '11px' }}
+          >
+            <span className={lang === 'en' ? 'text-stone-600' : ''}>EN</span>
+            <span className="text-stone-300 mx-1">/</span>
+            <span className={lang === 'zh' ? 'text-stone-600' : ''}>中</span>
+          </button>
+        )}
 
         {/* Collapse */}
         <button
           onClick={toggleExpand}
-          className={`flex items-center justify-center w-full py-1.5 rounded-v2-sm
-                     text-stone-400 hover:text-stone-500 hover:bg-stone-500/8
-                     transition-colors duration-150 ${user ? 'mt-2' : ''}`}
+          className="flex items-center justify-center w-full py-1.5 rounded-v2-sm
+                     text-stone-400 hover:text-stone-600 hover:bg-stone-500/8
+                     transition-colors duration-150"
           aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
         >
           <svg

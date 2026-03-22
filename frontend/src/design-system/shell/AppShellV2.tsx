@@ -1,25 +1,16 @@
 /**
- * AppShellV2 — Flush sidebar + floating main content.
+ * AppShellV2 — Single shell system.
+ *
+ * No TopNav. Sidebar is the only physical shell.
+ * Main content is a full white canvas with margin-left.
  *
  * Architecture:
- *   TopNavV2 (full-width, sticky top-0)
- *   ├─ SidebarSurface (flush left, flush to TopNav, no gap)
- *   └─ Main wrapper (p-4 gutter, contains floating main surface)
- *
- * Sidebar is physically connected to the left edge and TopNav.
- * Main content floats independently with its own padding.
- * The two are separated by the main wrapper's left padding.
- *
- * Sticky logic:
- *   Sidebar: top = 3.5rem (TopNav height), height = calc(100vh - 3.5rem)
- *   No gutter offset — sidebar starts exactly under TopNav.
- *
- * Metallic joint:
- *   Sidebar has borderTop: 1px solid rgba(255,255,255,0.04)
- *   This creates a subtle seam where sidebar meets TopNav bottom edge.
+ *   <div class="flex min-h-screen">
+ *     <SidebarSurface />  ← fixed, full height, metal shell
+ *     <main />            ← flex-1, white canvas, independent
+ *   </div>
  */
 import { Outlet } from 'react-router-dom'
-import TopNavV2      from './TopNavV2'
 import SidebarV2     from './SidebarV2'
 import PageContainer from './PageContainer'
 
@@ -27,35 +18,26 @@ import { useSidebar } from '@/context/SidebarContext'
 import TradeEntryForm    from '@/components/TradeEntryForm'
 import PriceAlertsSidebar from '@/components/PriceAlertsSidebar'
 
-const SIDEBAR_TOP = '3.5rem'
-const SIDEBAR_HEIGHT = 'calc(100vh - 3.5rem)'
-
 export default function AppShellV2() {
   const { mode, isExpanded } = useSidebar()
   const showPanel = mode !== 'nav'
 
   return (
-    <div className="flex flex-col min-h-screen bg-v2-bg">
-      <TopNavV2 />
+    <div className="flex min-h-screen bg-v2-bg">
+      {/* ═══ Left: Sidebar shell (fixed, full height) ═══════════ */}
+      {showPanel ? (
+        <ActionPanelSurface />
+      ) : (
+        <SidebarSurface isExpanded={isExpanded} />
+      )}
 
-      {/* ═══ Shell body — sidebar flush + main floating ═══════════ */}
-      <div className="flex flex-1">
-
-        {/* ── Left: Sidebar (flush to left edge + TopNav) ──────── */}
-        {showPanel ? (
-          <ActionPanelSurface />
-        ) : (
-          <SidebarSurface isExpanded={isExpanded} />
-        )}
-
-        {/* ── Right: Main content wrapper (owns the gutter) ────── */}
-        <div className="flex-1 min-w-0 p-4">
-          <div className="bg-v2-surface border border-v2-border rounded-v2-lg flex flex-col h-full">
-            <div className="flex-1 overflow-y-auto rounded-v2-lg">
-              <PageContainer>
-                <Outlet />
-              </PageContainer>
-            </div>
+      {/* ═══ Right: Main content canvas ═════════════════════════ */}
+      <div className="flex-1 min-w-0 p-4">
+        <div className="bg-v2-surface border border-v2-border rounded-v2-lg flex flex-col h-full">
+          <div className="flex-1 overflow-y-auto rounded-v2-lg">
+            <PageContainer>
+              <Outlet />
+            </PageContainer>
           </div>
         </div>
       </div>
@@ -63,7 +45,7 @@ export default function AppShellV2() {
   )
 }
 
-// ── Sidebar Surface (flush, no rounding on left) ────────────────────────────
+// ── Sidebar Surface — the only physical shell ───────────────────────────────
 
 function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
   return (
@@ -75,17 +57,18 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
         ${isExpanded ? 'w-v2-sidebar' : 'w-v2-sidebar-sm'}
       `}
       style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        height: '100vh',
         zIndex: 20,
-        position: 'sticky',
-        top: SIDEBAR_TOP,
-        height: SIDEBAR_HEIGHT,
         backgroundImage: [
           'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.00) 60%)',
           'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
         ].join(', '),
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
-        boxShadow: '1px 0 0 rgba(0,0,0,0.035), 6px 0 18px -12px rgba(0,0,0,0.07), inset -1px 0 0 rgba(255,255,255,0.05)',
+        boxShadow: '1px 0 0 rgba(0,0,0,0.02), 4px 0 16px -10px rgba(0,0,0,0.06), inset -1px 0 0 rgba(255,255,255,0.05)',
       }}
     >
       <SidebarV2 />
@@ -93,7 +76,7 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
   )
 }
 
-// ── Action Panel Surface (same flush treatment) ─────────────────────────────
+// ── Action Panel Surface ────────────────────────────────────────────────────
 
 function ActionPanelSurface() {
   const {
@@ -113,17 +96,18 @@ function ActionPanelSurface() {
     <div
       className="w-v2-panel shrink-0 flex flex-col overflow-hidden"
       style={{
+        position: 'fixed',
+        left: 0,
+        top: 0,
+        height: '100vh',
         zIndex: 20,
-        position: 'sticky',
-        top: SIDEBAR_TOP,
-        height: SIDEBAR_HEIGHT,
         backgroundImage: [
           'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.00) 60%)',
           'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
         ].join(', '),
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
-        boxShadow: '1px 0 0 rgba(0,0,0,0.035), 6px 0 18px -12px rgba(0,0,0,0.07), inset -1px 0 0 rgba(255,255,255,0.05)',
+        boxShadow: '1px 0 0 rgba(0,0,0,0.02), 4px 0 16px -10px rgba(0,0,0,0.06), inset -1px 0 0 rgba(255,255,255,0.05)',
       }}
     >
       <div className="flex-1 overflow-y-auto p-4">
@@ -139,10 +123,7 @@ function ActionPanelSurface() {
         </button>
 
         {mode === 'trade_entry' && (
-          <TradeEntryForm
-            closeState={pendingClose}
-            onSuccess={exitTradeEntry}
-          />
+          <TradeEntryForm closeState={pendingClose} onSuccess={exitTradeEntry} />
         )}
         {mode === 'price_alerts' && (
           <PriceAlertsSidebar prefill={alertPrefill} />
