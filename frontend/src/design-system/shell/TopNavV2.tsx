@@ -82,8 +82,8 @@ export default function TopNavV2() {
       style={{
         zIndex: 30,
         backgroundImage: [
-          'radial-gradient(120% 65% at 50% -35%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.10) 28%, rgba(255,255,255,0.00) 62%)',
-          'linear-gradient(180deg, #e7e5e4 0%, #ddd9d6 38%, #d1ccc8 72%, #c7c2bd 100%)',
+          'radial-gradient(120% 65% at 50% -35%, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.08) 28%, rgba(255,255,255,0.00) 62%)',
+          'linear-gradient(180deg, #ddd9d6 0%, #d2cdc9 38%, #c5c0bb 72%, #bbb6b1 100%)',
         ].join(', '),
       }}
     >
@@ -94,7 +94,7 @@ export default function TopNavV2() {
           height: '1px',
           transform: 'scaleY(0.5)',
           transformOrigin: 'top',
-          background: 'linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.05) 18%, rgba(255,255,255,0.14) 50%, rgba(255,255,255,0.05) 82%, rgba(255,255,255,0.00) 100%)',
+          background: 'linear-gradient(90deg, rgba(255,255,255,0.00) 0%, rgba(255,255,255,0.04) 18%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0.04) 82%, rgba(255,255,255,0.00) 100%)',
         }}
       />
 

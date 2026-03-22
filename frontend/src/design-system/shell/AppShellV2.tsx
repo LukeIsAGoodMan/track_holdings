@@ -80,8 +80,8 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
         top: SIDEBAR_TOP,
         height: SIDEBAR_HEIGHT,
         backgroundImage: [
-          'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.00) 60%)',
-          'linear-gradient(180deg, #d9d6d3 0%, #cfcbc7 42%, #c6c1bc 100%)',
+          'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.00) 60%)',
+          'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
         ].join(', '),
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
@@ -118,8 +118,8 @@ function ActionPanelSurface() {
         top: SIDEBAR_TOP,
         height: SIDEBAR_HEIGHT,
         backgroundImage: [
-          'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.00) 60%)',
-          'linear-gradient(180deg, #d9d6d3 0%, #cfcbc7 42%, #c6c1bc 100%)',
+          'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.00) 60%)',
+          'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
         ].join(', '),
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
