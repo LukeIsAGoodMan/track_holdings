@@ -1,49 +1,31 @@
 /**
- * AppShellV2 — Push-layout shell system.
+ * AppShellV2 — Transformer Sidebar (Monolith Shell).
  *
- * Architecture:
- *   Sidebar (fixed left) — always visible
- *   Action Panel (fixed, left of main) — pushes main content right when open
- *   Main Content — margin-left adapts dynamically
+ * ONE sidebar surface that morphs between two states:
+ *   Nav mode:    240px (or 64px collapsed) — portfolio tree + actions
+ *   Action mode: 520px — trade entry / alerts / portfolio management
  *
- * When action panel opens, main canvas slides right so the portfolio view
- * remains visible alongside the entry form.
+ * The sidebar IS the shell. No separate ActionPanel.
+ * Main content margin-left adapts dynamically with ds-motion (220ms).
+ * The warm silver gradient flows across the entire surface as one piece.
  */
 import { Outlet } from 'react-router-dom'
 import SidebarV2     from './SidebarV2'
 import PageContainer from './PageContainer'
 
-import { useSidebar } from '@/context/SidebarContext'
+import { useSidebar }    from '@/context/SidebarContext'
+import { useLanguage }   from '@/context/LanguageContext'
 import TradeEntryForm    from '@/components/TradeEntryForm'
 import PriceAlertsSidebar from '@/components/PriceAlertsSidebar'
 import { PortfolioCreatePanel, PortfolioEditPanel } from './PortfolioPanels'
 
-/** Shell surface — shared warm silver aluminum */
+/** Shell surface — warm silver aluminum, single gradient */
 const SHELL_BG = [
   'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.00) 60%)',
   'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
 ].join(', ')
 
-/** Sidebar surface — flush right edge, zero radius/shadow/border on right */
-const SIDEBAR_STYLE = {
-  backgroundImage: SHELL_BG,
-  borderRadius: 0,
-  boxShadow: 'none',
-  borderRight: 'none',
-} as const
-
-/** Action panel surface — flush left edge, radius + occlusion on right only */
-const PANEL_STYLE = {
-  backgroundImage: SHELL_BG,
-  borderRadius: 0,
-  borderTopRightRadius: '14px',
-  borderBottomRightRadius: '14px',
-  borderLeft: 'none',
-  boxShadow: '2px 0 12px -8px rgba(0,0,0,0.06)',
-} as const
-
-/** Sidebar-only surface — when panel is closed, sidebar gets right radius */
-const SIDEBAR_SOLO_STYLE = {
+const SHELL_STYLE = {
   backgroundImage: SHELL_BG,
   borderTopRightRadius: '14px',
   borderBottomRightRadius: '14px',
@@ -52,28 +34,35 @@ const SIDEBAR_SOLO_STYLE = {
 
 export default function AppShellV2() {
   const { mode, isExpanded } = useSidebar()
-  const showPanel = mode !== 'nav'
+  const isActionOpen = mode !== 'nav'
 
-  // Dynamic sidebar width for margin calculation
-  const sidebarWidth = isExpanded ? 240 : 64   // w-v2-sidebar / w-v2-sidebar-sm
-  const panelWidth = 520                        // w-v2-panel
-  const mainMargin = showPanel ? sidebarWidth + panelWidth : sidebarWidth
+  // Transformer width: nav mode vs action mode
+  const sidebarWidth = isActionOpen ? 520 : (isExpanded ? 240 : 64)
 
   return (
     <div className="min-h-screen bg-v2-bg">
-      {/* ═══ Fixed sidebar (always visible) ═══════════════════════ */}
-      <SidebarSurface isExpanded={isExpanded} panelOpen={showPanel} />
-
-      {/* ═══ Fixed action panel (when open, beside sidebar) ══════ */}
-      {showPanel && (
-        <ActionPanelSurface sidebarWidth={sidebarWidth} />
-      )}
-
-      {/* ═══ Main content — pushes right when panel opens ════════ */}
+      {/* ═══ THE SIDEBAR — one monolith shell ═══════════════════ */}
       <div
-        className="min-h-screen p-4 ds-bg"
+        className="flex flex-col overflow-hidden"
         style={{
-          marginLeft: `${mainMargin}px`,
+          position: 'fixed', left: 0, top: 0, height: '100vh', zIndex: 20,
+          width: `${sidebarWidth}px`,
+          transition: 'width 220ms ease-out',
+          ...SHELL_STYLE,
+        }}
+      >
+        {isActionOpen ? (
+          <ActionContent />
+        ) : (
+          <SidebarV2 />
+        )}
+      </div>
+
+      {/* ═══ Main content — margin tracks sidebar width ════════ */}
+      <div
+        className="min-h-screen p-4"
+        style={{
+          marginLeft: `${sidebarWidth}px`,
           transition: 'margin-left 220ms ease-out',
         }}
       >
@@ -89,35 +78,17 @@ export default function AppShellV2() {
   )
 }
 
-// ── Sidebar Surface ─────────────────────────────────────────────────────────
+// ── Action Content (rendered inside the expanded sidebar) ────────────────────
 
-function SidebarSurface({ isExpanded, panelOpen }: { isExpanded: boolean; panelOpen: boolean }) {
-  return (
-    <div
-      className={`
-        shrink-0 flex flex-col overflow-hidden
-        ${isExpanded ? 'w-v2-sidebar' : 'w-v2-sidebar-sm'}
-      `}
-      style={{
-        position: 'fixed', left: 0, top: 0, height: '100vh', zIndex: 20,
-        transition: 'width 220ms ease-out',
-        ...(panelOpen ? SIDEBAR_STYLE : SIDEBAR_SOLO_STYLE),
-      }}
-    >
-      <SidebarV2 />
-    </div>
-  )
-}
-
-// ── Action Panel Surface (fixed, positioned after sidebar) ──────────────────
-
-function ActionPanelSurface({ sidebarWidth }: { sidebarWidth: number }) {
+function ActionContent() {
   const {
     mode, pendingClose, alertPrefill, editTarget,
     exitTradeEntry, exitPriceAlerts,
     exitPortfolioCreate, exitPortfolioEdit,
     openPortfolioCreate,
   } = useSidebar()
+  const { lang } = useLanguage()
+  const isEn = lang !== 'zh'
 
   const handleBack = () => {
     if (mode === 'trade_entry') exitTradeEntry()
@@ -127,32 +98,32 @@ function ActionPanelSurface({ sidebarWidth }: { sidebarWidth: number }) {
   }
 
   return (
-    <div
-      className="w-v2-panel flex flex-col overflow-hidden"
-      style={{
-        position: 'fixed',
-        left: `${sidebarWidth}px`,
-        top: 0,
-        height: '100vh',
-        zIndex: 19,
-        transition: 'left 220ms ease-out',
-        ...PANEL_STYLE,
-      }}
-    >
-      <div className="flex-1 overflow-y-auto flex flex-col">
-        {(mode === 'trade_entry' || mode === 'price_alerts') && (
-          <div className="p-4">
-            <button onClick={handleBack} className="flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-700 mb-4 ds-color">
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-                <path d="M15 18l-6-6 6-6" />
-              </svg>
-              Back
-            </button>
-            {mode === 'trade_entry' && <TradeEntryForm closeState={pendingClose} onSuccess={exitTradeEntry} />}
-            {mode === 'price_alerts' && <PriceAlertsSidebar prefill={alertPrefill} />}
+    <div className="flex flex-col flex-1 min-h-0">
+      {/* Back button — always visible at top */}
+      <div className="px-4 pt-4 pb-2">
+        <button onClick={handleBack} className="flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-700 ds-color">
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          {isEn ? 'Back to Portfolio' : '返回组合'}
+        </button>
+      </div>
+
+      {/* Panel content */}
+      <div className="flex-1 overflow-y-auto">
+        {mode === 'trade_entry' && (
+          <div className="px-4 pb-4">
+            <TradeEntryForm closeState={pendingClose} onSuccess={exitTradeEntry} />
           </div>
         )}
-        {mode === 'portfolio_create' && <PortfolioCreatePanel onBack={exitPortfolioCreate} />}
+        {mode === 'price_alerts' && (
+          <div className="px-4 pb-4">
+            <PriceAlertsSidebar prefill={alertPrefill} />
+          </div>
+        )}
+        {mode === 'portfolio_create' && (
+          <PortfolioCreatePanel onBack={exitPortfolioCreate} />
+        )}
         {mode === 'portfolio_edit' && editTarget && (
           <PortfolioEditPanel
             target={editTarget}

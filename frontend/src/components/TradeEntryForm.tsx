@@ -137,13 +137,13 @@ function CToggle<T extends string>({
 }
 
 // ── Star Rating (replaces numeric conviction buttons) ─────────────────────────
-function StarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function StarRating({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
   const [hovered, setHovered] = useState<number | null>(null)
   const display = hovered ?? value
 
   return (
     <div>
-      <label className={LBL} style={LBL_COLOR}>{t('conviction')}</label>
+      <label className={LBL} style={LBL_COLOR}>{label}</label>
       {/* Single row — whitespace-nowrap on label prevents wrap at any sidebar width */}
       <div className="flex items-center gap-3 min-w-0">
         <div
@@ -618,13 +618,14 @@ export default function TradeEntryForm({
           <StarRating
             value={form.confidenceScore}
             onChange={v => set('confidenceScore', v)}
+            label={t('conviction')}
           />
 
           {/* {t('tech_levels')} */}
           <div>
             <label className={LBL}>
               {t('tech_levels')}
-              <span className="ml-1 normal-case font-normal text-xs text-stone-500">{t('tech_optional')}</span>
+              <span className="ml-1 normal-case font-normal text-xs text-stone-600">{t('tech_optional')}</span>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div className="relative">
@@ -650,7 +651,7 @@ export default function TradeEntryForm({
           <div>
             <label className={LBL}>
               Trade Reason
-              <span className="ml-1 normal-case font-normal text-xs text-stone-500">{t('tech_optional')}</span>
+              <span className="ml-1 normal-case font-normal text-xs text-stone-600">{t('tech_optional')}</span>
             </label>
             <textarea
               rows={3}
