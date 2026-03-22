@@ -155,7 +155,7 @@ export default function SidebarV2() {
             key={en}
             onClick={onClick}
             className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-              text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 transition-colors group relative
+              text-stone-500 hover:text-stone-700 hover:bg-stone-500/8 ds-interact group relative
               ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
           >
             {icon}
@@ -182,7 +182,7 @@ export default function SidebarV2() {
                 to={to}
                 className={`
                   flex items-center gap-3 rounded-v2-md group relative
-                  text-sm font-medium transition-colors
+                  text-sm font-medium ds-interact
                   ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
                   ${isActive
                     ? 'bg-stone-500/12 text-stone-800'
@@ -220,70 +220,102 @@ export default function SidebarV2() {
         )}
       </nav>
 
-      {/* ═══ BOTTOM: User + Status + Language + Collapse ═════════ */}
-      <div className={`${isExpanded ? 'px-3 py-4' : 'px-2 py-3'} space-y-3`}>
+      {/* ═══ BOTTOM — anchored, anti-aliased, two-layer ══════════ */}
+      <div
+        className={`mt-auto ${isExpanded ? 'px-3 pb-3 pt-4' : 'px-2 pb-2 pt-3'} space-y-3`}
+        style={{
+          WebkitFontSmoothing: 'antialiased',
+          MozOsxFontSmoothing: 'grayscale',
+          background: 'inherit',
+          position: 'relative',
+          zIndex: 2,
+        } as React.CSSProperties}
+      >
+        {/* Occlusion fade — subtle top edge so scrolling nav doesn't bleed */}
+        <div
+          className="absolute top-0 left-0 right-0 pointer-events-none"
+          style={{
+            height: '16px',
+            marginTop: '-16px',
+            background: 'linear-gradient(to top, inherit, transparent)',
+          }}
+        />
 
-        {/* User */}
-        {user && (
-          <div className={`flex ${isExpanded ? 'items-center gap-3' : 'flex-col items-center gap-2'}`}>
-            <div className="w-7 h-7 rounded-full bg-stone-500/10 flex items-center justify-center
-                            text-xs text-stone-600 uppercase shrink-0">
-              {user.username.charAt(0)}
+        {/* ── Identity layer: user + live ─────────────────────── */}
+        {isExpanded ? (
+          <div className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              {user && <span className="text-stone-600 font-medium truncate max-w-[120px]">{user.username}</span>}
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor}`} style={{ opacity: 0.8 }} />
             </div>
-            {isExpanded && (
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-stone-600 truncate">{user.username}</div>
-                <button
-                  onClick={logout}
-                  className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 mt-0.5"
-                  style={{ transition: 'color 180ms ease-out' }}
-                >
-                  {icons.bolt}
-                  <span>{isEn ? 'Logout' : '退出'}</span>
-                </button>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center gap-2">
+            {user && (
+              <div className="w-7 h-7 rounded-full bg-stone-500/10 flex items-center justify-center
+                              text-xs text-stone-600 uppercase shrink-0">
+                {user.username.charAt(0)}
               </div>
             )}
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor}`} style={{ opacity: 0.8 }} />
           </div>
         )}
 
-        {/* Status — always readable */}
-        <div
-          className={`flex items-center ${isExpanded ? 'gap-1.5 px-1' : 'justify-center'}`}
-          style={{ fontSize: '11px', color: 'rgba(68, 64, 60, 0.58)' }}
-        >
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor} ${isReconnecting ? 'animate-pulse' : ''}`} />
-          {isExpanded && <span>{isLive ? 'Live' : isReconnecting ? (isEn ? 'Reconnecting...' : '重连中...') : (isEn ? 'Disconnected' : '已断开')}</span>}
-        </div>
+        {/* ── Control layer: language + logout + collapse ─────── */}
+        {isExpanded ? (
+          <div className="flex items-center justify-between text-sm text-stone-500">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={toggleLang}
+                className="ds-color hover:text-stone-700 cursor-pointer"
+                style={{ fontSize: '12px' }}
+              >
+                <span className={lang === 'en' ? 'text-stone-600' : ''}>EN</span>
+                <span className="text-stone-300 mx-0.5">/</span>
+                <span className={lang === 'zh' ? 'text-stone-600' : ''}>中</span>
+              </button>
+              {user && (
+                <button
+                  onClick={logout}
+                  className="ds-color hover:text-stone-700 cursor-pointer"
+                  style={{ fontSize: '12px' }}
+                >
+                  {isEn ? 'Logout' : '退出'}
+                </button>
+              )}
+            </div>
 
-        {/* Language */}
-        {isExpanded && (
+            {/* Collapse — 32px hit area, mechanical */}
+            <button
+              onClick={toggleExpand}
+              className="w-8 h-8 flex items-center justify-center rounded-md
+                         ds-bg hover:bg-black/5"
+              aria-label="Collapse sidebar"
+            >
+              <svg
+                className={`w-[18px] h-[18px] text-stone-500 ds-rotate ${isExpanded ? '' : 'rotate-180'}`}
+                viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"
+              >
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          /* Collapsed: just the arrow */
           <button
-            onClick={toggleLang}
-            className="text-stone-500 hover:text-stone-700 px-1"
-            style={{ fontSize: '11px', transition: 'color 180ms ease-out' }}
+            onClick={toggleExpand}
+            className="w-8 h-8 mx-auto flex items-center justify-center rounded-md
+                       ds-bg hover:bg-black/5"
+            aria-label="Expand sidebar"
           >
-            <span className={lang === 'en' ? 'text-stone-600' : ''}>EN</span>
-            <span className="text-stone-300 mx-1">/</span>
-            <span className={lang === 'zh' ? 'text-stone-600' : ''}>中</span>
+            <svg
+              className={`w-[18px] h-[18px] text-stone-500 ds-rotate rotate-180`}
+              viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"
+            >
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
           </button>
         )}
-
-        {/* Collapse — always present, mechanical feel */}
-        <button
-          onClick={toggleExpand}
-          className="flex items-center justify-center w-full py-1.5 rounded-v2-sm
-                     text-stone-500 hover:text-stone-700 hover:bg-stone-500/6"
-          style={{ transition: 'color 180ms ease-out, background-color 220ms ease-out 40ms' }}
-          aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
-        >
-          <svg
-            className={`w-3.5 h-3.5 ${isExpanded ? '' : 'rotate-180'}`}
-            style={{ transition: 'transform 160ms ease-out' }}
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"
-          >
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-        </button>
       </div>
     </div>
   )
@@ -308,7 +340,7 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
         onClick={() => onSelect(portfolio.id)}
         className={`
           flex items-center gap-2 w-full rounded-v2-sm text-left text-xs font-medium
-          py-1.5 transition-colors
+          py-1.5 ds-interact
           ${isSelected
             ? 'bg-stone-500/12 text-stone-800'
             : 'text-stone-400 hover:text-stone-600 hover:bg-stone-500/8'
