@@ -83,8 +83,8 @@ export default memo(function MetricBlock({
       <div className="text-ds-caption uppercase text-v2-text-2">
         {label}
       </div>
-      {/* Value — primary emphasis, tnum for stability */}
-      <div className={`${cfg.classes} ${sentimentClasses[sentiment]} leading-none mt-1`}>
+      {/* Value — primary emphasis, tnum for stability, electronic-ink transition */}
+      <div className={`${cfg.classes} ${sentimentClasses[sentiment]} leading-none mt-1 ds-ink`}>
         {value}
       </div>
       {/* Delta — secondary, reduced opacity */}

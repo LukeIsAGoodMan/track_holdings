@@ -1,27 +1,21 @@
 /**
- * SectionCard (V3) — surface subdivision, not a boxed widget.
+ * SectionCard (V3.5) — structure without boxes.
  *
- * Cards are subdivisions of an existing surface, not components
- * sitting on top of the UI. They define structure through spacing
- * and subtle borders, not shadows or elevation.
+ * Cards define grouping via spacing and rhythm, not borders.
+ * Borders are removed. Spacing creates hierarchy.
+ * Interactive cards reveal themselves through ultra-subtle hover surfaces.
  *
- * Surface rules:
- *   bg-v2-surface (same as parent — blends, doesn't float)
- *   border border-v2-border (very subtle, defines edges)
- *   rounded-v2-lg (consistent radius)
- *   p-5 default (breathable internal padding)
- *   NO shadow (cards are surface divisions, not elevated panels)
+ * Surface:
+ *   NO border (structure via spacing)
+ *   NO shadow
+ *   bg-transparent (blends into parent)
+ *   p-5 default padding (internal breathing room)
  *
- * Compound API:
- *   <SectionCard>
- *     <SectionCard.Header title="Holdings" action={<button>...</button>} />
- *     <SectionCard.Content>{children}</SectionCard.Content>
- *     <SectionCard.Footer>{footer}</SectionCard.Footer>
- *   </SectionCard>
+ * Interactive mode:
+ *   hover: rgba(0,0,0,0.02) — barely perceptible surface reveal
+ *   NO glow, NO shadow, NO visible effect
  *
- * Spacing > borders: sections separated by spacing (gap/mt), not dividers.
- * Header → Content spacing: mb-4
- * Content → Footer spacing: mt-4
+ * noPadding: for tables/charts that need edge-to-edge content
  */
 import type { ReactNode, CSSProperties } from 'react'
 import SkeletonLoader from './SkeletonLoader'
@@ -32,13 +26,9 @@ interface CardProps {
   children: ReactNode
   className?: string
   style?: CSSProperties
-  /** Show skeleton loading state */
   isLoading?: boolean
-  /** Minimum height to prevent layout shift during async hydration */
   minHeight?: string
-  /** Remove default padding (for tables/charts that need edge-to-edge) */
   noPadding?: boolean
-  /** Interactive card — subtle hover response */
   interactive?: boolean
 }
 
@@ -54,9 +44,9 @@ function SectionCardRoot({
   return (
     <div
       className={`
-        bg-v2-surface border border-v2-border rounded-v2-lg
+        rounded-v2-lg
         ${noPadding ? '' : 'p-5'}
-        ${interactive ? 'transition-colors duration-150 hover:bg-v2-surface-hover cursor-pointer' : ''}
+        ${interactive ? 'transition-colors duration-150 hover:bg-black/[0.02] cursor-pointer' : ''}
         ${className}
       `}
       style={{ minHeight, ...style }}
@@ -71,7 +61,6 @@ function SectionCardRoot({
 interface HeaderProps {
   title: string
   subtitle?: string
-  /** Right-aligned action slot (button, toggle, etc.) */
   action?: ReactNode
   className?: string
 }
@@ -80,12 +69,8 @@ function CardHeader({ title, subtitle, action, className = '' }: HeaderProps) {
   return (
     <div className={`flex items-center justify-between mb-4 ${className}`}>
       <div>
-        <h3 className="text-ds-h3 text-v2-text-1">
-          {title}
-        </h3>
-        {subtitle && (
-          <p className="text-ds-sm text-v2-text-3 mt-0.5">{subtitle}</p>
-        )}
+        <h3 className="text-ds-h3 text-v2-text-1">{title}</h3>
+        {subtitle && <p className="text-ds-sm text-v2-text-3 mt-0.5">{subtitle}</p>}
       </div>
       {action && <div className="flex items-center gap-2">{action}</div>}
     </div>
@@ -94,24 +79,14 @@ function CardHeader({ title, subtitle, action, className = '' }: HeaderProps) {
 
 // ── Content ───────────────────────────────────────────────────────────────────
 
-interface ContentProps {
-  children: ReactNode
-  className?: string
-}
-
-function CardContent({ children, className = '' }: ContentProps) {
+function CardContent({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <div className={className}>{children}</div>
 }
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 
-interface FooterProps {
-  children: ReactNode
-  className?: string
-}
-
-function CardFooter({ children, className = '' }: FooterProps) {
-  return <div className={`mt-4 pt-4 border-t border-v2-border ${className}`}>{children}</div>
+function CardFooter({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`mt-4 pt-4 ${className}`}>{children}</div>
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -131,7 +106,7 @@ function CardSkeleton() {
 
 const SectionCard = Object.assign(SectionCardRoot, {
   Header:  CardHeader,
-  Body:    CardContent,   // backward compat alias
+  Body:    CardContent,
   Content: CardContent,
   Footer:  CardFooter,
 })

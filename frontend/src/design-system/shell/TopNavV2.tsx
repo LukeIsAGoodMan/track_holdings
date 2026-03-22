@@ -68,45 +68,48 @@ export default function TopNavV2() {
         borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
       }}
     >
-      {/* ── Left: Brand + Context ──────────────────────────────── */}
-      <div className="flex items-center gap-5">
-        <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-v2-sm bg-white/8 flex items-center justify-center text-white shrink-0">
-            <svg className="w-[18px] h-[18px]" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.5" />
-              <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.75" />
+      {/* ═══ LEFT: Brand unit + Breadcrumb ═══════════════════════ */}
+      <div className="flex items-center">
+        {/* Brand unit — icon + name as one cohesive identity mark */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center justify-center text-white/85 shrink-0" style={{ width: '20px', height: '28px' }}>
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.4" />
+              <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.65" />
               <rect x="13" y="2" width="4" height="16" rx="1" fill="currentColor" />
             </svg>
           </div>
-          <span className="text-white hidden sm:inline font-semibold" style={{ fontSize: '20px', letterSpacing: '-0.02em' }}>
+          <span className="text-white hidden sm:inline font-semibold" style={{ fontSize: '20px', letterSpacing: '-0.02em', lineHeight: '1' }}>
             Track Holdings
           </span>
         </div>
 
+        {/* Breadcrumb — faint context, distant from brand */}
         {pageTitle && (
-          <>
-            <span className="text-white/15 hidden sm:inline">/</span>
-            <span className="text-sm font-medium text-white/60">
+          <div className="flex items-center ml-8 gap-2">
+            <span className="text-white/10 hidden sm:inline" style={{ fontSize: '11px' }}>/</span>
+            <span className="font-medium text-white/45" style={{ fontSize: '14px' }}>
               {pageTitle}
             </span>
             {selectedName && (
               <>
-                <span className="text-white/15 text-xs">/</span>
-                <span className="text-xs text-white/40 max-w-[120px] truncate">
+                <span className="text-white/10" style={{ fontSize: '11px' }}>/</span>
+                <span className="text-white/28 max-w-[120px] truncate" style={{ fontSize: '12px' }}>
                   {selectedName}
                 </span>
               </>
             )}
-          </>
+          </div>
         )}
       </div>
 
-      {/* ── Right: Status + Language ───────────────────────────── */}
+      {/* ═══ RIGHT: Status + Language (recessive) ════════════════ */}
       <div className="flex items-center gap-4">
         <div
-          className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-v2-sm transition-colors duration-200
-            ${isOffline ? 'bg-v2-negative/20 text-v2-negative' : 'text-white/40'}
+          className={`flex items-center gap-1.5 px-2 py-1 rounded-v2-sm transition-colors duration-200
+            ${isOffline ? 'bg-v2-negative/20 text-v2-negative' : 'text-white/30'}
           `}
+          style={{ fontSize: '11px' }}
           title={`WebSocket: ${socketState}`}
         >
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusColor} ${isReconnecting ? 'animate-pulse' : ''}`} />
@@ -115,12 +118,13 @@ export default function TopNavV2() {
 
         <button
           onClick={toggle}
-          className="text-xs text-white/40 hover:text-white/80
-                     px-2 py-1 rounded-v2-sm hover:bg-white/5 transition-colors duration-150"
+          className="text-white/30 hover:text-white/60
+                     px-2 py-1 rounded-v2-sm hover:bg-white/[0.04] transition-colors duration-150"
+          style={{ fontSize: '11px' }}
         >
-          <span className={lang === 'en' ? 'text-white/80' : ''}>EN</span>
-          <span className="text-white/15 mx-0.5">/</span>
-          <span className={lang === 'zh' ? 'text-white/80' : ''}>中</span>
+          <span className={lang === 'en' ? 'text-white/60' : ''}>EN</span>
+          <span className="text-white/10 mx-0.5">/</span>
+          <span className={lang === 'zh' ? 'text-white/60' : ''}>中</span>
         </button>
       </div>
     </header>

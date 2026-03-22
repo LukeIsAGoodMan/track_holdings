@@ -125,9 +125,26 @@ button { cursor: pointer; transition: background-color 150ms, color 150ms; }
   animation: ds-shimmer 1.2s ease-in-out infinite;
 }
 
+/* ── Electronic ink — data update transition ─────────────────────── */
+/* Opacity-only: 0→1 in ~100ms. No number animation, no scale.       */
+.ds-ink {
+  transition: opacity 100ms ease-out;
+}
+
+/* ── Table hover row — zebra on hover only ───────────────────────── */
+/* No persistent stripes, no vertical lines, no grid.                 */
+.ds-table-row {
+  transition: background-color 100ms ease-out;
+}
+.ds-table-row:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
 /* ── Reduced motion ────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .ds-shimmer { animation: none; opacity: 0.6; }
+  .ds-ink { transition: none; }
+  .ds-table-row { transition: none; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
