@@ -621,11 +621,11 @@ export default function TradeEntryForm({
           <div>
             <label className={LBL}>
               Technical Levels
-              <span className="ml-1 normal-case font-normal text-stone-500">(optional)</span>
+              <span className="ml-1 normal-case font-normal text-xs text-stone-500">(optional)</span>
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-emerald-600" style={{ textShadow: "none" }}>S</span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-emerald-600 ds-sharp-label" style={{ textShadow: "none" }}>S</span>
                 <input
                   type="number" step="0.01" min="0" placeholder="Support"
                   value={form.support} onChange={e => set('support', e.target.value)}
@@ -633,7 +633,7 @@ export default function TradeEntryForm({
                 />
               </div>
               <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-rose-600" style={{ textShadow: "none" }}>R</span>
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-rose-600 ds-sharp-label" style={{ textShadow: "none" }}>R</span>
                 <input
                   type="number" step="0.01" min="0" placeholder="Resistance"
                   value={form.resistance} onChange={e => set('resistance', e.target.value)}
@@ -647,7 +647,7 @@ export default function TradeEntryForm({
           <div>
             <label className={LBL}>
               Trade Reason
-              <span className="ml-1 normal-case font-normal text-stone-500">(optional)</span>
+              <span className="ml-1 normal-case font-normal text-xs text-stone-500">(optional)</span>
             </label>
             <textarea
               rows={3}

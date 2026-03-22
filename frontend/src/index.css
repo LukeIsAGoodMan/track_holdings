@@ -151,6 +151,15 @@ button { cursor: pointer; transition: background-color 150ms, color 150ms; }
               background-color 220ms ease-out 40ms;
 }
 
+/* ── Artifact purge — zero ghosting on colored inline labels ─────── */
+.ds-sharp-label {
+  -webkit-text-stroke: 0px transparent !important;
+  paint-order: normal !important;
+  text-shadow: none !important;
+  filter: none !important;
+  -webkit-font-smoothing: antialiased;
+}
+
 /* ── Electronic ink — data update transition ─────────────────────── */
 /* Opacity-only: 0→1 in ~100ms. No number animation, no scale.       */
 .ds-ink {

@@ -24,16 +24,21 @@ const SHELL_BG = [
   'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
 ].join(', ')
 
-/** Sidebar surface — no right radius (panel extends from it) */
+/** Sidebar surface — flush right edge, zero radius/shadow/border on right */
 const SIDEBAR_STYLE = {
   backgroundImage: SHELL_BG,
+  borderRadius: 0,
+  boxShadow: 'none',
+  borderRight: 'none',
 } as const
 
-/** Action panel surface — no left radius (flush with sidebar), right edge has radius + occlusion */
+/** Action panel surface — flush left edge, radius + occlusion on right only */
 const PANEL_STYLE = {
   backgroundImage: SHELL_BG,
+  borderRadius: 0,
   borderTopRightRadius: '14px',
   borderBottomRightRadius: '14px',
+  borderLeft: 'none',
   boxShadow: '2px 0 12px -8px rgba(0,0,0,0.06)',
 } as const
 
