@@ -18,12 +18,28 @@ import TradeEntryForm    from '@/components/TradeEntryForm'
 import PriceAlertsSidebar from '@/components/PriceAlertsSidebar'
 import { PortfolioCreatePanel, PortfolioEditPanel } from './PortfolioPanels'
 
-/** Shell surface style — shared between sidebar and action panel */
-const SHELL_SURFACE = {
-  backgroundImage: [
-    'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.00) 60%)',
-    'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
-  ].join(', '),
+/** Shell surface — shared warm silver aluminum */
+const SHELL_BG = [
+  'radial-gradient(90% 50% at 20% 0%, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.00) 60%)',
+  'linear-gradient(180deg, #cfcbc7 0%, #c4bfba 42%, #b9b4af 100%)',
+].join(', ')
+
+/** Sidebar surface — no right radius (panel extends from it) */
+const SIDEBAR_STYLE = {
+  backgroundImage: SHELL_BG,
+} as const
+
+/** Action panel surface — no left radius (flush with sidebar), right edge has radius + occlusion */
+const PANEL_STYLE = {
+  backgroundImage: SHELL_BG,
+  borderTopRightRadius: '14px',
+  borderBottomRightRadius: '14px',
+  boxShadow: '2px 0 12px -8px rgba(0,0,0,0.06)',
+} as const
+
+/** Sidebar-only surface — when panel is closed, sidebar gets right radius */
+const SIDEBAR_SOLO_STYLE = {
+  backgroundImage: SHELL_BG,
   borderTopRightRadius: '14px',
   borderBottomRightRadius: '14px',
   boxShadow: '1px 0 0 rgba(0,0,0,0.02), 4px 0 16px -10px rgba(0,0,0,0.06), inset -1px 0 0 rgba(255,255,255,0.05)',
@@ -41,7 +57,7 @@ export default function AppShellV2() {
   return (
     <div className="min-h-screen bg-v2-bg">
       {/* ═══ Fixed sidebar (always visible) ═══════════════════════ */}
-      <SidebarSurface isExpanded={isExpanded} />
+      <SidebarSurface isExpanded={isExpanded} panelOpen={showPanel} />
 
       {/* ═══ Fixed action panel (when open, beside sidebar) ══════ */}
       {showPanel && (
@@ -70,7 +86,7 @@ export default function AppShellV2() {
 
 // ── Sidebar Surface ─────────────────────────────────────────────────────────
 
-function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
+function SidebarSurface({ isExpanded, panelOpen }: { isExpanded: boolean; panelOpen: boolean }) {
   return (
     <div
       className={`
@@ -80,7 +96,7 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
       style={{
         position: 'fixed', left: 0, top: 0, height: '100vh', zIndex: 20,
         transition: 'width 220ms ease-out',
-        ...SHELL_SURFACE,
+        ...(panelOpen ? SIDEBAR_STYLE : SIDEBAR_SOLO_STYLE),
       }}
     >
       <SidebarV2 />
@@ -115,7 +131,7 @@ function ActionPanelSurface({ sidebarWidth }: { sidebarWidth: number }) {
         height: '100vh',
         zIndex: 19,
         transition: 'left 220ms ease-out',
-        ...SHELL_SURFACE,
+        ...PANEL_STYLE,
       }}
     >
       <div className="flex-1 overflow-y-auto flex flex-col">
