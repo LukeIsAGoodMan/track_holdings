@@ -37,15 +37,26 @@ function ChartTooltip({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
-  const change = d.prevNlv != null ? d.nlv - d.prevNlv : null
-  const changePct = d.prevNlv != null && d.prevNlv !== 0 ? ((d.nlv - d.prevNlv) / d.prevNlv) * 100 : null
+
+  // Daily change: Δ% = (V_today - V_yesterday) / |V_yesterday| × 100
+  // Cap at ±100% unless high-leverage anomaly. Return 0% if prev is zero/undefined.
+  let change: number | null = null
+  let changePct: number | null = null
+  if (d.prevNlv != null) {
+    change = d.nlv - d.prevNlv
+    const absPrev = Math.abs(d.prevNlv)
+    changePct = absPrev > 0.01 ? (change / absPrev) * 100 : 0
+    // Sanity cap
+    if (changePct > 100) changePct = 100
+    if (changePct < -100) changePct = -100
+  }
 
   return (
     <div className="rounded-v2-md px-3 py-2 text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.94)', border: '1px solid rgba(0,0,0,0.06)' }}>
       <div className="text-stone-500 mb-0.5">{label}</div>
       <div className="text-stone-800 font-medium tnum">{fmtNlv(d.nlv)}</div>
       {change != null && changePct != null && (
-        <div className={`tnum mt-0.5 ${change >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+        <div className={`tnum mt-0.5 ${change >= 0 ? 'text-stone-600' : 'text-stone-500'}`}>
           {change >= 0 ? '+' : ''}{fmtNlv(change)} ({change >= 0 ? '+' : ''}{changePct.toFixed(1)}%)
         </div>
       )}

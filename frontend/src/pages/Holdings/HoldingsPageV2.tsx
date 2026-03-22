@@ -654,14 +654,17 @@ const SECTOR_FALLBACK_PALETTE = [
 
 // ── Sector Donut Chart ───────────────────────────────────────────────────────
 
+// High-contrast stone-quant palette
 const SECTOR_PALETTE = [
-  '#8b8b92', '#a19d98', '#7a7a80', '#b0aba6',
-  '#6b6b72', '#c4bfba', '#9a9590', '#d1ccc8',
+  '#44403c', '#78716c', '#a8a29e', '#d6d3d1',
+  '#57534e', '#8a8580', '#bab5af', '#e7e5e4',
 ]
 
 const ASSET_CLASS_KEYS_SET = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
 
 function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | null | undefined; isEn: boolean }) {
+  const [activeIdx, setActiveIdx] = useState<number | null>(null)
+
   const data = useMemo(() => {
     if (!sectorExp) return []
     const map: Record<string, number> = {}
@@ -681,38 +684,64 @@ function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | 
   const total = data.reduce((s, d) => s + d.value, 0)
 
   return (
-    <div className="flex items-start gap-4">
-      {/* Donut */}
-      <div className="w-28 h-28 shrink-0">
+    <div>
+      {/* Donut — centered */}
+      <div className="w-36 h-36 mx-auto relative">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={data} dataKey="value" cx="50%" cy="50%"
-              innerRadius="65%" outerRadius="95%"
-              strokeWidth={1} stroke="rgba(255,255,255,0.6)"
+              innerRadius="60%" outerRadius="92%"
+              strokeWidth={1} stroke="rgba(255,255,255,0.8)"
               isAnimationActive={false}
+              onMouseEnter={(_, idx) => setActiveIdx(idx)}
+              onMouseLeave={() => setActiveIdx(null)}
+              label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                if (percent < 0.08) return null
+                const RADIAN = Math.PI / 180
+                const r = (Number(innerRadius) + Number(outerRadius)) / 2
+                const x = Number(cx) + r * Math.cos(-midAngle * RADIAN)
+                const y = Number(cy) + r * Math.sin(-midAngle * RADIAN)
+                return (
+                  <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={9} fontWeight={500}>
+                    {`${(percent * 100).toFixed(0)}%`}
+                  </text>
+                )
+              }}
+              labelLine={false}
             >
-              {data.map((d, i) => <Cell key={d.name} fill={d.color} />)}
+              {data.map((d, i) => (
+                <Cell
+                  key={d.name}
+                  fill={d.color}
+                  opacity={activeIdx != null && activeIdx !== i ? 0.4 : 1}
+                  style={{ transition: 'opacity 150ms ease-out' }}
+                />
+              ))}
             </Pie>
           </PieChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Legend */}
-      <div className="flex-1 min-w-0 space-y-1.5 pt-1">
-        {data.slice(0, 6).map(d => {
+      {/* Legend — below, horizontal wrap */}
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 mt-3">
+        {data.slice(0, 8).map((d, i) => {
           const pct = total > 0 ? Math.round(d.value / total * 100) : 0
           return (
-            <div key={d.name} className="flex items-center gap-2 text-xs">
+            <button
+              key={d.name}
+              type="button"
+              className={`flex items-center gap-1.5 text-xs ds-color cursor-pointer ${activeIdx === i ? 'text-stone-800' : 'text-stone-500'}`}
+              onMouseEnter={() => setActiveIdx(i)}
+              onMouseLeave={() => setActiveIdx(null)}
+              onClick={() => setActiveIdx(activeIdx === i ? null : i)}
+            >
               <span className="w-2 h-2 rounded-sm shrink-0" style={{ background: d.color }} />
-              <span className="truncate flex-1 text-stone-600">{d.name}</span>
-              <span className="tnum text-stone-500 shrink-0">{pct}%</span>
-            </div>
+              <span className="truncate max-w-[80px]">{d.name}</span>
+              <span className="tnum shrink-0">{pct}%</span>
+            </button>
           )
         })}
-        {data.length > 6 && (
-          <div className="text-xs text-stone-400">+{data.length - 6} {isEn ? 'more' : '更多'}</div>
-        )}
       </div>
     </div>
   )
