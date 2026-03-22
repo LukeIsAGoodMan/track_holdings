@@ -3,8 +3,8 @@
  *
  * Typography hierarchy:
  *   Brand: text-lg font-semibold tracking-tight — product identity anchor
- *   Page:  text-sm font-medium text-white/60
- *   Portfolio: text-xs text-white/40
+ *   Page:  text-sm font-medium text-gray-500
+ *   Portfolio: text-xs text-gray-400
  *   Status/Lang: text-xs
  *
  * Icon: 18px, strokeWidth 2
@@ -64,22 +64,22 @@ export default function TopNavV2() {
                  select-none"
       style={{
         zIndex: 30,
-        background: 'linear-gradient(135deg, #9a9aa0 0%, #7f7f86 38%, #68686f 78%, #56565d 100%)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.025)',
+        backgroundColor: '#d1d5db',
+        boxShadow: 'inset 0 -0.5px 0 rgba(255, 255, 255, 0.05)',
       }}
     >
       {/* ═══ LEFT: Brand unit + Breadcrumb ═══════════════════════ */}
       <div className="flex items-center">
         {/* Brand unit — icon + name as one cohesive identity mark */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center justify-center text-white/85 shrink-0" style={{ width: '20px', height: '28px' }}>
+          <div className="flex items-center justify-center text-gray-600 shrink-0" style={{ width: '20px', height: '28px' }}>
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
               <rect x="1" y="11" width="4" height="7" rx="1" fill="currentColor" opacity="0.4" />
               <rect x="7" y="6"  width="4" height="12" rx="1" fill="currentColor" opacity="0.65" />
               <rect x="13" y="2" width="4" height="16" rx="1" fill="currentColor" />
             </svg>
           </div>
-          <span className="text-white hidden sm:inline font-semibold" style={{ fontSize: '20px', letterSpacing: '-0.02em', lineHeight: '1' }}>
+          <span className="text-gray-800 hidden sm:inline font-semibold" style={{ fontSize: '20px', letterSpacing: '-0.02em', lineHeight: '1' }}>
             Track Holdings
           </span>
         </div>
@@ -87,14 +87,14 @@ export default function TopNavV2() {
         {/* Breadcrumb — faint context, distant from brand */}
         {pageTitle && (
           <div className="flex items-center ml-8 gap-2">
-            <span className="text-white/10 hidden sm:inline" style={{ fontSize: '11px' }}>/</span>
-            <span className="font-medium text-white/45" style={{ fontSize: '14px' }}>
+            <span className="text-gray-300 hidden sm:inline" style={{ fontSize: '11px' }}>/</span>
+            <span className="font-medium text-gray-500" style={{ fontSize: '14px' }}>
               {pageTitle}
             </span>
             {selectedName && (
               <>
-                <span className="text-white/10" style={{ fontSize: '11px' }}>/</span>
-                <span className="text-white/28 max-w-[120px] truncate" style={{ fontSize: '12px' }}>
+                <span className="text-gray-300" style={{ fontSize: '11px' }}>/</span>
+                <span className="text-gray-400 max-w-[120px] truncate" style={{ fontSize: '12px' }}>
                   {selectedName}
                 </span>
               </>
@@ -107,7 +107,7 @@ export default function TopNavV2() {
       <div className="flex items-center gap-4">
         <div
           className={`flex items-center gap-1.5 px-2 py-1 rounded-v2-sm transition-colors duration-200
-            ${isOffline ? 'bg-v2-negative/20 text-v2-negative' : 'text-white/30'}
+            ${isOffline ? 'bg-v2-negative/20 text-v2-negative' : 'text-gray-400'}
           `}
           style={{ fontSize: '11px' }}
           title={`WebSocket: ${socketState}`}
@@ -118,13 +118,13 @@ export default function TopNavV2() {
 
         <button
           onClick={toggle}
-          className="text-white/30 hover:text-white/60
+          className="text-gray-400 hover:text-gray-500
                      px-2 py-1 rounded-v2-sm hover:bg-white/[0.04] transition-colors duration-150"
           style={{ fontSize: '11px' }}
         >
-          <span className={lang === 'en' ? 'text-white/60' : ''}>EN</span>
-          <span className="text-white/10 mx-0.5">/</span>
-          <span className={lang === 'zh' ? 'text-white/60' : ''}>中</span>
+          <span className={lang === 'en' ? 'text-gray-500' : ''}>EN</span>
+          <span className="text-gray-300 mx-0.5">/</span>
+          <span className={lang === 'zh' ? 'text-gray-500' : ''}>中</span>
         </button>
       </div>
     </header>

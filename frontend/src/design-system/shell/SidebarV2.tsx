@@ -86,7 +86,7 @@ function Tooltip({ label, show }: { label: string; show: boolean }) {
   if (!show) return null
   return (
     <span className="absolute left-full ml-2 top-1/2 -translate-y-1/2
-                     bg-v2-shell-dark text-white text-xs
+                     bg-gray-800 text-white text-xs
                      px-2.5 py-1 rounded-v2-sm whitespace-nowrap
                      pointer-events-none
                      opacity-0 group-hover:opacity-100 transition-opacity duration-150"
@@ -113,7 +113,7 @@ export default function SidebarV2() {
         <button
           onClick={() => openTradeEntry()}
           className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-            text-white/50 hover:text-white/85 hover:bg-white/5 transition-colors duration-150 group relative
+            text-gray-500 hover:text-gray-700 hover:bg-gray-500/8 transition-colors duration-150 group relative
             ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
         >
           {icons.plus}
@@ -122,7 +122,7 @@ export default function SidebarV2() {
         <button
           onClick={() => openPortfolioCreate()}
           className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-            text-white/50 hover:text-white/85 hover:bg-white/5 transition-colors duration-150 group relative
+            text-gray-500 hover:text-gray-700 hover:bg-gray-500/8 transition-colors duration-150 group relative
             ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
         >
           {icons.folderPlus}
@@ -131,7 +131,7 @@ export default function SidebarV2() {
         <button
           onClick={() => openPriceAlerts()}
           className={`flex items-center gap-2.5 w-full rounded-v2-md text-sm font-medium
-            text-white/50 hover:text-white/85 hover:bg-white/5 transition-colors duration-150 group relative
+            text-gray-500 hover:text-gray-700 hover:bg-gray-500/8 transition-colors duration-150 group relative
             ${isExpanded ? 'px-3 py-2' : 'justify-center py-2'}`}
         >
           {icons.bell}
@@ -141,10 +141,10 @@ export default function SidebarV2() {
 
       {/* ═══ NAVIGATION ══════════════════════════════════════════ */}
       <nav className="flex-1 px-2 py-1 overflow-y-auto">
-        <div className="border-t border-white/8 mb-4" />
+        <div className="border-t border-gray-400/15 mb-4" />
 
         {isExpanded && (
-          <div className="text-xs uppercase text-white/40 px-3 mb-3 tracking-wider">
+          <div className="text-xs uppercase text-gray-400 px-3 mb-3 tracking-wider">
             {isEn ? 'Navigate' : '导航'}
           </div>
         )}
@@ -162,13 +162,13 @@ export default function SidebarV2() {
                   text-sm font-medium transition-colors duration-150
                   ${isExpanded ? 'px-3 py-2.5' : 'justify-center py-2.5 px-0'}
                   ${isActive
-                    ? 'bg-white/6 text-white'
-                    : 'text-white/50 hover:text-white/85 hover:bg-white/5'
+                    ? 'bg-gray-500/12 text-gray-800'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-500/8'
                   }
                 `}
               >
                 {isActive && (
-                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-white rounded-r-full" />
+                  <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-4 bg-gray-700 rounded-r-full" />
                 )}
                 <span className="shrink-0">{icon}</span>
                 {isExpanded ? <span className="truncate">{label}</span> : <Tooltip label={label} show />}
@@ -179,8 +179,8 @@ export default function SidebarV2() {
 
         {/* ═══ PORTFOLIOS ════════════════════════════════════════ */}
         {isExpanded && (
-          <div className="mt-5 pt-3 border-t border-white/8">
-            <div className="text-xs uppercase text-white/40 px-3 mb-3 tracking-wider">
+          <div className="mt-5 pt-3 border-t border-gray-400/15">
+            <div className="text-xs uppercase text-gray-400 px-3 mb-3 tracking-wider">
               {isEn ? 'Portfolios' : '投资组合'}
             </div>
             <div className="space-y-0.5 max-h-44 overflow-y-auto">
@@ -188,7 +188,7 @@ export default function SidebarV2() {
                 <PortfolioItem key={p.id} portfolio={p} selectedId={selectedPortfolioId} onSelect={setSelectedPortfolioId} depth={0} />
               ))}
               {portfolios.length === 0 && (
-                <div className="text-xs text-white/30 px-3 py-2 italic">
+                <div className="text-xs text-gray-400 px-3 py-2 italic">
                   {isEn ? 'No portfolios' : '暂无组合'}
                 </div>
               )}
@@ -198,19 +198,19 @@ export default function SidebarV2() {
       </nav>
 
       {/* ═══ USER — refined, compact ═════════════════════════════ */}
-      <div className={`border-t border-white/8 ${isExpanded ? 'px-3 py-3' : 'px-2 py-2'}`}>
+      <div className={`border-t border-gray-400/15 ${isExpanded ? 'px-3 py-3' : 'px-2 py-2'}`}>
         {user ? (
           <div className={`flex ${isExpanded ? 'items-center gap-3' : 'flex-col items-center gap-2'}`}>
-            <div className="w-7 h-7 rounded-full bg-white/8 flex items-center justify-center
-                            text-xs text-white/70 uppercase shrink-0">
+            <div className="w-7 h-7 rounded-full bg-gray-500/10 flex items-center justify-center
+                            text-xs text-gray-600 uppercase shrink-0">
               {user.username.charAt(0)}
             </div>
             {isExpanded && (
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-white/70 truncate">{user.username}</div>
+                <div className="text-sm font-medium text-gray-600 truncate">{user.username}</div>
                 <button
                   onClick={logout}
-                  className="flex items-center gap-1 text-xs text-white/30 hover:text-white/60 transition-colors duration-150 mt-0.5"
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-500 transition-colors duration-150 mt-0.5"
                 >
                   {icons.bolt}
                   <span>{isEn ? 'Logout' : '退出'}</span>
@@ -224,7 +224,7 @@ export default function SidebarV2() {
         <button
           onClick={toggleExpand}
           className={`flex items-center justify-center w-full py-1.5 rounded-v2-sm
-                     text-white/30 hover:text-white/60 hover:bg-white/5
+                     text-gray-400 hover:text-gray-500 hover:bg-gray-500/8
                      transition-colors duration-150 ${user ? 'mt-2' : ''}`}
           aria-label={isExpanded ? 'Collapse sidebar' : 'Expand sidebar'}
         >
@@ -261,8 +261,8 @@ function PortfolioItem({ portfolio, selectedId, onSelect, depth }: PortfolioItem
           flex items-center gap-2 w-full rounded-v2-sm text-left text-xs font-medium
           py-1.5 transition-colors duration-150
           ${isSelected
-            ? 'bg-white/6 text-white'
-            : 'text-white/40 hover:text-white/70 hover:bg-white/5'
+            ? 'bg-gray-500/12 text-gray-800'
+            : 'text-gray-400 hover:text-gray-600 hover:bg-gray-500/8'
           }
         `}
         style={{ paddingLeft: `${12 + pl}px` }}

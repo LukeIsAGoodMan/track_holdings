@@ -79,10 +79,10 @@ function SidebarSurface({ isExpanded }: { isExpanded: boolean }) {
         position: 'sticky',
         top: SIDEBAR_TOP,
         height: SIDEBAR_HEIGHT,
-        background: 'linear-gradient(180deg, #8b8b92 0%, #74747b 32%, #616168 72%, #54545b 100%)',
+        backgroundColor: '#c8cbd0',
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
-        boxShadow: '3px 0 18px -12px rgba(0, 0, 0, 0.08)',
+        boxShadow: '3px 0 18px -12px rgba(0, 0, 0, 0.06)',
       }}
     >
       <SidebarV2 />
@@ -114,17 +114,17 @@ function ActionPanelSurface() {
         position: 'sticky',
         top: SIDEBAR_TOP,
         height: SIDEBAR_HEIGHT,
-        background: 'linear-gradient(180deg, #8b8b92 0%, #74747b 32%, #616168 72%, #54545b 100%)',
+        backgroundColor: '#c8cbd0',
         borderTopRightRadius: '14px',
         borderBottomRightRadius: '14px',
-        boxShadow: '3px 0 18px -12px rgba(0, 0, 0, 0.08)',
+        boxShadow: '3px 0 18px -12px rgba(0, 0, 0, 0.06)',
       }}
     >
       <div className="flex-1 overflow-y-auto p-4">
         <button
           onClick={handleBack}
-          className="flex items-center gap-1.5 text-ds-sm text-white/40
-                     hover:text-white/70 mb-4 transition-colors duration-150"
+          className="flex items-center gap-1.5 text-ds-sm text-gray-500
+                     hover:text-gray-700 mb-4 transition-colors duration-150"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
             <path d="M15 18l-6-6 6-6" />
