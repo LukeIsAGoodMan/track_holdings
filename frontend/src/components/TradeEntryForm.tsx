@@ -621,36 +621,10 @@ export default function TradeEntryForm({
             label={t('conviction')}
           />
 
-          {/* {t('tech_levels')} */}
+          {/* Trade Journal — clear affordance */}
           <div>
-            <label className={LBL}>
-              {t('tech_levels')}
-              <span className="ml-1 normal-case font-normal text-xs text-stone-600">{t('tech_optional')}</span>
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-emerald-600 ds-sharp-label" style={{ isolation: 'isolate', mixBlendMode: 'normal', filter: 'none', textShadow: 'none', WebkitTextStroke: '0px transparent' }}>S</span>
-                <input
-                  type="number" step="0.01" min="0" placeholder="Support"
-                  value={form.support} onChange={e => set('support', e.target.value)}
-                  className={`${INP} pl-7`}
-                />
-              </div>
-              <div className="relative">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-rose-600 ds-sharp-label" style={{ isolation: 'isolate', mixBlendMode: 'normal', filter: 'none', textShadow: 'none', WebkitTextStroke: '0px transparent' }}>R</span>
-                <input
-                  type="number" step="0.01" min="0" placeholder="Resistance"
-                  value={form.resistance} onChange={e => set('resistance', e.target.value)}
-                  className={`${INP} pl-7`}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Trade Reason — always visible, auto-height, min 3 rows */}
-          <div>
-            <label className={LBL}>
-              Trade Reason
+            <label className={LBL} style={LBL_COLOR}>
+              {t('trade_reason_lbl')}
               <span className="ml-1 normal-case font-normal text-xs text-stone-600">{t('tech_optional')}</span>
             </label>
             <textarea
@@ -658,7 +632,7 @@ export default function TradeEntryForm({
               placeholder={t('coach_reason_ph')}
               value={form.tradeReason}
               onChange={e => set('tradeReason', e.target.value)}
-              className="w-full text-xs rounded-lg border border-stone-400/[0.06] bg-white/60 px-3 py-2 text-stone-700 placeholder:text-stone-400/60 focus:outline-none focus:ring-1 focus:ring-stone-400/20 resize-none"
+              className="w-full text-xs rounded-v2-md border border-stone-300/40 bg-white/60 px-3 py-2 text-stone-800 placeholder:text-stone-500/65 focus:outline-none focus:ring-1 focus:ring-stone-400/30 focus:bg-white/95 resize-none ds-bg"
             />
           </div>
 

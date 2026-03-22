@@ -1,13 +1,16 @@
 /**
- * PortfolioHistoryChart — Minimal equity curve.
+ * PortfolioHistoryChart — 30-day NLV equity curve with date axis.
  *
- * Pure signal: smooth curve, no axes, no labels, no grid, no brush.
- * Only extremely subtle horizontal reference lines (opacity < 0.1).
- * Feels like a data surface, not a financial chart.
+ * Minimal but meaningful:
+ *   - Smooth monotone curve (pure signal)
+ *   - X-axis: dates (Mar 10, Mar 11 etc.) — light, recessive
+ *   - No Y-axis (values in tooltip only)
+ *   - Tooltip: [Date] | [$Value] formatted cleanly
+ *   - No grid, no brush
  */
 import { useState, useEffect, useMemo } from 'react'
 import {
-  AreaChart, Area, Tooltip,
+  AreaChart, Area, XAxis, Tooltip,
   ResponsiveContainer,
 } from 'recharts'
 import { fetchPortfolioHistory } from '@/api/holdings'
@@ -34,9 +37,9 @@ function ChartTooltip({ active, payload, label }: {
 }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-v2-surface border border-v2-border rounded-v2-md px-3 py-2 text-xs">
-      <div className="text-v2-text-3 mb-0.5">{label}</div>
-      <div className="text-v2-text-1 font-medium tnum">{fmtNlv(payload[0].value)}</div>
+    <div className="rounded-v2-md px-3 py-2 text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.92)', border: '1px solid rgba(0,0,0,0.06)' }}>
+      <div className="text-stone-500 mb-0.5">{label}</div>
+      <div className="text-stone-800 font-medium tnum">{fmtNlv(payload[0].value)}</div>
     </div>
   )
 }
@@ -70,12 +73,12 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
   const strokeColor = isPos ? '#4a9a6b' : '#c05c56'
 
   if (loading) {
-    return <div className="h-40 bg-v2-surface-alt rounded-v2-lg ds-shimmer" />
+    return <div className="h-44 bg-v2-surface-alt rounded-v2-lg ds-shimmer" />
   }
 
   if (error || chartData.length === 0) {
     return (
-      <div className="h-40 flex items-center justify-center text-v2-text-3 text-xs">
+      <div className="h-44 flex items-center justify-center text-stone-400 text-xs">
         No chart data available
       </div>
     )
@@ -83,8 +86,8 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
 
   return (
     <div className="w-full">
-      <ResponsiveContainer width="100%" height={160}>
-        <AreaChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={180}>
+        <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
           <defs>
             <linearGradient id="histNlvGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%"  stopColor={strokeColor} stopOpacity={0.08} />
@@ -92,7 +95,15 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
             </linearGradient>
           </defs>
 
-          {/* Pure curve — no grid, no axes, just signal */}
+          {/* X-axis: dates — light, recessive, no line */}
+          <XAxis
+            dataKey="date"
+            tick={{ fill: '#a8a29e', fontSize: 10 }}
+            tickLine={false}
+            axisLine={false}
+            interval={Math.max(0, Math.floor(chartData.length / 6))}
+          />
+
           <Tooltip content={<ChartTooltip />} />
 
           <Area

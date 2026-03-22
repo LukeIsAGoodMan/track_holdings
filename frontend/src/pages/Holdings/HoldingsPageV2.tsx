@@ -34,6 +34,7 @@ import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/form
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
 import HeroSection           from '@/design-system/workspace/HeroSection'
 import TradeRecordTimeline   from '@/design-system/workspace/TradeRecordTimeline'
+import ActivityPanel         from '@/design-system/workspace/ActivityPanel'
 import SectionCard           from '@/design-system/primitives/SectionCard'
 import TabsV2               from '@/design-system/primitives/TabsV2'
 
@@ -950,6 +951,52 @@ export default function HoldingsPageV2() {
                 </ResponsiveContainer>
               </div>
             )}
+
+            {/* ── Scroll hint ───────────────────────────────────── */}
+            <div className="flex justify-center py-2">
+              <svg className="w-5 h-5 text-stone-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </div>
+
+            {/* ═══ DEEP DIVE — Below the fold ═══════════════════ */}
+            <div className="space-y-8 pt-4">
+
+              {/* Sector Exposure */}
+              {riskDash && Object.keys(riskDash.sector_exposure ?? {}).length > 0 && (
+                <div>
+                  <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
+                    {isEn ? 'Sector Exposure' : '行业敞口'}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    {Object.entries(riskDash.sector_exposure ?? {})
+                      .filter(([, v]) => Math.abs(parseFloat(v)) > 0.01)
+                      .sort((a, b) => Math.abs(parseFloat(b[1])) - Math.abs(parseFloat(a[1])))
+                      .slice(0, 8)
+                      .map(([sector, delta]) => {
+                        const val = parseFloat(delta)
+                        return (
+                          <div key={sector} className="p-3 rounded-v2-md bg-stone-50/50">
+                            <div className="text-xs text-stone-500 truncate">{sector}</div>
+                            <div className={`text-sm font-medium tnum mt-1 ${val >= 0 ? 'text-stone-700' : 'text-stone-600'}`}>
+                              {val >= 0 ? '+' : ''}{fmtNum(String(val.toFixed(2)))}
+                            </div>
+                          </div>
+                        )
+                      })
+                    }
+                  </div>
+                </div>
+              )}
+
+              {/* Recent Activity */}
+              <div>
+                <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
+                  {isEn ? 'Recent Activity' : '最近动态'}
+                </div>
+                <ActivityPanel portfolioId={selectedPortfolioId} isEn={isEn} />
+              </div>
+            </div>
           </div>
         )
       )}
