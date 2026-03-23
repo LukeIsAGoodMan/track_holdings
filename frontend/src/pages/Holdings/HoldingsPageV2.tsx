@@ -987,20 +987,9 @@ export default function HoldingsPageV2() {
       {/* ── Portfolio context indicator ──────────────────────────────── */}
       {selectedPortfolio && (
         <div className="flex items-center gap-2">
-          {selectedPortfolio.is_folder ? (
-            <svg className="w-3.5 h-3.5 shrink-0 text-v2-accent" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M2 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6z" />
-            </svg>
-          ) : (
-            <svg className="w-3.5 h-3.5 shrink-0 text-v2-text-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="7" width="20" height="14" rx="2" />
-              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-            </svg>
-          )}
-          <span className="text-ds-body-r text-v2-text-1">{selectedPortfolio.name}</span>
+          <span className="text-sm font-medium text-stone-700">{selectedPortfolio.name}</span>
           {selectedPortfolio.is_folder && (
-            <span className="text-ds-caption uppercase px-1.5 py-0.5 rounded-md
-                             bg-v2-accent-soft text-v2-accent">
+            <span className="text-xs uppercase px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-500">
               {isEn ? 'Folder' : '文件夹'}
             </span>
           )}

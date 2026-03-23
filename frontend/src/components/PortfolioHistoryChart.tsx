@@ -126,7 +126,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
   return (
     <div className="w-full">
       <ResponsiveContainer width="100%" height={180}>
-        <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+        <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 16, bottom: 0 }}>
           <defs>
             <linearGradient id="histNlvGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%"  stopColor={strokeColor} stopOpacity={0.08} />
@@ -139,6 +139,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
             tick={{ fill: '#a8a29e', fontSize: 10 }}
             tickLine={false}
             axisLine={false}
+            tickMargin={6}
             interval={Math.max(0, Math.floor(chartData.length / 6))}
           />
 

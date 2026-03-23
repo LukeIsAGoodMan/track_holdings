@@ -20,21 +20,30 @@ import AnalysisPage          from '@/pages/Analysis/AnalysisPage'
 import AnalysisPageV2        from '@/pages/Analysis/AnalysisPageV2'
 
 /**
- * Design version flag — A/B toggle for V1 vs V2 shell.
+ * UI variant resolver — V2 is the default production surface.
  *
- * Set to 'v2' to activate the new design system shell.
- * V1 remains intact for easy rollback.
+ * Priority: URL param > localStorage > default (v2)
  *
- * Read from localStorage to allow per-user toggling:
- *   localStorage.setItem('th_design', 'v2')
- *   localStorage.setItem('th_design', 'v1')
+ * V1 preserved as hidden fallback for debugging/rollback:
+ *   ?ui=v1                                    ← URL override
+ *   localStorage.setItem('ui_variant', 'v1')  ← persistent override
+ *   localStorage.setItem('th_design', 'v1')   ← legacy key (backward compat)
  */
 function useDesignVersion(): 'v1' | 'v2' {
   try {
-    const stored = localStorage.getItem('th_design')
+    // 1. URL param override (highest priority)
+    const url = new URL(window.location.href)
+    const q = url.searchParams.get('ui')
+    if (q === 'v1' || q === 'v2') return q
+
+    // 2. localStorage override
+    const stored = localStorage.getItem('ui_variant') ?? localStorage.getItem('th_design')
+    if (stored === 'v1') return 'v1'
     if (stored === 'v2') return 'v2'
   } catch { /* SSR or blocked storage */ }
-  return 'v1'
+
+  // 3. Default = v2 (production)
+  return 'v2'
 }
 
 /**
