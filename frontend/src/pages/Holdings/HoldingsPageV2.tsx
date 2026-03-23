@@ -654,10 +654,17 @@ const SECTOR_FALLBACK_PALETTE = [
 
 // ── Sector Donut Chart ───────────────────────────────────────────────────────
 
-// Contrast-spaced stone-quant palette (no adjacent similar luminance)
+// Muted multi-hue institutional palette — adjacent slices always differ in hue
 const SECTOR_PALETTE = [
-  '#1c1917', '#44403c', '#78716c', '#a8a29e', '#d6d3d1',
-  '#57534e', '#8a8580', '#e7e5e4',
+  '#1e293b', // slate core
+  '#0f766e', // muted teal
+  '#92400e', // muted amber
+  '#334155', // slate lighter
+  '#4338ca', // muted indigo
+  '#3f6212', // muted olive
+  '#7c2d12', // muted rust
+  '#475569', // slate mid
+  '#64748b', // slate soft
 ]
 
 const ASSET_CLASS_KEYS_SET = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
@@ -685,8 +692,8 @@ function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | 
 
   return (
     <div className="flex items-start gap-6">
-      {/* Donut — left, 55% */}
-      <div className="w-44 h-44 shrink-0">
+      {/* Donut — left, larger */}
+      <div className="w-52 h-52 shrink-0">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -715,7 +722,7 @@ function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | 
                   key={d.name}
                   fill={d.color}
                   opacity={activeIdx != null && activeIdx !== i ? 0.35 : 1}
-                  style={{ transition: 'opacity 150ms ease-out' }}
+                  style={{ transition: 'opacity 120ms ease-out' }}
                 />
               ))}
             </Pie>

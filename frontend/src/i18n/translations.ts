@@ -97,6 +97,7 @@ export const TRANSLATIONS = {
   clipboard_no_match:{ en: 'No fields matched', zh: '未匹配到任何字段' },
   cash_impact_lbl:   { en: 'Cash Impact',       zh: '现金影响' },
   select_portfolio:  { en: 'Select a portfolio first', zh: '请先选择一个组合' },
+  daily_change:      { en: 'Daily Change',     zh: '当日变动' },
 
   // ── Coach UI ──────────────────────────────────────────────────────────────
   coach_section:   { en: 'Trading Coach',        zh: '交易教练' },

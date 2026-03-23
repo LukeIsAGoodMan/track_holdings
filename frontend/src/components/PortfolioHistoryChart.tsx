@@ -1,9 +1,9 @@
 /**
  * PortfolioHistoryChart — 30-day NLV equity curve.
  *
- * Tooltip: Full value (no abbreviation) + labeled "Daily Change" with directional color.
- * X-axis: Dates (Mar 10, Mar 11) — light, recessive.
- * All numbers use tabular-nums.
+ * Tooltip: Full value + absolute daily change (NO percentage).
+ * X-axis: Dates (Mar 10, Mar 11).
+ * All numbers tnum-aligned.
  */
 import { useState, useEffect, useMemo } from 'react'
 import {
@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { fetchPortfolioHistory } from '@/api/holdings'
+import { useLanguage } from '@/context/LanguageContext'
 import type { PortfolioHistoryPoint } from '@/types'
 
 /** Full currency — NEVER abbreviated in tooltips */
@@ -19,7 +20,6 @@ function fmtFull(val: number): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency', currency: 'USD',
     minimumFractionDigits: 0, maximumFractionDigits: 0,
-    signDisplay: 'auto',
   }).format(val)
 }
 
@@ -41,10 +41,10 @@ function fmtDate(iso: string): string {
   return `${months[parseInt(parts[1]) - 1] ?? ''} ${parseInt(parts[2])}`
 }
 
-interface ChartDatum { date: string; nlv: number; change: number | null; changePct: number | null }
+interface ChartDatum { date: string; nlv: number; change: number | null }
 
-function ChartTooltip({ active, payload, label }: {
-  active?: boolean; payload?: Array<{ payload: ChartDatum }>; label?: string
+function ChartTooltipInner({ active, payload, label, changeLabel }: {
+  active?: boolean; payload?: Array<{ payload: ChartDatum }>; label?: string; changeLabel: string
 }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
@@ -54,20 +54,20 @@ function ChartTooltip({ active, payload, label }: {
     : ''
 
   return (
-    <div className="rounded-v2-md px-3.5 py-2.5 text-xs tnum" style={{ backgroundColor: 'rgba(255,255,255,0.96)', border: '1px solid rgba(0,0,0,0.06)', minWidth: '140px' }}>
+    <div className="rounded-v2-md px-3.5 py-2.5 tnum" style={{ backgroundColor: 'rgba(255,255,255,0.96)', border: '1px solid rgba(0,0,0,0.06)', minWidth: '140px' }}>
       <div className="text-stone-400 mb-1" style={{ fontSize: '10px' }}>
         {label}
       </div>
       <div className="text-stone-800 font-medium" style={{ fontSize: '14px' }}>
         {fmtFull(d.nlv)}
       </div>
-      {d.change != null && d.changePct != null && (
+      {d.change != null && (
         <div className="mt-1.5 pt-1.5" style={{ borderTop: '1px solid rgba(0,0,0,0.04)' }}>
           <div className="text-stone-400 mb-0.5" style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Daily Change
+            {changeLabel}
           </div>
-          <div className={`font-medium ${changeColor}`}>
-            {fmtFullSigned(d.change)} ({d.changePct >= 0 ? '+' : ''}{d.changePct.toFixed(1)}%)
+          <div className={`font-medium ${changeColor}`} style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
+            {fmtFullSigned(d.change)}
           </div>
         </div>
       )}
@@ -78,6 +78,7 @@ function ChartTooltip({ active, payload, label }: {
 interface Props { portfolioId?: number | null }
 
 export default function PortfolioHistoryChart({ portfolioId }: Props) {
+  const { t } = useLanguage()
   const [loading, setLoading] = useState(true)
   const [points,  setPoints]  = useState<PortfolioHistoryPoint[]>([])
   const [error,   setError]   = useState(false)
@@ -91,27 +92,13 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
       .finally(() => setLoading(false))
   }, [portfolioId])
 
-  // Memoize all computed deltas — only recompute when points change
+  // Memoize — absolute change only, no percentage
   const chartData = useMemo<ChartDatum[]>(() =>
     points.map((p, i) => {
       const nlv = parseFloat(p.nlv)
       const prevNlv = i > 0 ? parseFloat(points[i - 1].nlv) : null
-
-      let change: number | null = null
-      let changePct: number | null = null
-
-      if (prevNlv != null && Math.abs(prevNlv) > 0.01) {
-        change = nlv - prevNlv
-        changePct = (change / Math.abs(prevNlv)) * 100
-        // Sanity cap
-        if (changePct > 100) changePct = 100
-        if (changePct < -100) changePct = -100
-      } else if (prevNlv != null) {
-        change = 0
-        changePct = 0
-      }
-
-      return { date: fmtDate(p.date), nlv, change, changePct }
+      const change = prevNlv != null ? nlv - prevNlv : null
+      return { date: fmtDate(p.date), nlv, change }
     }),
     [points],
   )
@@ -122,6 +109,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
   }, [chartData])
 
   const strokeColor = isPos ? '#4a9a6b' : '#c05c56'
+  const changeLabel = t('daily_change')
 
   if (loading) {
     return <div className="h-44 bg-v2-surface-alt rounded-v2-lg ds-shimmer" />
@@ -154,7 +142,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
             interval={Math.max(0, Math.floor(chartData.length / 6))}
           />
 
-          <Tooltip content={<ChartTooltip />} />
+          <Tooltip content={<ChartTooltipInner changeLabel={changeLabel} />} />
 
           <Area
             type="monotone"
