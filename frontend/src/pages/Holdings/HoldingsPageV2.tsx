@@ -31,7 +31,7 @@ import type {
   TradeAction, ClosePositionState, LifecycleResult,
   RiskDashboard, Portfolio,
 } from '@/types'
-import { fmtUSD, fmtNum, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
+import { fmtUSD, fmtUSDSigned, fmtNum, fmtSigned, fmtGreek, dteBadgeClass, signClass } from '@/utils/format'
 import PortfolioHistoryChart from '@/components/PortfolioHistoryChart'
 import HeroSection           from '@/design-system/workspace/HeroSection'
 import TradeRecordTimeline   from '@/design-system/workspace/TradeRecordTimeline'
@@ -333,18 +333,18 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                   )}
                 </div>
 
-                {/* Right: labeled summary metrics — aligned to table P&L and Δ Exp columns */}
-                <div className="flex items-start gap-6 tnum">
+                {/* Right: labeled summary metrics — signed, responsive */}
+                <div className="flex items-start justify-end gap-6 tnum ml-auto max-w-[220px] shrink">
                   {group.total_pnl != null && (
-                    <div className="text-right">
+                    <div className="text-right min-w-0">
                       <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">Total P&L</div>
-                      <div className={`text-sm font-medium ${signClass(group.total_pnl)}`}>{fmtUSD(group.total_pnl)}</div>
+                      <div className={`text-sm font-medium ${signClass(group.total_pnl)}`}>{fmtUSDSigned(group.total_pnl)}</div>
                     </div>
                   )}
-                  <div className="text-right">
+                  <div className="text-right min-w-0">
                     <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">Δ Exp</div>
                     <div className={`text-sm font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`} title="Delta-adjusted share equivalent">
-                      {fmtNum(group.total_delta_exposure)}
+                      {fmtSigned(group.total_delta_exposure)}
                     </div>
                   </div>
                 </div>
@@ -374,8 +374,8 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_shares > 0 ? '+' : ''}{leg.net_shares}</span></GD>
                       <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
                       <GD>{leg.market_value != null ? fmtUSD(leg.market_value) : '—'}</GD>
-                      <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSD(leg.total_pnl)}</span> : '—'}</GD>
-                      <GD><span className={`font-medium ${parseFloat(leg.delta_exposure) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{fmtNum(leg.delta_exposure)}</span></GD>
+                      <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSDSigned(leg.total_pnl)}</span> : '—'}</GD>
+                      <GD><span className={`font-medium ${parseFloat(leg.delta_exposure) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{fmtSigned(leg.delta_exposure)}</span></GD>
                       <GD>
                         <ExitBtn onClick={() => closeStock(group.symbol, leg)} title={`Close ${Math.abs(leg.net_shares)} shares`} />
                       </GD>
@@ -407,21 +407,21 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                             <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_contracts > 0 ? '+' : ''}{leg.net_contracts}</span></GD>
                             <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
                             <GD className="text-stone-400">—</GD>
-                            <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSD(leg.total_pnl)}</span> : '—'}</GD>
-                            <GD>{leg.delta_exposure != null ? <span className={`font-medium ${signClass(leg.delta_exposure)}`}>{fmtNum(leg.delta_exposure)}</span> : <ShimmerCell />}</GD>
+                            <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSDSigned(leg.total_pnl)}</span> : '—'}</GD>
+                            <GD>{leg.delta_exposure != null ? <span className={`font-medium ${signClass(leg.delta_exposure)}`}>{fmtSigned(leg.delta_exposure)}</span> : <ShimmerCell />}</GD>
                             <GD>
                               <ExitBtn onClick={() => closeOption(group.symbol, leg)} title={`Close ${optLabel}`} />
                             </GD>
                           </div>
-                          {/* Greeks — aligned to grid columns */}
+                          {/* Greeks — aligned to grid columns, visually receded */}
                           {(leg.delta != null || leg.theta != null) && (
                             <div className={`${GRID_COLS} px-4 pb-1`}>
-                              <div className="text-left pl-6 text-xs text-stone-400">Greeks</div>
+                              <div className="text-left pl-6 text-xs text-stone-400 font-light">Greeks</div>
                               <div />
-                              <div className="text-right text-xs text-stone-400 tnum">{leg.delta != null ? `Δ ${fmtGreek(leg.delta)}` : ''}</div>
-                              <div className="text-right text-xs text-stone-400 tnum">{leg.theta != null ? `Θ ${fmtGreek(leg.theta)}` : ''}</div>
+                              <div className="text-right text-xs text-stone-400 font-light tnum">{leg.delta != null ? `Δ ${fmtGreek(leg.delta)}` : ''}</div>
+                              <div className="text-right text-xs text-stone-400 font-light tnum">{leg.theta != null ? `Θ ${fmtGreek(leg.theta)}` : ''}</div>
                               <div />
-                              <div className="text-right text-xs text-stone-400 tnum">
+                              <div className="text-right text-xs text-stone-400 font-light tnum">
                                 {marginVal > 0.01 && leg.maintenance_margin && parseFloat(leg.maintenance_margin) > 0.01
                                   ? fmtUSD(leg.maintenance_margin) : ''}
                               </div>
