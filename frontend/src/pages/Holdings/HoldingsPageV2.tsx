@@ -216,75 +216,17 @@ function AssetBadge({ type }: { type: string }) {
 }
 
 // ── Stock legs table ─────────────────────────────────────────────────────────
-function StockLegsTable({
-  legs, symbol, assetClass = 'stock', onClose,
-}: {
-  legs: StockLeg[]
-  spot?: string | null
-  symbol: string
-  assetClass?: string
-  onClose: (symbol: string, leg: StockLeg) => void
-}) {
-  const { t } = useLanguage()
-  if (legs.length === 0) return null
+/** Grid column template for the financial matrix */
+const GRID_COLS = 'grid grid-cols-[minmax(140px,1fr)_80px_100px_110px_120px_100px_48px] gap-x-4'
 
-  return (
-    <div className="overflow-x-auto border-b border-v2-border">
-      <table className="w-full border-collapse">
-        <thead>
-          <tr className="border-b border-v2-border">
-            <th className="th-left text-ds-caption">Asset Class</th>
-            <th className="th text-ds-caption">{t('col_shares')}</th>
-            <th className="th text-ds-caption">{t('col_cost')}</th>
-            <th className="th text-ds-caption">{t('col_mkt_value')}</th>
-            <th className="th text-ds-caption">{t('total_pnl')}</th>
-            <th className="th text-ds-caption">{t('col_delta_exp')}</th>
-            <th className="th text-ds-caption">{/* Exit */}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {legs.map((leg) => {
-            const isLong   = leg.net_shares > 0
-            const deltaPos = parseFloat(leg.delta_exposure) > 0
-            return (
-              <tr key={leg.instrument_id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
-                <td className="td-left"><AssetBadge type={assetClass} /></td>
-                <td className="td">
-                  <span className={`font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                    {leg.net_shares > 0 ? '+' : ''}{leg.net_shares}
-                  </span>
-                </td>
-                <td className="td text-v2-text-2">${fmtNum(leg.avg_open_price)}</td>
-                <td className="td text-v2-text-1">
-                  {leg.market_value != null ? fmtUSD(leg.market_value) : <span className="text-v2-text-3">—</span>}
-                </td>
-                <td className="td">
-                  {leg.total_pnl != null ? (
-                    <span className={`font-bold ${signClass(leg.total_pnl)}`}>
-                      {fmtUSD(leg.total_pnl)}
-                      {leg.total_pnl_pct != null && (
-                        <span className="text-ds-caption ml-0.5 opacity-70">
-                          ({(parseFloat(leg.total_pnl_pct) * 100).toFixed(1)}%)
-                        </span>
-                      )}
-                    </span>
-                  ) : <span className="text-v2-text-3">—</span>}
-                </td>
-                <td className="td">
-                  <span className={`font-bold ${deltaPos ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                    {fmtNum(leg.delta_exposure)}
-                  </span>
-                </td>
-                <td className="td pr-3">
-                  <ExitBtn onClick={() => onClose(symbol, leg)} title={`Close ${Math.abs(leg.net_shares)} shares of ${symbol}`} />
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
+/** Grid header cell */
+function GH({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
+  return <div className={`text-right text-xs uppercase tracking-wider text-stone-400 font-medium py-2 ${className}`}>{children}</div>
+}
+
+/** Grid data cell */
+function GD({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
+  return <div className={`text-right text-sm tnum py-2.5 ${className}`}>{children}</div>
 }
 
 // ── Strategy badge helpers ───────────────────────────────────────────────────
@@ -340,297 +282,155 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
     })
 
   function closeOption(symbol: string, leg: OptionLeg) {
-    const qty: number     = Math.abs(leg.net_contracts)
+    const qty = Math.abs(leg.net_contracts)
     const action: TradeAction = leg.net_contracts < 0 ? 'BUY_CLOSE' : 'SELL_CLOSE'
-    const state: ClosePositionState = {
-      symbol, instrumentType: 'OPTION', optionType: leg.option_type,
-      strike: leg.strike, expiry: leg.expiry, action, quantity: String(qty),
-    }
-    openTradeEntry(state)
+    openTradeEntry({ symbol, instrumentType: 'OPTION', optionType: leg.option_type, strike: leg.strike, expiry: leg.expiry, action, quantity: String(qty) })
   }
 
   function closeStock(symbol: string, leg: StockLeg) {
-    const qty: number     = Math.abs(leg.net_shares)
+    const qty = Math.abs(leg.net_shares)
     const action: TradeAction = leg.net_shares < 0 ? 'BUY_CLOSE' : 'SELL_CLOSE'
-    const state: ClosePositionState = {
-      symbol, instrumentType: 'STOCK', action, quantity: String(qty),
-    }
-    openTradeEntry(state)
+    openTradeEntry({ symbol, instrumentType: 'STOCK', action, quantity: String(qty) })
   }
 
   if (groups.length === 0) {
-    return (
-      <SectionCard className="text-center py-10">
-        <span className="text-v2-text-3 text-sm">{t('no_positions')}</span>
-      </SectionCard>
-    )
-  }
-
-  const STRATEGY_ORDER: Record<string, number> = {
-    IRON_CONDOR: 0, VERTICAL: 1, STRADDLE: 2, STRANGLE: 3, CALENDAR: 4, CUSTOM: 5, SINGLE: 6,
-  }
-  const sortedGroups = [...groups].sort(
-    (a, b) => (STRATEGY_ORDER[a.strategy_type] ?? 9) - (STRATEGY_ORDER[b.strategy_type] ?? 9),
-  )
-  const sectionStarts = new Set<string>()
-  let lastStrategyType = ''
-  for (const g of sortedGroups) {
-    if (g.strategy_type !== lastStrategyType) {
-      sectionStarts.add(g.symbol)
-      lastStrategyType = g.strategy_type
-    }
-  }
-  const SECTION_LABELS: Record<string, string> = {
-    IRON_CONDOR: 'Iron Condors', VERTICAL: 'Vertical Spreads',
-    STRADDLE: 'Straddles', STRANGLE: 'Strangles',
-    CALENDAR: 'Calendar Spreads', CUSTOM: 'Custom Multi-Leg',
-    SINGLE: 'Single Positions',
+    return <div className="text-center py-10 text-stone-400 text-sm">{t('no_positions')}</div>
   }
 
   return (
-    <div className="space-y-3">
-      {sortedGroups.map((group) => {
-        const isCollapsed   = collapsed.has(group.symbol)
-        const deltaVal      = parseFloat(group.total_delta_exposure)
-        const deltaPositive = deltaVal > 0
-
-        const totalLegs  = group.option_legs.length + group.stock_legs.length
+    <div className="space-y-4">
+      {groups.map((group) => {
+        const isOpen = !collapsed.has(group.symbol)
+        const deltaVal = parseFloat(group.total_delta_exposure)
         const hasOptions = group.option_legs.length > 0
-        const hasStocks  = group.stock_legs.length > 0
-        const greeksLoading = hasOptions && group.option_legs.some(l => l.delta == null)
+        const hasStocks = group.stock_legs.length > 0
+        const marginVal = parseFloat(group.total_maintenance_margin ?? '0')
 
         return (
-          <div key={group.symbol}>
-            {sectionStarts.has(group.symbol) && (
-              <div className="flex items-center gap-2 mt-2 mb-1">
-                <span className="text-ds-caption uppercase text-v2-text-3">
-                  {SECTION_LABELS[group.strategy_type] ?? group.strategy_type}
-                </span>
-                <div className="flex-1 border-t border-v2-border" />
-              </div>
-            )}
-            <div className={`bg-v2-surface rounded-v2-lg overflow-hidden shadow-v2-sm
-                             border-l-[3px] ${deltaPositive ? 'border-l-v2-positive' : 'border-l-v2-negative'}`}>
-              {/* ── Group header ───────────────────────────────────── */}
-              <button
-                onClick={() => toggle(group.symbol)}
-                className="w-full flex items-center justify-between px-4 py-3
-                           hover:bg-v2-surface-hover transition-colors text-left"
-              >
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <span className={`text-v2-text-3 text-xs transition-transform duration-150 ${isCollapsed ? '' : 'rotate-90'}`}>
-                    ▶
-                  </span>
-                  <span className="font-bold text-v2-text-1 text-base">{group.symbol}</span>
-                  {group.spot_price ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="text-xs text-v2-text-2 tnum">${fmtNum(group.spot_price)}</span>
-                      {lastSpotChangePct?.[group.symbol] != null && (() => {
-                        const pct = parseFloat(lastSpotChangePct![group.symbol])
-                        return (
-                          <span className={`text-ds-caption tnum px-1.5 py-0.5 rounded-full
-                            ${pct >= 0 ? 'text-v2-positive bg-v2-positive-bg' : 'text-v2-negative bg-v2-negative-bg'}`}>
-                            {pct >= 0 ? '+' : ''}{pct.toFixed(2)}%
-                          </span>
-                        )
-                      })()}
-                    </span>
-                  ) : (
-                    <ShimmerCell w="w-14" />
+          <div key={group.symbol} className="rounded-v2-lg overflow-hidden"
+               style={{ borderLeft: `3px solid ${deltaVal >= 0 ? '#4a9a6b' : '#c05c56'}` }}>
+
+            {/* ═══ POSITION HEADER — symbol + summary metrics ═══ */}
+            <button
+              onClick={() => toggle(group.symbol)}
+              className="w-full ds-hover-surface text-left"
+            >
+              <div className={`${GRID_COLS} items-center px-4 py-3`}>
+                {/* Asset */}
+                <div className="flex items-center gap-2 text-left">
+                  <span className={`text-stone-400 text-xs ${isOpen ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
+                  <span className="text-base font-semibold text-stone-800">{group.symbol}</span>
+                  {group.spot_price && (
+                    <span className="text-xs text-stone-500 tnum">${fmtNum(group.spot_price)}</span>
                   )}
-                  <span
-                    role="button" tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      openPriceAlerts({ symbol: group.symbol, price: parseFloat(group.spot_price ?? '0') })
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.click() }}
-                    title={`${t('alert_set_for')} ${group.symbol}`}
-                    className="cursor-pointer px-1 py-0.5 rounded text-v2-text-3 hover:text-v2-caution
-                               hover:bg-v2-caution-bg transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                      <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                    </svg>
-                  </span>
-                  <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3">
-                    {totalLegs} leg{totalLegs !== 1 ? 's' : ''}
-                  </span>
                   {hasOptions && (
-                    <span className={`text-ds-caption px-2 py-0.5 rounded-full border ${strategyBadgeClass(group.strategy_type)}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full border ${strategyBadgeClass(group.strategy_type)}`}>
                       {group.strategy_label}
                     </span>
                   )}
-                  {hasStocks && hasOptions && (
-                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-teal-50 text-teal-700 border border-teal-200">
-                      +stock
-                    </span>
-                  )}
                 </div>
-
-                <div className="flex items-center gap-4 text-xs tnum">
-                  {fmtEfficiency(group.capital_efficiency) && (
-                    <div className="text-right hidden md:block">
-                      <div className="text-v2-text-3 uppercaser text-ds-caption mb-0.5">{t('cap_efficiency')}</div>
-                      <span className={`px-1.5 py-0.5 rounded-md text-xs font-bold ${efficiencyClass(group.capital_efficiency)}`}>
-                        {fmtEfficiency(group.capital_efficiency)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="text-right">
-                    <div className="text-v2-text-3 uppercaser text-ds-caption">{t('delta_exposure')}</div>
-                    {greeksLoading ? <ShimmerCell w="w-16" /> : (
-                      <div className={`font-bold text-sm ${signClass(group.total_delta_exposure)}`}>
-                        {fmtNum(group.total_delta_exposure)}
-                      </div>
-                    )}
-                  </div>
+                {/* Shares/Qty — blank at summary */}
+                <GD />
+                {/* Cost — blank at summary */}
+                <GD />
+                {/* Mkt Value — blank at summary */}
+                <GD />
+                {/* P&L */}
+                <GD>
                   {group.total_pnl != null && (
-                    <div className="text-right hidden lg:block">
-                      <div className="text-v2-text-3 uppercaser text-ds-caption">{t('total_pnl')}</div>
-                      <div className={`font-bold text-sm ${signClass(group.total_pnl)}`}>
-                        {fmtUSD(group.total_pnl)}
-                        {group.total_pnl_pct != null && (
-                          <span className="text-ds-caption ml-1 opacity-70">
-                            ({(parseFloat(group.total_pnl_pct) * 100).toFixed(1)}%)
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <span className={`font-medium ${signClass(group.total_pnl)}`}>{fmtUSD(group.total_pnl)}</span>
                   )}
-                  {group.daily_pnl != null && (
-                    <div className="text-right hidden lg:block">
-                      <div className="text-v2-text-3 uppercaser text-ds-caption">{t('daily_pnl')}</div>
-                      <div className={`font-bold text-sm ${signClass(group.daily_pnl)}`}>{fmtUSD(group.daily_pnl)}</div>
-                    </div>
-                  )}
-                  <div className="text-right hidden xl:block">
-                    <div className="text-v2-text-3 uppercaser text-ds-caption">{t('margin_req')}</div>
-                    <div className="text-v2-text-1 font-bold">{fmtUSD(group.total_maintenance_margin)}</div>
-                  </div>
-                </div>
-              </button>
+                </GD>
+                {/* Delta Exposure */}
+                <GD>
+                  <span className={`font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`} title="Delta-adjusted share equivalent">
+                    {fmtNum(group.total_delta_exposure)}
+                  </span>
+                </GD>
+                {/* Action */}
+                <GD />
+              </div>
+            </button>
 
-              {/* ── Expanded body ──────────────────────────────── */}
-              {!isCollapsed && (
-                <>
-                  {hasStocks && (
-                    <StockLegsTable
-                      legs={group.stock_legs} spot={group.spot_price}
-                      symbol={group.symbol} assetClass={group.asset_class}
-                      onClose={closeStock}
-                    />
-                  )}
-                  {hasOptions && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b border-v2-border bg-v2-surface-alt/40">
-                            <th className="th-left">{t('col_type')}</th>
-                            <th className="th">{t('col_strike')}</th>
-                            <th className="th">{t('col_expiry')}</th>
-                            <th className="th">{t('col_dte')}</th>
-                            <th className="th">{t('col_net_qty')}</th>
-                            <th className="th">{t('col_cost')}</th>
-                            <th className="th">{t('total_pnl')}</th>
-                            <th className="th">{t('col_delta')}</th>
-                            <th className="th">{t('col_delta_exp')}</th>
-                            <th className="th">{t('col_theta')}</th>
-                            <th className="th">{t('col_margin')}</th>
-                            <th className="th">{/* Exit */}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {group.option_legs.map((leg) => {
-                            const isLong = leg.net_contracts > 0
-                            return (
-                              <tr key={leg.instrument_id} className="border-b border-v2-border hover:bg-v2-surface-hover transition-colors">
-                                <td className="td-left">
-                                  <span className={`px-2 py-0.5 rounded-md text-ds-sm border
-                                    ${leg.option_type === 'CALL'
-                                      ? 'bg-sky-50 text-sky-700 border-sky-200'
-                                      : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                                    {leg.option_type}
-                                  </span>
-                                </td>
-                                <td className="td tnum">${fmtNum(leg.strike)}</td>
-                                <td className="td text-v2-text-2 text-xs">{leg.expiry}</td>
-                                <td className="td">
-                                  <span className={`px-1.5 py-0.5 rounded-md text-ds-sm ${dteBadgeClass(leg.days_to_expiry)}`}>
-                                    {leg.days_to_expiry}d
-                                  </span>
-                                </td>
-                                <td className="td">
-                                  <span className={`font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                                    {leg.net_contracts > 0 ? '+' : ''}{leg.net_contracts}
-                                  </span>
-                                </td>
-                                <td className="td text-v2-text-2">${fmtNum(leg.avg_open_price)}</td>
-                                <td className="td">
-                                  {leg.total_pnl != null ? (
-                                    <span className={`font-bold ${signClass(leg.total_pnl)}`}>
-                                      {fmtUSD(leg.total_pnl)}
-                                      {leg.total_pnl_pct != null && (
-                                        <span className="text-ds-caption ml-0.5 opacity-70">
-                                          ({(parseFloat(leg.total_pnl_pct) * 100).toFixed(1)}%)
-                                        </span>
-                                      )}
-                                    </span>
-                                  ) : <span className="text-v2-text-3">—</span>}
-                                </td>
-                                <td className="td">
-                                  {leg.delta != null ? (
-                                    <span className={signClass(leg.delta)}>{fmtGreek(leg.delta)}</span>
-                                  ) : <ShimmerCell w="w-10" />}
-                                </td>
-                                <td className="td">
-                                  {leg.delta_exposure != null ? (
-                                    <span className={`font-bold ${signClass(leg.delta_exposure)}`}>{fmtNum(leg.delta_exposure)}</span>
-                                  ) : <ShimmerCell />}
-                                </td>
-                                <td className="td">
-                                  {leg.theta != null ? (
-                                    <span className={signClass(leg.theta)}>{fmtGreek(leg.theta)}</span>
-                                  ) : <ShimmerCell w="w-10" />}
-                                </td>
-                                <td className="td text-v2-text-2">{fmtUSD(leg.maintenance_margin)}</td>
-                                <td className="td pr-3">
-                                  <ExitBtn
-                                    onClick={() => closeOption(group.symbol, leg)}
-                                    title={`Close ${Math.abs(leg.net_contracts)} ${leg.option_type} $${fmtNum(leg.strike)} ${leg.expiry}`}
-                                  />
-                                </td>
-                              </tr>
-                            )
-                          })}
-                          {group.option_legs.length > 1 && (
-                            <tr className="bg-v2-surface-alt/30 border-t border-v2-border">
-                              <td colSpan={7} className="td-left text-ds-sm text-v2-text-3 uppercaser">
-                                Subtotal
-                              </td>
-                              <td className="td">
-                                <span className={`font-bold ${signClass(group.total_delta_exposure)}`}>
-                                  {fmtNum(group.total_delta_exposure)}
-                                </span>
-                              </td>
-                              <td className="td" />
-                              <td className="td">
-                                <span className={`font-bold ${sumGreekExposure(group.option_legs, 'theta') >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                                  {sumGreekExposure(group.option_legs, 'theta').toFixed(2)}
-                                </span>
-                              </td>
-                              <td className="td text-v2-text-2 font-bold">{fmtUSD(group.total_maintenance_margin)}</td>
-                              <td className="td" />
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+            {/* ═══ EXPANDED BREAKDOWN ═══════════════════════════ */}
+            {isOpen && (
+              <div className="border-t border-stone-100">
+                {/* Column header */}
+                <div className={`${GRID_COLS} px-4 border-b border-stone-100 bg-stone-50/40`}>
+                  <GH className="text-left">Asset</GH>
+                  <GH>Qty</GH>
+                  <GH>Cost</GH>
+                  <GH>Market</GH>
+                  <GH>P&L</GH>
+                  <GH title="Delta-adjusted share equivalent">Δ Exp</GH>
+                  <GH />
+                </div>
+
+                {/* ── Stock rows ───────────────────────────────── */}
+                {hasStocks && group.stock_legs.map(leg => {
+                  const isLong = leg.net_shares > 0
+                  return (
+                    <div key={leg.instrument_id} className={`${GRID_COLS} px-4 ds-table-row`}>
+                      <GD className="text-left text-stone-600 pl-4">STOCK</GD>
+                      <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_shares > 0 ? '+' : ''}{leg.net_shares}</span></GD>
+                      <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
+                      <GD>{leg.market_value != null ? fmtUSD(leg.market_value) : '—'}</GD>
+                      <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSD(leg.total_pnl)}</span> : '—'}</GD>
+                      <GD><span className={`font-medium ${parseFloat(leg.delta_exposure) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{fmtNum(leg.delta_exposure)}</span></GD>
+                      <GD>
+                        <ExitBtn onClick={() => closeStock(group.symbol, leg)} title={`Close ${Math.abs(leg.net_shares)} shares`} />
+                      </GD>
                     </div>
-                  )}
-                </>
-              )}
-            </div>
+                  )
+                })}
+
+                {/* ── Option rows ──────────────────────────────── */}
+                {hasOptions && (
+                  <>
+                    {hasStocks && <div className="h-2" />}
+                    <div className="px-4 py-1.5 text-xs uppercase tracking-wider text-stone-400 font-medium pl-8">
+                      Options
+                    </div>
+                    {group.option_legs.map(leg => {
+                      const isLong = leg.net_contracts > 0
+                      const optLabel = `${leg.option_type} $${fmtNum(leg.strike)} ${leg.expiry}`
+                      return (
+                        <div key={leg.instrument_id}>
+                          <div className={`${GRID_COLS} px-4 ds-table-row`}>
+                            <GD className="text-left pl-6">
+                              <span className={`text-xs px-1.5 py-0.5 rounded border ${leg.option_type === 'CALL' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
+                                {leg.option_type}
+                              </span>
+                              <span className="ml-2 text-stone-600 tnum">${fmtNum(leg.strike)}</span>
+                              <span className="ml-1.5 text-stone-400 text-xs">{leg.expiry}</span>
+                              <span className={`ml-1.5 text-xs px-1 py-0.5 rounded ${dteBadgeClass(leg.days_to_expiry)}`}>{leg.days_to_expiry}d</span>
+                            </GD>
+                            <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_contracts > 0 ? '+' : ''}{leg.net_contracts}</span></GD>
+                            <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
+                            <GD className="text-stone-400">—</GD>
+                            <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSD(leg.total_pnl)}</span> : '—'}</GD>
+                            <GD>{leg.delta_exposure != null ? <span className={`font-medium ${signClass(leg.delta_exposure)}`}>{fmtNum(leg.delta_exposure)}</span> : <ShimmerCell />}</GD>
+                            <GD>
+                              <ExitBtn onClick={() => closeOption(group.symbol, leg)} title={`Close ${optLabel}`} />
+                            </GD>
+                          </div>
+                          {/* Greeks secondary line */}
+                          {(leg.delta != null || leg.theta != null) && (
+                            <div className="px-4 pb-1 pl-10 flex gap-4 text-xs text-stone-400 tnum">
+                              {leg.delta != null && <span>Δ {fmtGreek(leg.delta)}</span>}
+                              {leg.theta != null && <span>Θ {fmtGreek(leg.theta)}</span>}
+                              {marginVal > 0.01 && leg.maintenance_margin && parseFloat(leg.maintenance_margin) > 0.01 && (
+                                <span>Margin {fmtUSD(leg.maintenance_margin)}</span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+              </div>
+            )}
           </div>
         )
       })}
