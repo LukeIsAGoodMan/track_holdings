@@ -189,8 +189,11 @@ function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick() }}
       title={title ?? 'Close this position'}
-      className="px-2 py-0.5 rounded-v2-sm text-ds-sm text-v2-text-3
-                 hover:text-v2-negative hover:bg-v2-negative-bg transition-colors whitespace-nowrap"
+      className="px-2 py-0.5 rounded-v2-sm text-xs text-stone-400
+                 hover:text-rose-500 hover:bg-rose-50
+                 opacity-0 group-hover:opacity-100
+                 cursor-pointer whitespace-nowrap"
+      style={{ transition: 'opacity 200ms ease-out, color 150ms ease-out, background-color 150ms ease-out' }}
     >
       Exit
     </button>
@@ -224,9 +227,9 @@ function GH({ children, className = '' }: { children?: React.ReactNode; classNam
   return <div className={`text-right text-xs uppercase tracking-wider text-stone-400 font-medium py-2 ${className}`}>{children}</div>
 }
 
-/** Grid data cell */
+/** Grid data cell — py-3 for comfortable scan */
 function GD({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
-  return <div className={`text-right text-sm tnum py-2.5 ${className}`}>{children}</div>
+  return <div className={`text-right text-sm tnum py-3 ${className}`}>{children}</div>
 }
 
 // ── Strategy badge helpers ───────────────────────────────────────────────────
@@ -307,17 +310,17 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
         const marginVal = parseFloat(group.total_maintenance_margin ?? '0')
 
         return (
-          <div key={group.symbol} className="rounded-v2-lg overflow-hidden"
+          <div key={group.symbol} className="rounded-v2-lg overflow-hidden mb-1"
                style={{ borderLeft: `3px solid ${deltaVal >= 0 ? '#4a9a6b' : '#c05c56'}` }}>
 
-            {/* ═══ POSITION HEADER — symbol + summary metrics ═══ */}
+            {/* ═══ POSITION HEADER — compact: symbol left, metrics right ═══ */}
             <button
               onClick={() => toggle(group.symbol)}
               className="w-full ds-hover-surface text-left"
             >
-              <div className={`${GRID_COLS} items-center px-4 py-3`}>
-                {/* Asset */}
-                <div className="flex items-center gap-2 text-left">
+              <div className="flex items-center justify-between px-4 py-3">
+                {/* Left: symbol + spot + badge */}
+                <div className="flex items-center gap-2.5">
                   <span className={`text-stone-400 text-xs ${isOpen ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
                   <span className="text-base font-semibold text-stone-800">{group.symbol}</span>
                   {group.spot_price && (
@@ -329,26 +332,22 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                     </span>
                   )}
                 </div>
-                {/* Shares/Qty — blank at summary */}
-                <GD />
-                {/* Cost — blank at summary */}
-                <GD />
-                {/* Mkt Value — blank at summary */}
-                <GD />
-                {/* P&L */}
-                <GD>
+
+                {/* Right: labeled summary metrics — aligned to table P&L and Δ Exp columns */}
+                <div className="flex items-start gap-6 tnum">
                   {group.total_pnl != null && (
-                    <span className={`font-medium ${signClass(group.total_pnl)}`}>{fmtUSD(group.total_pnl)}</span>
+                    <div className="text-right">
+                      <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">Total P&L</div>
+                      <div className={`text-sm font-medium ${signClass(group.total_pnl)}`}>{fmtUSD(group.total_pnl)}</div>
+                    </div>
                   )}
-                </GD>
-                {/* Delta Exposure */}
-                <GD>
-                  <span className={`font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`} title="Delta-adjusted share equivalent">
-                    {fmtNum(group.total_delta_exposure)}
-                  </span>
-                </GD>
-                {/* Action */}
-                <GD />
+                  <div className="text-right">
+                    <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">Δ Exp</div>
+                    <div className={`text-sm font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`} title="Delta-adjusted share equivalent">
+                      {fmtNum(group.total_delta_exposure)}
+                    </div>
+                  </div>
+                </div>
               </div>
             </button>
 
@@ -370,7 +369,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                 {hasStocks && group.stock_legs.map(leg => {
                   const isLong = leg.net_shares > 0
                   return (
-                    <div key={leg.instrument_id} className={`${GRID_COLS} px-4 ds-table-row`}>
+                    <div key={leg.instrument_id} className={`${GRID_COLS} px-4 ds-table-row group`}>
                       <GD className="text-left text-stone-600 pl-4">STOCK</GD>
                       <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_shares > 0 ? '+' : ''}{leg.net_shares}</span></GD>
                       <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
@@ -387,8 +386,8 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                 {/* ── Option rows ──────────────────────────────── */}
                 {hasOptions && (
                   <>
-                    {hasStocks && <div className="h-2" />}
-                    <div className="px-4 py-1.5 text-xs uppercase tracking-wider text-stone-400 font-medium pl-8">
+                    {hasStocks && <div className="mt-2 mx-4 border-t border-stone-200/60" />}
+                    <div className="px-4 py-2 text-xs uppercase tracking-wider text-stone-400 font-medium pl-8">
                       Options
                     </div>
                     {group.option_legs.map(leg => {
@@ -396,7 +395,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       const optLabel = `${leg.option_type} $${fmtNum(leg.strike)} ${leg.expiry}`
                       return (
                         <div key={leg.instrument_id}>
-                          <div className={`${GRID_COLS} px-4 ds-table-row`}>
+                          <div className={`${GRID_COLS} px-4 ds-table-row group`}>
                             <GD className="text-left pl-6">
                               <span className={`text-xs px-1.5 py-0.5 rounded border ${leg.option_type === 'CALL' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
                                 {leg.option_type}
@@ -414,14 +413,19 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                               <ExitBtn onClick={() => closeOption(group.symbol, leg)} title={`Close ${optLabel}`} />
                             </GD>
                           </div>
-                          {/* Greeks secondary line */}
+                          {/* Greeks — aligned to grid columns */}
                           {(leg.delta != null || leg.theta != null) && (
-                            <div className="px-4 pb-1 pl-10 flex gap-4 text-xs text-stone-400 tnum">
-                              {leg.delta != null && <span>Δ {fmtGreek(leg.delta)}</span>}
-                              {leg.theta != null && <span>Θ {fmtGreek(leg.theta)}</span>}
-                              {marginVal > 0.01 && leg.maintenance_margin && parseFloat(leg.maintenance_margin) > 0.01 && (
-                                <span>Margin {fmtUSD(leg.maintenance_margin)}</span>
-                              )}
+                            <div className={`${GRID_COLS} px-4 pb-1`}>
+                              <div className="text-left pl-6 text-xs text-stone-400">Greeks</div>
+                              <div />
+                              <div className="text-right text-xs text-stone-400 tnum">{leg.delta != null ? `Δ ${fmtGreek(leg.delta)}` : ''}</div>
+                              <div className="text-right text-xs text-stone-400 tnum">{leg.theta != null ? `Θ ${fmtGreek(leg.theta)}` : ''}</div>
+                              <div />
+                              <div className="text-right text-xs text-stone-400 tnum">
+                                {marginVal > 0.01 && leg.maintenance_margin && parseFloat(leg.maintenance_margin) > 0.01
+                                  ? fmtUSD(leg.maintenance_margin) : ''}
+                              </div>
+                              <div />
                             </div>
                           )}
                         </div>
