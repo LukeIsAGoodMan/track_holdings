@@ -219,8 +219,8 @@ function AssetBadge({ type }: { type: string }) {
 }
 
 // ── Stock legs table ─────────────────────────────────────────────────────────
-/** Grid column template for the financial matrix */
-const GRID_COLS = 'grid grid-cols-[minmax(140px,1fr)_80px_100px_110px_120px_100px_48px] gap-x-4'
+/** Grid column template for the financial matrix (9-col trading surface) */
+const GRID_COLS = 'grid grid-cols-[minmax(120px,1fr)_70px_90px_90px_110px_110px_110px_90px_56px] gap-x-3'
 
 /** Grid header cell */
 function GH({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
@@ -320,6 +320,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
         const hasOptions = group.option_legs.length > 0
         const hasStocks = group.stock_legs.length > 0
         const marginVal = parseFloat(group.total_maintenance_margin ?? '0')
+        const groupDayPnl = safeFloat(group.daily_pnl) ?? safeFloat(group.bs_pnl_1d)
 
         return (
           <div key={group.symbol} className="rounded-v2-lg overflow-hidden mb-1"
@@ -331,13 +332,10 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
               className="w-full ds-hover-surface text-left"
             >
               <div className="flex items-center justify-between px-4 py-3">
-                {/* Left: symbol + spot + badge */}
+                {/* Left: symbol + badge */}
                 <div className="flex items-center gap-2.5">
                   <span className={`text-stone-400 text-xs ${isOpen ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
                   <span className="text-base font-semibold text-stone-800">{group.symbol}</span>
-                  {group.spot_price && (
-                    <span className="text-xs text-stone-500 tnum">${fmtNum(group.spot_price)}</span>
-                  )}
                   {hasOptions && (
                     <span className={`text-xs px-1.5 py-0.5 rounded-full border ${strategyBadgeClass(group.strategy_type)}`}>
                       {group.strategy_label}
@@ -345,17 +343,23 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                   )}
                 </div>
 
-                {/* Right: labeled summary metrics — signed, responsive */}
-                <div className="flex items-start justify-end gap-6 tnum ml-auto max-w-[220px] shrink">
+                {/* Right: labeled summary metrics — aligned to P&L / Day P&L / Δ Exp columns */}
+                <div className="flex items-start justify-end gap-5 tnum ml-auto shrink">
                   {group.total_pnl != null && (
                     <div className="text-right min-w-0">
                       <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('total_pnl')}</div>
                       <div className={`text-sm font-medium ${signClass(group.total_pnl)}`}>{fmtUSDSigned(group.total_pnl)}</div>
                     </div>
                   )}
+                  {groupDayPnl != null && (
+                    <div className="text-right min-w-0">
+                      <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('col_day_pnl')}</div>
+                      <div className={`text-sm font-medium ${signClass(String(groupDayPnl))}`}>{fmtUSDSigned(String(groupDayPnl))}</div>
+                    </div>
+                  )}
                   <div className="text-right min-w-0">
                     <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('col_delta_exp')}</div>
-                    <div className={`text-sm font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`} title="Delta-adjusted share equivalent">
+                    <div className={`text-sm font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                       {fmtSigned(group.total_delta_exposure)}
                     </div>
                   </div>
@@ -371,22 +375,27 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                   <GH className="text-left">{t('col_asset')}</GH>
                   <GH>{t('col_qty')}</GH>
                   <GH>{t('col_cost')}</GH>
+                  <GH>{t('col_spot')}</GH>
                   <GH>{t('col_market')}</GH>
                   <GH>{t('col_pnl')}</GH>
-                  <GH title={t('opt_mkt_tooltip')}>{t('col_delta_exp')}</GH>
+                  <GH>{t('col_day_pnl')}</GH>
+                  <GH>{t('col_delta_exp')}</GH>
                   <GH />
                 </div>
 
                 {/* ── Stock rows ───────────────────────────────── */}
                 {hasStocks && group.stock_legs.map(leg => {
                   const isLong = leg.net_shares > 0
+                  const stockDayPnl = safeFloat(leg.daily_pnl)
                   return (
                     <div key={leg.instrument_id} className={`${GRID_COLS} px-4 ds-table-row group`}>
                       <GD className="text-left text-stone-600 pl-4">{t('label_stock')}</GD>
                       <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_shares > 0 ? '+' : ''}{leg.net_shares}</span></GD>
                       <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
+                      <GD>{group.spot_price != null ? <span className="text-stone-700">${fmtNum(group.spot_price)}</span> : '—'}</GD>
                       <GD>{leg.market_value != null ? fmtUSD(leg.market_value) : '—'}</GD>
                       <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSDSigned(leg.total_pnl)}</span> : '—'}</GD>
+                      <GD>{stockDayPnl != null ? <span className={`font-medium ${signClass(String(stockDayPnl))}`}>{fmtUSDSigned(String(stockDayPnl))}</span> : '—'}</GD>
                       <GD><span className={`font-medium ${parseFloat(leg.delta_exposure) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{fmtSigned(leg.delta_exposure)}</span></GD>
                       <GD>
                         <ExitBtn onClick={() => closeStock(group.symbol, leg)} title={`Close ${Math.abs(leg.net_shares)} shares`} label={t('label_exit')} />
@@ -406,6 +415,7 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                       const isLong = leg.net_contracts > 0
                       const optLabel = `${leg.option_type} $${fmtNum(leg.strike)} ${leg.expiry}`
                       const optMktVal = deriveOptionMarketValue(leg)
+                      const optDayPnl = safeFloat(leg.daily_pnl)
                       return (
                         <div key={leg.instrument_id}>
                           <div className={`${GRID_COLS} px-4 ds-table-row group`}>
@@ -419,20 +429,24 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                             </GD>
                             <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_contracts > 0 ? '+' : ''}{leg.net_contracts}</span></GD>
                             <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
+                            <GD className="text-stone-400">—</GD>
                             <GD title={t('opt_mkt_tooltip')}>{optMktVal != null ? fmtUSD(String(optMktVal)) : '—'}</GD>
                             <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSDSigned(leg.total_pnl)}</span> : '—'}</GD>
+                            <GD>{optDayPnl != null ? <span className={`font-medium ${signClass(String(optDayPnl))}`}>{fmtUSDSigned(String(optDayPnl))}</span> : '—'}</GD>
                             <GD>{leg.delta_exposure != null ? <span className={`font-medium ${signClass(leg.delta_exposure)}`}>{fmtSigned(leg.delta_exposure)}</span> : <ShimmerCell />}</GD>
                             <GD>
                               <ExitBtn onClick={() => closeOption(group.symbol, leg)} title={`Close ${optLabel}`} label={t('label_exit')} />
                             </GD>
                           </div>
-                          {/* Greeks — aligned to grid columns, visually receded */}
+                          {/* Greeks — aligned to 9-col grid, visually receded */}
                           {(leg.delta != null || leg.theta != null) && (
                             <div className={`${GRID_COLS} px-4 pb-1`}>
                               <div className="text-left pl-6 text-xs text-stone-400 font-light">{t('label_greeks')}</div>
                               <div />
                               <div className="text-right text-xs text-stone-400 font-light tnum">{leg.delta != null ? `Δ ${fmtGreek(leg.delta)}` : ''}</div>
                               <div className="text-right text-xs text-stone-400 font-light tnum">{leg.theta != null ? `Θ ${fmtGreek(leg.theta)}` : ''}</div>
+                              <div />
+                              <div />
                               <div />
                               <div className="text-right text-xs text-stone-400 font-light tnum">
                                 {marginVal > 0.01 && leg.maintenance_margin && parseFloat(leg.maintenance_margin) > 0.01
