@@ -42,6 +42,28 @@ export const TRANSLATIONS = {
   total_pnl:       { en: 'Total P&L',   zh: '总盈亏' },
   daily_pnl:       { en: 'Day P&L',     zh: '日盈亏' },
 
+  // ── Holdings V2 Details page ────────────────────────────────────────────
+  tab_overview:     { en: 'Overview',     zh: '概览' },
+  tab_details:      { en: 'Details',      zh: '详情' },
+  tab_records:      { en: 'Records',      zh: '记录' },
+  col_asset:        { en: 'Asset',        zh: '资产' },
+  col_qty:          { en: 'Qty',          zh: '数量' },
+  col_market:       { en: 'Market',       zh: '市值' },
+  col_pnl:          { en: 'P&L',          zh: '盈亏' },
+  label_options:    { en: 'Options',      zh: '期权' },
+  label_greeks:     { en: 'Greeks',       zh: '希腊值' },
+  label_stock:      { en: 'STOCK',        zh: '股票' },
+  label_exit:       { en: 'Exit',         zh: '平仓' },
+  label_call:       { en: 'CALL',         zh: '看涨' },
+  label_put:        { en: 'PUT',          zh: '看跌' },
+  label_folder:     { en: 'Folder',       zh: '文件夹' },
+  no_chart_data:    { en: 'No chart data available', zh: '暂无图表数据' },
+  no_positions_short: { en: 'No positions', zh: '暂无持仓' },
+  recent_activity:  { en: 'Recent Activity', zh: '最近动态' },
+  sector_exposure:  { en: 'Sector Exposure', zh: '行业敞口' },
+  opt_mkt_tooltip:  { en: 'Position market value = contracts × price × 100',
+                      zh: '持仓市值 = 合约数 × 价格 × 100' },
+
   // ── Risk dashboard ───────────────────────────────────────────────────────
   risk_title:      { en: 'Risk Dashboard',                zh: '风险仪表盘' },
   risk_sub:        { en: 'Real-time Greeks across all positions.',

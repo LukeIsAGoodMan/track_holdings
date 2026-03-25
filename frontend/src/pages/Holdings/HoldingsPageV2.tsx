@@ -183,19 +183,19 @@ function ShimmerCell({ w = 'w-12' }: { w?: string }) {
 }
 
 // ── Exit button ──────────────────────────────────────────────────────────────
-function ExitBtn({ onClick, title }: { onClick: () => void; title?: string }) {
+function ExitBtn({ onClick, title, label }: { onClick: () => void; title?: string; label: string }) {
   return (
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onClick() }}
-      title={title ?? 'Close this position'}
+      title={title}
       className="px-2 py-0.5 rounded-v2-sm text-xs text-stone-400
                  hover:text-rose-500 hover:bg-rose-50
                  opacity-0 group-hover:opacity-100
                  cursor-pointer whitespace-nowrap"
       style={{ transition: 'opacity 200ms ease-out, color 150ms ease-out, background-color 150ms ease-out' }}
     >
-      Exit
+      {label}
     </button>
   )
 }
@@ -270,6 +270,18 @@ function sumGreekExposure(legs: OptionLeg[], greek: 'gamma' | 'theta') {
   }, 0)
 }
 
+// ── Option market value derivation ───────────────────────────────────────────
+const CONTRACT_MULTIPLIER = 100
+
+/** Derive option position market value: backend explicit > cost+pnl fallback */
+function deriveOptionMarketValue(leg: OptionLeg): number | null {
+  const cost    = safeFloat(leg.avg_open_price)
+  const qty     = leg.net_contracts
+  const pnl     = safeFloat(leg.total_pnl)
+  if (cost == null || qty == null || pnl == null) return null
+  return qty * cost * CONTRACT_MULTIPLIER + pnl
+}
+
 // ── Holdings Table (V2) ──────────────────────────────────────────────────────
 function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
   const { t }             = useLanguage()
@@ -337,12 +349,12 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                 <div className="flex items-start justify-end gap-6 tnum ml-auto max-w-[220px] shrink">
                   {group.total_pnl != null && (
                     <div className="text-right min-w-0">
-                      <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">Total P&L</div>
+                      <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('total_pnl')}</div>
                       <div className={`text-sm font-medium ${signClass(group.total_pnl)}`}>{fmtUSDSigned(group.total_pnl)}</div>
                     </div>
                   )}
                   <div className="text-right min-w-0">
-                    <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">Δ Exp</div>
+                    <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('col_delta_exp')}</div>
                     <div className={`text-sm font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`} title="Delta-adjusted share equivalent">
                       {fmtSigned(group.total_delta_exposure)}
                     </div>
@@ -356,12 +368,12 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
               <div className="border-t border-stone-100">
                 {/* Column header */}
                 <div className={`${GRID_COLS} px-4 border-b border-stone-100 bg-stone-50/40`}>
-                  <GH className="text-left">Asset</GH>
-                  <GH>Qty</GH>
-                  <GH>Cost</GH>
-                  <GH>Market</GH>
-                  <GH>P&L</GH>
-                  <GH title="Delta-adjusted share equivalent">Δ Exp</GH>
+                  <GH className="text-left">{t('col_asset')}</GH>
+                  <GH>{t('col_qty')}</GH>
+                  <GH>{t('col_cost')}</GH>
+                  <GH>{t('col_market')}</GH>
+                  <GH>{t('col_pnl')}</GH>
+                  <GH title={t('opt_mkt_tooltip')}>{t('col_delta_exp')}</GH>
                   <GH />
                 </div>
 
@@ -370,14 +382,14 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                   const isLong = leg.net_shares > 0
                   return (
                     <div key={leg.instrument_id} className={`${GRID_COLS} px-4 ds-table-row group`}>
-                      <GD className="text-left text-stone-600 pl-4">STOCK</GD>
+                      <GD className="text-left text-stone-600 pl-4">{t('label_stock')}</GD>
                       <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_shares > 0 ? '+' : ''}{leg.net_shares}</span></GD>
                       <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
                       <GD>{leg.market_value != null ? fmtUSD(leg.market_value) : '—'}</GD>
                       <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSDSigned(leg.total_pnl)}</span> : '—'}</GD>
                       <GD><span className={`font-medium ${parseFloat(leg.delta_exposure) >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>{fmtSigned(leg.delta_exposure)}</span></GD>
                       <GD>
-                        <ExitBtn onClick={() => closeStock(group.symbol, leg)} title={`Close ${Math.abs(leg.net_shares)} shares`} />
+                        <ExitBtn onClick={() => closeStock(group.symbol, leg)} title={`Close ${Math.abs(leg.net_shares)} shares`} label={t('label_exit')} />
                       </GD>
                     </div>
                   )
@@ -388,17 +400,18 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                   <>
                     {hasStocks && <div className="mt-2 mx-4 border-t border-stone-200/60" />}
                     <div className="px-4 py-2 text-xs uppercase tracking-wider text-stone-400 font-medium pl-8">
-                      Options
+                      {t('label_options')}
                     </div>
                     {group.option_legs.map(leg => {
                       const isLong = leg.net_contracts > 0
                       const optLabel = `${leg.option_type} $${fmtNum(leg.strike)} ${leg.expiry}`
+                      const optMktVal = deriveOptionMarketValue(leg)
                       return (
                         <div key={leg.instrument_id}>
                           <div className={`${GRID_COLS} px-4 ds-table-row group`}>
                             <GD className="text-left pl-6">
                               <span className={`text-xs px-1.5 py-0.5 rounded border ${leg.option_type === 'CALL' ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-rose-50 text-rose-700 border-rose-200'}`}>
-                                {leg.option_type}
+                                {t(leg.option_type === 'CALL' ? 'label_call' : 'label_put')}
                               </span>
                               <span className="ml-2 text-stone-600 tnum">${fmtNum(leg.strike)}</span>
                               <span className="ml-1.5 text-stone-400 text-xs">{leg.expiry}</span>
@@ -406,17 +419,17 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                             </GD>
                             <GD><span className={`font-medium ${isLong ? 'text-emerald-600' : 'text-rose-500'}`}>{leg.net_contracts > 0 ? '+' : ''}{leg.net_contracts}</span></GD>
                             <GD className="text-stone-500">${fmtNum(leg.avg_open_price)}</GD>
-                            <GD className="text-stone-400">—</GD>
+                            <GD title={t('opt_mkt_tooltip')}>{optMktVal != null ? fmtUSD(String(optMktVal)) : '—'}</GD>
                             <GD>{leg.total_pnl != null ? <span className={`font-medium ${signClass(leg.total_pnl)}`}>{fmtUSDSigned(leg.total_pnl)}</span> : '—'}</GD>
                             <GD>{leg.delta_exposure != null ? <span className={`font-medium ${signClass(leg.delta_exposure)}`}>{fmtSigned(leg.delta_exposure)}</span> : <ShimmerCell />}</GD>
                             <GD>
-                              <ExitBtn onClick={() => closeOption(group.symbol, leg)} title={`Close ${optLabel}`} />
+                              <ExitBtn onClick={() => closeOption(group.symbol, leg)} title={`Close ${optLabel}`} label={t('label_exit')} />
                             </GD>
                           </div>
                           {/* Greeks — aligned to grid columns, visually receded */}
                           {(leg.delta != null || leg.theta != null) && (
                             <div className={`${GRID_COLS} px-4 pb-1`}>
-                              <div className="text-left pl-6 text-xs text-stone-400 font-light">Greeks</div>
+                              <div className="text-left pl-6 text-xs text-stone-400 font-light">{t('label_greeks')}</div>
                               <div />
                               <div className="text-right text-xs text-stone-400 font-light tnum">{leg.delta != null ? `Δ ${fmtGreek(leg.delta)}` : ''}</div>
                               <div className="text-right text-xs text-stone-400 font-light tnum">{leg.theta != null ? `Θ ${fmtGreek(leg.theta)}` : ''}</div>
@@ -581,10 +594,10 @@ export default function HoldingsPageV2() {
     : 'overview'
 
   const TAB_ITEMS = useMemo(() => [
-    { key: 'overview', label: isEn ? 'Overview' : '概览' },
-    { key: 'details',  label: isEn ? 'Details'  : '详情' },
-    { key: 'records',  label: isEn ? 'Records'  : '记录' },
-  ], [isEn])
+    { key: 'overview', label: t('tab_overview') },
+    { key: 'details',  label: t('tab_details') },
+    { key: 'records',  label: t('tab_records') },
+  ], [t])
 
   const handleTabChange = (key: string) => {
     const path = key === 'overview' ? '/holdings/overview'
@@ -794,7 +807,7 @@ export default function HoldingsPageV2() {
           <span className="text-sm font-medium text-stone-700">{selectedPortfolio.name}</span>
           {selectedPortfolio.is_folder && (
             <span className="text-xs uppercase px-1.5 py-0.5 rounded-md bg-stone-100 text-stone-500">
-              {isEn ? 'Folder' : '文件夹'}
+              {t('label_folder')}
             </span>
           )}
         </div>
@@ -839,7 +852,7 @@ export default function HoldingsPageV2() {
             {/* ── Treemap — raw surface, no card wrapper ─────── */}
             {treemapData.length === 0 ? (
               <div className="h-72 flex items-center justify-center text-v2-text-3 text-xs">
-                {isEn ? 'No positions' : '暂无持仓'}
+                {t('no_positions_short')}
               </div>
             ) : (
               <div className="rounded-v2-lg overflow-hidden">
@@ -867,7 +880,7 @@ export default function HoldingsPageV2() {
               {/* Left column (60%) — Recent Activity */}
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
-                  {isEn ? 'Recent Activity' : '最近动态'}
+                  {t('recent_activity')}
                 </div>
                 <ActivityPanel portfolioId={selectedPortfolioId} isEn={isEn} />
               </div>
@@ -876,7 +889,7 @@ export default function HoldingsPageV2() {
               {riskDash && Object.keys(riskDash.sector_exposure ?? {}).length > 0 && (
                 <div className="w-[40%] shrink-0">
                   <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
-                    {isEn ? 'Sector Exposure' : '行业敞口'}
+                    {t('sector_exposure')}
                   </div>
                   <SectorDonut sectorExp={riskDash.sector_exposure} isEn={isEn} />
                 </div>
