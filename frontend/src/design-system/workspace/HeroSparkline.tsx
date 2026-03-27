@@ -32,7 +32,7 @@ export default memo(function HeroSparkline({ portfolioId, sentiment, className =
     if (portfolioId == null) return
     fetchPortfolioHistory(portfolioId, 7)
       .then(res => {
-        const vals = res.series.map(p => parseFloat(p.nlv)).filter(n => isFinite(n))
+        const vals = res.series.map(p => parseFloat(p.pnl)).filter(n => isFinite(n))
         setPoints(vals)
       })
       .catch(() => setPoints([]))

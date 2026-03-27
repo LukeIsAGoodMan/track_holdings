@@ -390,16 +390,16 @@ export interface MacroTickerData {
   as_of:              string   // ISO datetime
 }
 
-// ── Portfolio History (Phase 13) ─────────────────────────────────────────────
+// ── Portfolio PnL History ────────────────────────────────────────────────────
 export interface PortfolioHistoryPoint {
   date: string   // ISO date "2024-01-02"
-  nlv:  string   // DecStr
+  pnl:  string   // DecStr — cumulative portfolio PnL
 }
 
 export interface PortfolioHistoryResponse {
   series:     PortfolioHistoryPoint[]
-  start_nlv:  string | null
-  end_nlv:    string | null
+  start_pnl:  string | null
+  end_pnl:    string | null
   return_pct: string | null   // DecStr percentage e.g. "4.25"
   days:       number
 }

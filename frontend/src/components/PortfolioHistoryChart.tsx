@@ -1,9 +1,12 @@
 /**
- * PortfolioHistoryChart — 30-day Portfolio PnL curve.
+ * PortfolioHistoryChart — Portfolio PnL curve.
  *
- * Displays cumulative profit/loss (NOT NLV / market value).
+ * Displays cumulative profit/loss with Economic Start Date trimming.
+ * Series begins at portfolio's first economic activity — no flat zero padding.
  * PnL starts at ~0 when positions are first opened.
  * No step jumps from capital deployment.
+ *
+ * Accounting Methodology: Weighted-Average Cost Basis.
  *
  * Tooltip: Signed PnL value + absolute daily change.
  * X-axis: Dates (Mar 10, Mar 11).
@@ -32,19 +35,6 @@ function fmtPnl(val: number): string {
   return '$0'
 }
 
-/** Signed full currency for daily change */
-function fmtFullSigned(val: number): string {
-  if (isNaN(val)) return '$0'
-  const abs = Math.abs(val)
-  const formatted = new Intl.NumberFormat('en-US', {
-    style: 'currency', currency: 'USD',
-    minimumFractionDigits: 0, maximumFractionDigits: 0,
-  }).format(abs)
-  if (val > 0) return `+${formatted}`
-  if (val < 0) return `-${formatted}`
-  return '$0'
-}
-
 function fmtDate(iso: string): string {
   const parts = iso?.split('-') ?? []
   if (parts.length < 3) return iso ?? ''
@@ -52,7 +42,7 @@ function fmtDate(iso: string): string {
   return `${months[parseInt(parts[1]) - 1] ?? ''} ${parseInt(parts[2])}`
 }
 
-interface ChartDatum { date: string; nlv: number; change: number | null }
+interface ChartDatum { date: string; pnl: number; change: number | null }
 
 function ChartTooltipInner({ active, payload, label, changeLabel, pnlLabel }: {
   active?: boolean; payload?: Array<{ payload: ChartDatum }>; label?: string
@@ -61,7 +51,7 @@ function ChartTooltipInner({ active, payload, label, changeLabel, pnlLabel }: {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
 
-  const pnlColor = d.nlv > 0 ? 'text-emerald-600' : d.nlv < 0 ? 'text-rose-500' : 'text-stone-600'
+  const pnlColor = d.pnl > 0 ? 'text-emerald-600' : d.pnl < 0 ? 'text-rose-500' : 'text-stone-600'
   const changeColor = d.change != null
     ? d.change > 0 ? 'text-emerald-600' : d.change < 0 ? 'text-rose-500' : 'text-stone-500'
     : ''
@@ -75,7 +65,7 @@ function ChartTooltipInner({ active, payload, label, changeLabel, pnlLabel }: {
         {pnlLabel}
       </div>
       <div className={`font-medium ${pnlColor}`} style={{ fontSize: '14px' }}>
-        {fmtPnl(d.nlv)}
+        {fmtPnl(d.pnl)}
       </div>
       {d.change != null && (
         <div className="mt-1.5 pt-1.5" style={{ borderTop: '1px solid rgba(0,0,0,0.04)' }}>
@@ -83,7 +73,7 @@ function ChartTooltipInner({ active, payload, label, changeLabel, pnlLabel }: {
             {changeLabel}
           </div>
           <div className={`font-medium ${changeColor}`} style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums' }}>
-            {fmtFullSigned(d.change)}
+            {fmtPnl(d.change)}
           </div>
         </div>
       )}
@@ -108,26 +98,25 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
       .finally(() => setLoading(false))
   }, [portfolioId])
 
-  // Memoize — absolute change only, no percentage
   const chartData = useMemo<ChartDatum[]>(() =>
     points.map((p, i) => {
-      const nlv = parseFloat(p.nlv)
-      const prevNlv = i > 0 ? parseFloat(points[i - 1].nlv) : null
-      const change = prevNlv != null ? nlv - prevNlv : null
-      return { date: fmtDate(p.date), nlv, change }
+      const pnl = parseFloat(p.pnl)
+      const prevPnl = i > 0 ? parseFloat(points[i - 1].pnl) : null
+      const change = prevPnl != null ? pnl - prevPnl : null
+      return { date: fmtDate(p.date), pnl, change }
     }),
     [points],
   )
 
-  // For PnL chart: green if latest PnL > 0, red if < 0
+  // Green if latest PnL > 0, red if < 0
   const isPos = useMemo(() => {
     if (chartData.length === 0) return true
-    return chartData[chartData.length - 1].nlv >= 0
+    return chartData[chartData.length - 1].pnl >= 0
   }, [chartData])
 
   // Check if series crosses zero — needs split gradient
-  const hasNeg = useMemo(() => chartData.some(d => d.nlv < 0), [chartData])
-  const hasPos = useMemo(() => chartData.some(d => d.nlv > 0), [chartData])
+  const hasNeg = useMemo(() => chartData.some(d => d.pnl < 0), [chartData])
+  const hasPos = useMemo(() => chartData.some(d => d.pnl > 0), [chartData])
 
   const strokeColor = isPos ? '#4a9a6b' : '#c05c56'
   const changeLabel = t('daily_change')
@@ -176,7 +165,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
 
           <Area
             type="monotone"
-            dataKey="nlv"
+            dataKey="pnl"
             stroke={strokeColor}
             strokeWidth={1.5}
             fill="url(#histPnlGrad)"

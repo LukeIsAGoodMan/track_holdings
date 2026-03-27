@@ -1,6 +1,10 @@
 """
 Position Engine — replays the TradeEvent sequence to compute net positions.
 
+Accounting Methodology: Weighted-Average Cost Basis.
+All opening trades contribute to a single running weighted average;
+closing trades reduce quantity but do not alter the per-unit cost basis.
+
 calculate_positions(db, portfolio_id=None, portfolio_ids=None) → list[PositionRow]
 
 collect_portfolio_ids(db, root_id) → set[int]
@@ -94,7 +98,7 @@ async def calculate_positions(
     query = (
         select(TradeEvent)
         .options(selectinload(TradeEvent.instrument))
-        .order_by(TradeEvent.trade_date.asc())   # chronological for correct FIFO avg
+        .order_by(TradeEvent.trade_date.asc())   # chronological for correct weighted-average cost
     )
     if portfolio_ids is not None:
         query = query.where(TradeEvent.portfolio_id.in_(portfolio_ids))

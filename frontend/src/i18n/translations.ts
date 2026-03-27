@@ -340,10 +340,10 @@ export const TRANSLATIONS = {
   auth_have_acct:    { en: 'Already have an account?',      zh: '已有账户？' },
 
   // ── Portfolio History Chart (Phase 13) ───────────────────────────────────
-  hist_title:        { en: '30-Day Portfolio NLV',          zh: '30日投资组合净值' },
+  hist_title:        { en: 'Portfolio PnL',                  zh: '投资组合盈亏' },
   hist_loading:      { en: 'Loading history…',              zh: '加载中…' },
-  hist_no_data:      { en: 'No stock positions to chart.',   zh: '无股票持仓可展示。' },
-  hist_nlv:          { en: 'NLV',                           zh: '净值' },
+  hist_no_data:      { en: 'No positions to chart.',        zh: '无持仓可展示。' },
+  hist_pnl:          { en: 'PnL',                           zh: '盈亏' },
   hist_return:       { en: 'Return',                        zh: '收益率' },
   // ── Rhino Analysis (Phase 15) ────────────────────────────────────────────
   analysis_title:       { en: 'Stock Analysis',                    zh: '个股分析' },
