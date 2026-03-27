@@ -473,51 +473,6 @@ const ExpiryChartV2 = memo(function ExpiryChartV2({
   )
 })
 
-// ── Sector Exposure (V2) ─────────────────────────────────────────────────────
-// Asset-class keys that must NOT appear in sector views (strict dimension separation)
-const ASSET_CLASS_KEYS = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
-
-const SectorExposureV2 = memo(function SectorExposureV2({
-  sectorExp, isEn,
-}: {
-  sectorExp: Record<string, string>; isEn: boolean
-}) {
-  // Filter out asset_class keys — sector and asset_class are strictly separate dimensions
-  const entries = Object.entries(sectorExp).filter(([key]) => !ASSET_CLASS_KEYS.has(key))
-  if (entries.length === 0) return null
-  const sorted = [...entries].sort((a, b) => Math.abs(parseFloat(b[1])) - Math.abs(parseFloat(a[1])))
-  const maxAbs = Math.max(...sorted.map(([, v]) => Math.abs(parseFloat(v))), 1)
-
-  return (
-    <SectionCard>
-      <SectionCard.Header title={isEn ? 'Sector Exposure' : '行业敞口'} />
-      <SectionCard.Body>
-        <div className="space-y-3">
-          {sorted.map(([tag, deltaStr]) => {
-            const delta = parseFloat(deltaStr)
-            const pct = (Math.abs(delta) / maxAbs) * 100
-            const isLong = delta >= 0
-            return (
-              <div key={tag}>
-                <div className="flex items-center justify-between text-ds-sm mb-1">
-                  <span className="text-v2-text-1 font-bold">{tag}</span>
-                  <span className={`tnum font-bold ${isLong ? 'text-v2-positive' : 'text-v2-negative'}`}>
-                    {isLong ? '+' : ''}{fmtNum(deltaStr)}
-                  </span>
-                </div>
-                <div className="h-1.5 rounded-full bg-v2-surface-alt overflow-hidden">
-                  <div className={`h-full rounded-full ${isLong ? 'bg-v2-positive/60' : 'bg-v2-negative/60'}`}
-                    style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </SectionCard.Body>
-    </SectionCard>
-  )
-})
-
 // ── Benchmark Panel (V2) ────────────────────────────────────────────────────
 const BenchmarkPanelV2 = memo(function BenchmarkPanelV2({
   dashboard, isEn,
@@ -667,8 +622,6 @@ export default function RiskPageV2() {
     setHoldings(lastHoldingsUpdate.data)
   }, [lastHoldingsUpdate, selectedPortfolioId])
 
-  const hasSector = dashboard && Object.keys(dashboard.sector_exposure ?? {}).length > 0
-
   // Find selected portfolio node
   const selectedPortfolio: Portfolio | null = (() => {
     const walk = (nodes: Portfolio[]): Portfolio | null => {
@@ -763,9 +716,6 @@ export default function RiskPageV2() {
             <RightPanel>
               <RiskAlertStack alerts={dashboard.risk_alerts ?? []} isEn={isEn} />
               <InsightPanelV2 portfolioId={selectedPortfolioId} />
-              {hasSector && (
-                <SectorExposureV2 sectorExp={dashboard.sector_exposure} isEn={isEn} />
-              )}
               <BenchmarkPanelV2 dashboard={dashboard} isEn={isEn} />
             </RightPanel>
           </div>

@@ -495,20 +495,27 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
   )
 }
 
-// ── Exposure Panel — multi-label ranked bar visualization ─────────────────────
+// ── Exposure Panel — multi-label center-axis bar visualization ────────────────
 const EXPOSURE_ASSET_CLASS_KEYS = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
 const TOP_N = 8
 
-interface ExposureRow {
-  name: string
-  notional: number  // signed notional market value
-  pctOfNlv: number  // % of total portfolio NLV (signed)
+/** Normalize a tag name to a translation key: "Big Tech" → "tag_big_tech" */
+function tagToI18nKey(tag: string): string {
+  return 'tag_' + tag.toLowerCase().replace(/[\s/]+/g, '_').replace(/[^a-z0-9_]/g, '')
 }
 
-function ExposurePanel({ sectorAlloc, portfolioNlv, isEn }: {
+interface ExposureRow {
+  name: string       // raw tag name from backend
+  i18nKey: string    // translation key
+  notional: number   // signed notional market value
+  pctOfNlv: number   // % of total portfolio NLV (signed)
+}
+
+function ExposurePanel({ sectorAlloc, portfolioNlv, isEn, t }: {
   sectorAlloc: Record<string, string> | null | undefined
   portfolioNlv: number
   isEn: boolean
+  t: (key: string) => string
 }) {
   const [showOthers, setShowOthers] = useState(false)
 
@@ -520,9 +527,8 @@ function ExposurePanel({ sectorAlloc, portfolioNlv, isEn }: {
       const notional = parseFloat(v) || 0
       if (Math.abs(notional) < 0.01) continue
       const pctOfNlv = portfolioNlv > 0 ? (notional / portfolioNlv) * 100 : 0
-      entries.push({ name: key, notional, pctOfNlv })
+      entries.push({ name: key, i18nKey: tagToI18nKey(key), notional, pctOfNlv })
     }
-    // Sort descending by absolute notional
     entries.sort((a, b) => Math.abs(b.notional) - Math.abs(a.notional))
     return entries
   }, [sectorAlloc, portfolioNlv])
@@ -533,16 +539,15 @@ function ExposurePanel({ sectorAlloc, portfolioNlv, isEn }: {
   const otherRows = rows.slice(TOP_N)
   const hasOthers = otherRows.length > 0
 
-  // Bar scaling: normalize against 100% of NLV (full bar = 100% allocation)
+  // Scale: half-track = 100% of NLV; overflow allowed beyond
   const maxAbsPct = Math.max(100, ...rows.map(r => Math.abs(r.pctOfNlv)))
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       {topRows.map((row) => (
-        <ExposureBar key={row.name} row={row} maxAbsPct={maxAbsPct} />
+        <ExposureBar key={row.name} row={row} maxAbsPct={maxAbsPct} t={t} />
       ))}
 
-      {/* Others — expandable */}
       {hasOthers && (
         <>
           <button
@@ -552,10 +557,10 @@ function ExposurePanel({ sectorAlloc, portfolioNlv, isEn }: {
             style={{ transition: 'color 150ms ease-out' }}
           >
             <span className={`text-[10px] ${showOthers ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
-            <span>{isEn ? `${otherRows.length} more` : `其他 ${otherRows.length} 项`}</span>
+            <span>{otherRows.length} {t('exp_n_more')}</span>
           </button>
           {showOthers && otherRows.map((row) => (
-            <ExposureBar key={row.name} row={row} maxAbsPct={maxAbsPct} />
+            <ExposureBar key={row.name} row={row} maxAbsPct={maxAbsPct} t={t} />
           ))}
         </>
       )}
@@ -563,20 +568,34 @@ function ExposurePanel({ sectorAlloc, portfolioNlv, isEn }: {
   )
 }
 
-/** Single exposure bar row — clean ranked layout, no hover detail */
-function ExposureBar({ row, maxAbsPct }: { row: ExposureRow; maxAbsPct: number }) {
+/** Single exposure bar row — center-axis signed layout */
+function ExposureBar({ row, maxAbsPct, t }: {
+  row: ExposureRow; maxAbsPct: number; t: (key: string) => string
+}) {
   const isLong = row.notional >= 0
   const absPct = Math.abs(row.pctOfNlv)
-  // Bar width: % of track (100% NLV = full bar), with 2px floor for visibility
-  const barWidthPct = maxAbsPct > 0 ? Math.min(100, (absPct / maxAbsPct) * 100) : 0
-  const isOverflow = Math.abs(row.pctOfNlv) > 100
+  // Half-width = 100% NLV; bar fills the appropriate side of center axis
+  const barHalfPct = maxAbsPct > 0 ? Math.min(100, (absPct / maxAbsPct) * 100) : 0
+  const isOverflow = absPct > 100
+
+  // i18n: try translation key, fall back to raw tag name
+  const translated = t(row.i18nKey)
+  const label = translated !== row.i18nKey ? translated : row.name
+
+  const barFill = isOverflow
+    ? (isLong ? 'bg-emerald-500' : 'bg-rose-400')
+    : (isLong ? 'bg-emerald-400/70' : 'bg-rose-400/70')
+
+  const stripeGradient = isOverflow
+    ? 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 5px)'
+    : undefined
 
   return (
     <div className="rounded-v2-sm px-2 py-1.5 hover:bg-stone-50/60"
          style={{ transition: 'background-color 150ms ease-out' }}>
-      {/* Top line: name + signed % */}
+      {/* Label row: tag name (stacks above bar on narrow) + signed % */}
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-stone-600 truncate flex-1 mr-3">{row.name}</span>
+        <span className="text-xs text-stone-600 truncate flex-1 mr-2">{label}</span>
         <span className={`tnum text-xs font-medium shrink-0 ${
           isLong ? 'text-emerald-600' : 'text-rose-500'
         }`}>
@@ -584,23 +603,38 @@ function ExposureBar({ row, maxAbsPct }: { row: ExposureRow; maxAbsPct: number }
         </span>
       </div>
 
-      {/* Bar track */}
-      <div className="h-1.5 rounded-full bg-stone-100 relative overflow-hidden">
-        <div
-          className={`h-full rounded-full ${
-            isOverflow
-              ? (isLong ? 'bg-emerald-500' : 'bg-rose-400')
-              : (isLong ? 'bg-emerald-400/70' : 'bg-rose-400/70')
-          }`}
-          style={{
-            width: `${barWidthPct}%`,
-            minWidth: absPct > 0.01 ? '2px' : '0px',
-            transition: 'width 200ms ease-out',
-            backgroundImage: isOverflow
-              ? 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 5px)'
-              : undefined,
-          }}
-        />
+      {/* Center-axis bar track: left half = short, right half = long */}
+      <div className="flex h-2 items-center">
+        {/* Left half — short bars grow from center toward left */}
+        <div className="flex-1 h-full flex justify-end overflow-hidden rounded-l-full bg-stone-100/60">
+          {!isLong && (
+            <div
+              className={`h-full rounded-l-full ${barFill}`}
+              style={{
+                width: `${barHalfPct}%`,
+                minWidth: absPct > 0.01 ? '2px' : '0px',
+                transition: 'width 200ms ease-out',
+                backgroundImage: stripeGradient,
+              }}
+            />
+          )}
+        </div>
+        {/* Center axis */}
+        <div className="w-px h-3 shrink-0" style={{ backgroundColor: '#78716c' }} />
+        {/* Right half — long bars grow from center toward right */}
+        <div className="flex-1 h-full flex justify-start overflow-hidden rounded-r-full bg-stone-100/60">
+          {isLong && (
+            <div
+              className={`h-full rounded-r-full ${barFill}`}
+              style={{
+                width: `${barHalfPct}%`,
+                minWidth: absPct > 0.01 ? '2px' : '0px',
+                transition: 'width 200ms ease-out',
+                backgroundImage: stripeGradient,
+              }}
+            />
+          )}
+        </div>
       </div>
     </div>
   )
@@ -957,6 +991,7 @@ export default function HoldingsPageV2() {
                     sectorAlloc={riskDash.sector_allocation ?? riskDash.sector_exposure}
                     portfolioNlv={heroMetrics.portfolioValue}
                     isEn={isEn}
+                    t={t}
                   />
                 </div>
               )}
