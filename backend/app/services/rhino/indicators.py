@@ -134,7 +134,8 @@ def compute_zones(
         return []
 
     atr20 = compute_atr(bars, 20) or (last_price * 0.02)
-    half_width = max(last_price * 0.008, atr20 * 0.5)
+    # Narrower zones: ~0.3 ATR half-width for tighter visual density
+    half_width = max(last_price * 0.004, atr20 * 0.3)
     zones: list[dict] = []
 
     def _add(

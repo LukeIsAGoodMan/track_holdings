@@ -496,6 +496,7 @@ export interface AnalysisPriceZone {
   sources:         string[]
   zone_type?:      string   // pivot | MA | consolidation | breakout
   validity_days?:  number   // how long the level has held
+  distance_pct?:   number   // % distance from current price (signed)
 }
 
 export interface AnalysisTechnical {
@@ -579,8 +580,10 @@ export interface AnalysisChart {
   sma30:              { date: string; value: number }[]
   sma100:             { date: string; value: number }[]
   sma200:             { date: string; value: number }[]
-  support_zones:      AnalysisPriceZone[]
-  resistance_zones:   AnalysisPriceZone[]
+  support_zones:      AnalysisPriceZone[]     // primary: chart-safe, filtered
+  resistance_zones:   AnalysisPriceZone[]     // primary: chart-safe, filtered
+  reference_support?:  AnalysisPriceZone[]    // far/weak levels, excluded from domain
+  reference_resistance?: AnalysisPriceZone[]  // far/weak levels, excluded from domain
   current_price:      number
   analysis_close:     number
   reversal_line_up?:  ReversalLineData | null

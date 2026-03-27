@@ -128,6 +128,8 @@ async def analyze(symbol: str, lang: str = "en") -> dict:
         "sma200": sma200_aligned,
         "support_zones": technical["support_zones"],
         "resistance_zones": technical["resistance_zones"],
+        "reference_support": technical.get("reference_support", []),
+        "reference_resistance": technical.get("reference_resistance", []),
         "current_price": float(price),
         "analysis_close": float(price),
         "reversal_line_up": battle_report.get("playbook", {}).get("reversal_line_up"),
