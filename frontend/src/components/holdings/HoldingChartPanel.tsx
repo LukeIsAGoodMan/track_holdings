@@ -2,14 +2,14 @@
  * HoldingChartPanel — right-side slide-over for quick holding inspection.
  *
  * Tab semantics:
- *   Intraday — same-day 5-min line (from intraday_5min)
- *   1D       — 6-month daily line (from eod_light)
- *   5D       — 1-year line, 5-trading-day bins (from eod_light)
- *   1M       — 5-year line, monthly bins (from eod_light)
+ *   Intraday — same-day 5-min line (filtered to market-session date)
+ *   1D       — 6-month daily line
+ *   5D       — 1-year line, 5-trading-day bins
+ *   1M       — 5-year line, monthly bins
  *
- * All views are line charts — no candlesticks.
- * All data transformations happen on the frontend from one API response.
- * Auto-refreshes every 5 min while open (handled by useHoldingChartPanel hook).
+ * All views are line charts with time-scaled XAxis (epoch ms).
+ * Price summary shows view-based period return (last - first), not daily change.
+ * Auto-refreshes every 5 min while open.
  */
 import { useMemo } from 'react'
 import {
@@ -24,7 +24,10 @@ import {
   buildSixMonthDailySeries,
   buildOneYear5DBinnedSeries,
   buildFiveYearMonthlySeries,
-  getLatestPriceSummary,
+  getPeriodReturn,
+  fmtTickIntraday,
+  fmtTickDate,
+  fmtTickMonthly,
   type ChartPoint,
 } from './chartTransforms'
 
@@ -65,17 +68,37 @@ const VIEW_TABS: { key: ChartView; en: string; zh: string }[] = [
 
 // ── Tooltip ──────────────────────────────────────────────────────────────────
 
-function SimpleTooltip({ active, payload, label }: {
-  active?: boolean; payload?: Array<{ payload: ChartPoint }>; label?: string
+function SimpleTooltip({ active, payload }: {
+  active?: boolean; payload?: Array<{ payload: ChartPoint }>
 }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
   return (
     <div className="rounded-v2-md px-3 py-2 tnum text-xs" style={{ backgroundColor: 'rgba(255,255,255,0.96)', border: '1px solid rgba(0,0,0,0.06)' }}>
-      <div className="text-stone-400 mb-0.5" style={{ fontSize: '10px' }}>{label}</div>
+      <div className="text-stone-400 mb-0.5" style={{ fontSize: '10px' }}>{d.displayLabel}</div>
       <div className="text-stone-800 font-medium">{fmtPrice(d.close)}</div>
     </div>
   )
+}
+
+// ── Tick formatters per view ─────────────────────────────────────────────────
+
+function getTickFormatter(view: ChartView): (ts: number) => string {
+  switch (view) {
+    case 'Intraday': return fmtTickIntraday
+    case '1D':       return fmtTickDate
+    case '5D':       return fmtTickDate
+    case '1M':       return fmtTickMonthly
+  }
+}
+
+function getTickCount(view: ChartView): number {
+  switch (view) {
+    case 'Intraday': return 6
+    case '1D':       return 5
+    case '5D':       return 5
+    case '1M':       return 5
+  }
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -87,7 +110,6 @@ export default function HoldingChartPanel({
   const { lang } = useLanguage()
   const isEn = lang !== 'zh'
 
-  // Build chart data based on active view — no network request on switch
   const chartData = useMemo<ChartPoint[]>(() => {
     switch (view) {
       case 'Intraday': return buildIntradaySeries(intraday5min)
@@ -97,39 +119,26 @@ export default function HoldingChartPanel({
     }
   }, [view, intraday5min, eodLight])
 
-  // Price summary — latest price + daily change
-  const priceSummary = useMemo(
-    () => getLatestPriceSummary(intraday5min, eodLight),
-    [intraday5min, eodLight],
-  )
-
-  // X-axis tick interval — adaptive to dataset size
-  const tickInterval = useMemo(() => {
-    const len = chartData.length
-    if (len <= 10) return 0
-    if (view === '1M') return Math.max(0, Math.floor(len / 5))  // ~5 year labels
-    if (view === '5D') return Math.max(0, Math.floor(len / 6))
-    if (view === '1D') return Math.max(0, Math.floor(len / 6))
-    return Math.max(0, Math.floor(len / 8))  // Intraday
-  }, [chartData.length, view])
+  // View-based period return: change = last - first of visible series
+  const periodReturn = useMemo(() => getPeriodReturn(chartData), [chartData])
 
   const hasData = chartData.length > 0
   const isLineUp = hasData && chartData[chartData.length - 1].close >= chartData[0].close
   const strokeColor = isLineUp ? '#4a9a6b' : '#c05c56'
 
-  // Change color
-  const changeColor = priceSummary.change != null
-    ? priceSummary.change > 0 ? 'text-emerald-600' : priceSummary.change < 0 ? 'text-rose-500' : 'text-stone-500'
+  const changeColor = periodReturn.change != null
+    ? periodReturn.change > 0 ? 'text-emerald-600' : periodReturn.change < 0 ? 'text-rose-500' : 'text-stone-500'
     : ''
+
+  const tickFormatter = getTickFormatter(view)
+  const tickCount = getTickCount(view)
 
   if (!open) return null
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-[59]" onClick={onClose} />
 
-      {/* Panel */}
       <div
         className="fixed top-0 right-0 h-full z-[60] bg-white border-l border-stone-200 shadow-lg flex flex-col"
         style={{ width: 'min(480px, 90vw)' }}
@@ -148,7 +157,7 @@ export default function HoldingChartPanel({
           </button>
         </div>
 
-        {/* View tabs */}
+        {/* Tabs */}
         <div className="flex items-center gap-1 px-5 py-3">
           {VIEW_TABS.map(tab => (
             <button
@@ -166,7 +175,7 @@ export default function HoldingChartPanel({
           ))}
         </div>
 
-        {/* Chart area — locked height range */}
+        {/* Chart area */}
         <div className="px-4">
           {status === 'loading' && (
             <div className="h-[260px] bg-stone-50 rounded-v2-lg ds-shimmer" />
@@ -194,10 +203,15 @@ export default function HoldingChartPanel({
                   </linearGradient>
                 </defs>
                 <XAxis
-                  dataKey="label"
+                  dataKey="ts"
+                  type="number"
+                  scale="time"
+                  domain={['dataMin', 'dataMax']}
                   tick={{ fill: '#a8a29e', fontSize: 9 }}
-                  tickLine={false} axisLine={false}
-                  interval={tickInterval}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={tickFormatter}
+                  tickCount={tickCount}
                 />
                 <YAxis
                   domain={['auto', 'auto']}
@@ -222,27 +236,26 @@ export default function HoldingChartPanel({
           )}
         </div>
 
-        {/* Price summary block */}
+        {/* Price summary — view-based period return */}
         {status === 'ready' && (
           <div className="px-5 pt-4 pb-3">
             <div className="text-2xl font-semibold text-stone-800 tnum">
-              {fmtPrice(priceSummary.price)}
+              {fmtPrice(periodReturn.price)}
             </div>
-            {priceSummary.change != null && priceSummary.changePct != null && (
+            {periodReturn.change != null && periodReturn.changePct != null && (
               <div className={`text-sm font-medium tnum mt-1 ${changeColor}`}>
-                {fmtSignedPrice(priceSummary.change)}
+                {fmtSignedPrice(periodReturn.change)}
                 <span className="ml-2">
-                  ({priceSummary.changePct >= 0 ? '+' : ''}{priceSummary.changePct.toFixed(2)}%)
+                  ({periodReturn.changePct >= 0 ? '+' : ''}{periodReturn.changePct.toFixed(2)}%)
                 </span>
               </div>
             )}
           </div>
         )}
 
-        {/* Spacer pushes footer down */}
         <div className="flex-1" />
 
-        {/* Footer meta */}
+        {/* Footer */}
         <div className="px-5 py-2 border-t border-stone-100 text-[10px] text-stone-400">
           {isEn ? 'Auto-refreshes every 5 min while open' : '面板打开时每5分钟自动刷新'}
         </div>

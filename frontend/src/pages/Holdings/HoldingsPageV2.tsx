@@ -301,7 +301,7 @@ function deriveOptionMarketValue(leg: OptionLeg): number | null {
 }
 
 // ── Holdings Table (V2) ──────────────────────────────────────────────────────
-function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
+function HoldingsTableV2({ groups, onOpenChart }: { groups: HoldingGroup[]; onOpenChart?: (symbol: string) => void }) {
   const { t }             = useLanguage()
   const { openTradeEntry, openPriceAlerts } = useSidebar()
   const { lastSpotChangePct } = useWebSocket()
@@ -354,6 +354,20 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
                 <div className="flex items-center gap-2 text-left min-w-0">
                   <span className={`text-stone-400 text-xs shrink-0 ${isOpen ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
                   <span className="text-base font-semibold text-stone-800 truncate">{group.symbol}</span>
+                  {onOpenChart && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onOpenChart(group.symbol) }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onOpenChart(group.symbol) } }}
+                      className="shrink-0 text-stone-300 hover:text-stone-600 cursor-pointer"
+                      title={group.symbol}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                      </svg>
+                    </span>
+                  )}
                   {hasOptions && (
                     <span className={`text-xs px-1.5 py-0.5 rounded-full border shrink-0 ${strategyBadgeClass(group.strategy_type)}`}>
                       {group.strategy_label}
@@ -1018,7 +1032,7 @@ export default function HoldingsPageV2() {
             ))}
           </div>
         ) : (
-          <HoldingsTableV2 groups={holdings} />
+          <HoldingsTableV2 groups={holdings} onOpenChart={chartPanel.openPanel} />
         )
       )}
 
