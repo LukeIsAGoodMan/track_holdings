@@ -128,59 +128,101 @@ def compute_zones(
     hvn_levels: list[float],
     last_price: float,
     sma200: float | None,
+    sma30: float | None = None,
+    sma100: float | None = None,
 ) -> list[dict]:
-    """Returns list of zone dicts with center/lower/upper/strength/sources."""
+    """
+    Generate S/R zones via candidate collection → clustering → scoring.
+
+    1. Collect ALL candidates: swing pivots, volume profile, SMA30/100/200
+    2. Cluster nearby candidates (within ATR-based threshold) into zones
+    3. Multi-source zones get significant score boost
+    4. Returns list of zone dicts sorted by strength descending
+    """
     if len(bars) < 21:
         return []
 
     atr20 = compute_atr(bars, 20) or (last_price * 0.02)
-    # Narrower zones: ~0.3 ATR half-width for tighter visual density
     half_width = max(last_price * 0.004, atr20 * 0.3)
-    zones: list[dict] = []
+    cluster_threshold = max(last_price * 0.01, atr20 * 0.6)
 
-    def _add(
-        center: float, hw: float, strength: float,
-        sources: list[str], zone_type: str = "consolidation",
-        validity_days: int = 0,
-    ):
-        zones.append({
-            "center": center,
-            "lower": center - hw,
-            "upper": center + hw,
-            "strength": strength,
-            "sources": sources,
-            "zone_type": zone_type,
-            "validity_days": validity_days,
-        })
+    # ── Step 1: Collect all raw candidate levels ──────────────────────────
+    candidates: list[dict] = []
 
+    # Volume profile: POC + HVN
     if poc is not None:
-        _add(poc, half_width, 0.9, ["volume_profile"], zone_type="consolidation")
-
+        candidates.append({"price": poc, "source": "volume_profile", "base_strength": 0.9, "zone_type": "consolidation", "validity_days": 0})
     for lvl in hvn_levels:
-        if poc is not None and abs(lvl - poc) < half_width:
+        if poc is not None and abs(lvl - poc) < cluster_threshold:
             continue
-        _add(lvl, half_width, 0.75, ["volume_profile"], zone_type="consolidation")
+        candidates.append({"price": lvl, "source": "volume_profile", "base_strength": 0.75, "zone_type": "consolidation", "validity_days": 0})
 
+    # Moving averages
+    if sma30 is not None:
+        candidates.append({"price": sma30, "source": "sma30", "base_strength": 0.55, "zone_type": "MA", "validity_days": 0})
+    if sma100 is not None:
+        candidates.append({"price": sma100, "source": "sma100", "base_strength": 0.6, "zone_type": "MA", "validity_days": 0})
     if sma200 is not None:
-        _add(sma200, half_width * 0.8, 0.6, ["sma200"], zone_type="MA")
+        candidates.append({"price": sma200, "source": "sma200", "base_strength": 0.65, "zone_type": "MA", "validity_days": 0})
 
-    # Swing pivots from last 60 bars
-    pivots = _find_swing_pivots(bars[-60:] if len(bars) >= 60 else bars)
+    # Swing pivots
+    pivots = _find_swing_pivots(bars[-90:] if len(bars) >= 90 else bars)
     for p in pivots:
-        if any(abs(z["center"] - p["price"]) < half_width for z in zones):
-            continue
         source = "pivot_high" if p["type"] == "high" else "pivot_low"
         strength = min(p["touches"] / 4, 1.0) * 0.7
-        _add(
-            p["price"], half_width, strength, [source],
-            zone_type="pivot", validity_days=p.get("validity_days", 0),
-        )
+        candidates.append({"price": p["price"], "source": source, "base_strength": strength, "zone_type": "pivot", "validity_days": p.get("validity_days", 0)})
+
+    # ── Step 2: Cluster nearby candidates ─────────────────────────────────
+    candidates.sort(key=lambda c: c["price"])
+    clusters: list[list[dict]] = []
+    for cand in candidates:
+        merged = False
+        for cluster in clusters:
+            cluster_center = sum(c["price"] for c in cluster) / len(cluster)
+            if abs(cand["price"] - cluster_center) < cluster_threshold:
+                cluster.append(cand)
+                merged = True
+                break
+        if not merged:
+            clusters.append([cand])
+
+    # ── Step 3: Build zones from clusters ─────────────────────────────────
+    zones: list[dict] = []
+    for cluster in clusters:
+        center = sum(c["price"] for c in cluster) / len(cluster)
+        sources = list({c["source"] for c in cluster})
+        best_strength = max(c["base_strength"] for c in cluster)
+        best_validity = max(c.get("validity_days", 0) for c in cluster)
+
+        # Multi-source confluence bonus
+        multi_bonus = min(len(sources) - 1, 3) * 0.12  # +0.12 per additional source, cap at 3
+        strength = min(best_strength + multi_bonus, 1.0)
+
+        # Zone type: prefer volume_profile > pivot > MA
+        zone_type = "consolidation"
+        if any(s.startswith("pivot") for s in sources):
+            zone_type = "pivot"
+        if "volume_profile" in sources:
+            zone_type = "consolidation"
+        if all(s.startswith("sma") for s in sources):
+            zone_type = "MA"
+
+        zones.append({
+            "center": round(center, 4),
+            "lower": round(center - half_width, 4),
+            "upper": round(center + half_width, 4),
+            "strength": round(strength, 3),
+            "sources": sources,
+            "zone_type": zone_type,
+            "validity_days": best_validity,
+        })
 
     zones.sort(key=lambda z: z["strength"], reverse=True)
     return zones
 
 
 def _find_swing_pivots(bars: list[dict]) -> list[dict]:
+    """Detect swing highs/lows with 5-bar confirmation and consolidation merging."""
     if len(bars) < 5:
         return []
     tolerance = bars[-1]["close"] * 0.005

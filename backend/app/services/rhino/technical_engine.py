@@ -27,13 +27,19 @@ def _score_zone(zone: dict, last_price: float, atr: float) -> float:
     dist_pct = abs(zone["center"] - last_price) / last_price if last_price > 0 else 0
     proximity_bonus = max(0, 1.0 - dist_pct * 5)  # full bonus within 20%, decays
 
-    # Volume profile and multi-source bonus
+    # Volume profile, MA confluence, and multi-source bonus
     source_bonus = 0.0
     sources = zone.get("sources", [])
     if "volume_profile" in sources:
         source_bonus += 0.15
-    if len(sources) > 1:
+    if any(s.startswith("sma") for s in sources):
         source_bonus += 0.1
+    # Significant boost for multi-source confluence (the core signal)
+    n_sources = len(sources)
+    if n_sources >= 3:
+        source_bonus += 0.25
+    elif n_sources == 2:
+        source_bonus += 0.15
 
     # Validity bonus: longer-held levels are more significant
     validity = zone.get("validity_days", 0)
@@ -151,7 +157,7 @@ def build_technical(bars: list[dict], last_price: float) -> dict:
     )
 
     poc, hvn_levels, _ = compute_volume_profile(bars)
-    all_zones = compute_zones(bars, poc, hvn_levels, last_price, sma200)
+    all_zones = compute_zones(bars, poc, hvn_levels, last_price, sma200, sma30=sma30, sma100=sma100)
 
     # Filter into primary (chart-safe) and reference (far/weak)
     p_sup, p_res, r_sup, r_res = _filter_and_split_zones(
