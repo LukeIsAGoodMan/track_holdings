@@ -135,17 +135,22 @@ function CustomCell(props: Record<string, unknown>) {
 }
 
 // ── Treemap tooltip ──────────────────────────────────────────────────────────
-function TreemapTooltip({ active, payload }: { active?: boolean; payload?: readonly unknown[] }) {
+function TreemapTooltip({ active, payload, periodLabel, t }: {
+  active?: boolean; payload?: readonly unknown[]; periodLabel: string
+  t: (key: string) => string
+}) {
   if (!active || !payload?.length) return null
-  const item     = (payload[0] ?? {}) as Record<string, unknown>
-  const name     = (typeof item.name    === 'string') ? item.name    : String(item.name ?? '?')
-  const perf     = (typeof item.perf    === 'number' && isFinite(item.perf))    ? item.perf    : null
-  const rawPerf  = (typeof item.rawPerf === 'number' && isFinite(item.rawPerf)) ? item.rawPerf : null
-  const exposure = (typeof item.exposure === 'number') ? item.exposure : null
-  const isShort  = (item.isShort === true)
+  const item      = (payload[0] ?? {}) as Record<string, unknown>
+  const name      = (typeof item.name     === 'string') ? item.name     : String(item.name ?? '?')
+  const perf      = (typeof item.perf     === 'number' && isFinite(item.perf))     ? item.perf     : null
+  const rawPerf   = (typeof item.rawPerf  === 'number' && isFinite(item.rawPerf))  ? item.rawPerf  : null
+  const perf1d    = (typeof item.perf1d   === 'number' && isFinite(item.perf1d as number))   ? item.perf1d as number   : null
+  const rawPerf1d = (typeof item.rawPerf1d === 'number' && isFinite(item.rawPerf1d as number)) ? item.rawPerf1d as number : null
+  const exposure  = (typeof item.exposure === 'number') ? item.exposure : null
+  const isShort   = (item.isShort === true)
 
   return (
-    <div className="bg-v2-surface border border-v2-border rounded-v2-md shadow-v2-lg px-3 py-2.5 text-xs min-w-[165px]">
+    <div className="bg-v2-surface border border-v2-border rounded-v2-md shadow-v2-lg px-3 py-2.5 text-xs min-w-[175px]">
       <div className="font-bold text-v2-text-1 text-sm mb-1.5 flex items-center gap-1.5">
         {name || '?'}
         {isShort && (
@@ -154,11 +159,11 @@ function TreemapTooltip({ active, payload }: { active?: boolean; payload?: reado
       </div>
       <div className="space-y-0.5 text-v2-text-3">
         {exposure != null && (
-          <div>Notional: <span className="font-bold text-v2-text-1">{fmtUSD(String(exposure))}</span></div>
+          <div>{t('tm_notional')}: <span className="font-bold text-v2-text-1">{fmtUSD(String(exposure))}</span></div>
         )}
         {rawPerf != null && (
           <div>
-            Underlying:{' '}
+            {t('tm_underlying')} ({periodLabel}):{' '}
             <span className={`font-bold ${rawPerf >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
               {rawPerf >= 0 ? '+' : ''}{rawPerf.toFixed(2)}%
             </span>
@@ -166,9 +171,18 @@ function TreemapTooltip({ active, payload }: { active?: boolean; payload?: reado
         )}
         {perf != null && (
           <div className="border-t border-v2-border pt-0.5 mt-0.5">
-            P&L direction:{' '}
+            {t('tm_pnl_dir')} ({periodLabel}):{' '}
             <span className={`font-bold ${perf >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
               {perf >= 0 ? '+' : ''}{perf.toFixed(2)}%
+            </span>
+          </div>
+        )}
+        {/* 1D comparison — shown when viewing non-1D periods */}
+        {periodLabel !== '1D' && periodLabel !== '1日' && rawPerf1d != null && (
+          <div className="text-v2-text-3 pt-0.5">
+            {t('tm_1d_compare')}:{' '}
+            <span className={`font-medium ${rawPerf1d >= 0 ? 'text-v2-positive' : 'text-v2-negative'}`}>
+              {rawPerf1d >= 0 ? '+' : ''}{rawPerf1d.toFixed(2)}%
             </span>
           </div>
         )}
@@ -784,24 +798,29 @@ export default function HoldingsPageV2() {
       })
       .map((g) => {
         const isShort = g.is_short === true
+
+        // Always compute 1D for tooltip cross-reference
+        const wsChangePct = lastSpotChangePct?.[g.symbol] != null ? parseFloat(lastSpotChangePct![g.symbol]) : null
+        const wsEffective1d = wsChangePct != null ? wsChangePct * (isShort ? -1 : 1) : null
+        const backendPerf1d = safeFloat(g.effective_perf_1d)
+        const backendRaw1d  = safeFloat(g.perf_1d)
+        const perf1d    = wsEffective1d ?? backendPerf1d ?? 0
+        const rawPerf1d = wsChangePct ?? backendRaw1d ?? 0
+
         let perf: number, rawPerf: number
         if (period === '1d') {
-          const wsChangePct = lastSpotChangePct?.[g.symbol] != null ? parseFloat(lastSpotChangePct![g.symbol]) : null
-          const wsEffective = wsChangePct != null ? wsChangePct * (isShort ? -1 : 1) : null
-          const backendPerf = safeFloat(g.effective_perf_1d)
-          const backendRaw  = safeFloat(g.perf_1d)
-          perf    = wsEffective ?? backendPerf ?? 0
-          rawPerf = wsChangePct ?? backendRaw ?? 0
+          perf    = perf1d
+          rawPerf = rawPerf1d
         } else {
           const staticPerf = getEffectivePerf(g, period)
           const staticRaw  = getRawPerf(g, period)
-          const wsChangePct = lastSpotChangePct?.[g.symbol] != null ? parseFloat(lastSpotChangePct![g.symbol]) : null
           perf    = staticPerf != null ? staticPerf : (wsChangePct != null ? wsChangePct * (isShort ? -1 : 1) : 0)
           rawPerf = staticRaw  != null ? staticRaw  : (wsChangePct ?? 0)
         }
         return {
           name: g.symbol, size: Math.abs(safeFloat(g.delta_adjusted_exposure) ?? 0),
-          perf, rawPerf, exposure: safeFloat(g.delta_adjusted_exposure) ?? 0, isShort,
+          perf, rawPerf, perf1d, rawPerf1d,
+          exposure: safeFloat(g.delta_adjusted_exposure) ?? 0, isShort,
         }
       })
       .filter((d) => d.size > 0 && d.name)
@@ -876,20 +895,45 @@ export default function HoldingsPageV2() {
             {/* ── NLV Chart — pure curve, no container ───────── */}
             <PortfolioHistoryChart portfolioId={selectedPortfolioId} />
 
-            {/* ── Treemap — raw surface, no card wrapper ─────── */}
-            {treemapData.length === 0 ? (
-              <div className="h-72 flex items-center justify-center text-v2-text-3 text-xs">
-                {t('no_positions_short')}
+            {/* ── Treemap — period selector + heatmap ─────── */}
+            <div>
+              {/* Period selector — V2 pill style */}
+              <div className="flex items-center gap-1 mb-3">
+                {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriod(p)}
+                    className={`px-3 py-1 rounded-v2-md text-xs font-medium cursor-pointer ${
+                      period === p
+                        ? 'bg-stone-800 text-white'
+                        : 'text-stone-500 hover:text-stone-800 hover:bg-stone-100'
+                    }`}
+                    style={{ transition: 'background-color 150ms ease-out, color 150ms ease-out' }}
+                  >
+                    {PERIOD_LABELS[p]?.[isEn ? 'en' : 'zh'] ?? p}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <div className="rounded-v2-lg overflow-hidden">
-                <ResponsiveContainer width="100%" height={340}>
-                  <Treemap data={treemapData} dataKey="size" aspectRatio={4/3} stroke="#fff" content={CustomCell}>
-                    <Tooltip content={TreemapTooltip} />
-                  </Treemap>
-                </ResponsiveContainer>
-              </div>
-            )}
+
+              {treemapData.length === 0 ? (
+                <div className="h-72 flex items-center justify-center text-v2-text-3 text-xs">
+                  {t('no_positions_short')}
+                </div>
+              ) : (
+                <div className="rounded-v2-lg overflow-hidden">
+                  <ResponsiveContainer width="100%" height={340}>
+                    <Treemap data={treemapData} dataKey="size" aspectRatio={4/3} stroke="#fff" content={CustomCell}>
+                      <Tooltip content={
+                        <TreemapTooltip
+                          periodLabel={PERIOD_LABELS[period]?.[isEn ? 'en' : 'zh'] ?? period}
+                          t={t}
+                        />
+                      } />
+                    </Treemap>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
 
             {/* ── Divider + scroll hint ───────────────────────── */}
             <div className="pt-6 pb-2">

@@ -65,6 +65,10 @@ export const TRANSLATIONS = {
   sector_exposure:  { en: 'Sector Exposure', zh: '行业敞口' },
   opt_mkt_tooltip:  { en: 'Position market value = contracts × price × 100',
                       zh: '持仓市值 = 合约数 × 价格 × 100' },
+  tm_notional:      { en: 'Notional',         zh: '名义敞口' },
+  tm_underlying:    { en: 'Underlying',       zh: '标的变动' },
+  tm_pnl_dir:       { en: 'P&L direction',    zh: '盈亏方向' },
+  tm_1d_compare:    { en: '1D',               zh: '1日' },
 
   // ── Risk dashboard ───────────────────────────────────────────────────────
   risk_title:      { en: 'Risk Dashboard',                zh: '风险仪表盘' },
