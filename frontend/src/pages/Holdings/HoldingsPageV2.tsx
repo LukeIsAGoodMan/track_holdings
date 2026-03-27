@@ -360,10 +360,11 @@ function HoldingsTableV2({ groups, onOpenChart }: { groups: HoldingGroup[]; onOp
                       tabIndex={0}
                       onClick={(e) => { e.stopPropagation(); onOpenChart(group.symbol) }}
                       onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onOpenChart(group.symbol) } }}
-                      className="shrink-0 text-stone-300 hover:text-stone-600 cursor-pointer"
+                      className="shrink-0 text-stone-400 hover:text-emerald-600 cursor-pointer p-1 rounded-v2-sm hover:bg-stone-100"
                       title={group.symbol}
+                      style={{ transition: 'color 150ms ease-out, background-color 150ms ease-out' }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
                       </svg>
                     </span>

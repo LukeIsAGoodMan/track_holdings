@@ -4,52 +4,63 @@
  * All transformations are deterministic, frontend-only, and assume
  * ascending chronological input from the backend.
  *
- * Each ChartPoint carries:
- *  - ts: epoch milliseconds (for time-scaled XAxis)
- *  - displayLabel: human-readable string (for tick/tooltip formatting)
- *  - close: price value
- *
- * Date anchoring: uses the market-session date implied by the data itself
- * (extracted from the last bar's date field), not the local machine clock.
+ * Timezone: all timestamps are interpreted as US/Eastern (market exchange time)
+ * using fixed -05:00 offset. No heavy timezone library required.
  */
 import type { IntradayBar, EodLightBar } from '@/types'
 
 export interface ChartPoint {
-  ts: number           // epoch ms — used as XAxis dataKey for time scale
-  displayLabel: string // human-readable label for tick/tooltip
+  ts: number           // epoch ms — XAxis dataKey (time scale)
+  displayLabel: string // human-readable for tick/tooltip
   close: number
 }
 
+// ── US/Eastern fixed offset for market-session anchoring ─────────────────────
+const ET_OFFSET = '-05:00'
+
+/** "2026-03-27 09:35:00" → epoch ms in US/Eastern */
+function parseDateTime(s: string): number {
+  const parts = s.split(' ')
+  if (parts.length < 2) return parseDate(s)
+  const ms = Date.parse(`${parts[0]}T${parts[1]}${ET_OFFSET}`)
+  return isNaN(ms) ? 0 : ms
+}
+
+/** "2026-03-27" → epoch ms (midnight US/Eastern) */
+function parseDate(s: string): number {
+  const ms = Date.parse(`${s}T00:00:00${ET_OFFSET}`)
+  return isNaN(ms) ? 0 : ms
+}
+
+// ── Series builders ─────────────────────────────────────────────────────────
+
 /**
  * Intraday: same-day 5-min line.
- * Filters to the market-session date of the LAST bar to avoid multi-day mixing.
+ * Filters to the market-session date of the LAST bar (exchange-anchored).
  */
 export function buildIntradaySeries(bars: IntradayBar[]): ChartPoint[] {
   if (bars.length === 0) return []
-
-  // Determine the session date from the last bar (market-exchange anchored)
-  const lastDate = bars[bars.length - 1].date.slice(0, 10)  // "YYYY-MM-DD"
+  const lastDate = bars[bars.length - 1].date.slice(0, 10)
 
   return bars
     .filter(b => b.close != null && b.date.startsWith(lastDate))
     .map(b => ({
       ts: parseDateTime(b.date),
-      displayLabel: (b.date.split(' ')[1] ?? b.date).slice(0, 5),  // "09:35"
+      displayLabel: (b.date.split(' ')[1] ?? b.date).slice(0, 5),
       close: b.close!,
     }))
 }
 
-/** 1D tab: 6-month daily line from EOD light */
+/** 1D tab: 6-month daily line */
 export function buildSixMonthDailySeries(bars: EodLightBar[]): ChartPoint[] {
-  const slice = bars.slice(-130)
-  return slice.map(b => ({
+  return bars.slice(-130).map(b => ({
     ts: parseDate(b.date),
     displayLabel: fmtShortDate(b.date),
     close: b.close,
   }))
 }
 
-/** 5D tab: 1-year trend, 5-trading-day bins (last close per bucket) */
+/** 5D tab: 1-year trend, 5-trading-day bins */
 export function buildOneYear5DBinnedSeries(bars: EodLightBar[]): ChartPoint[] {
   const slice = bars.slice(-252)
   if (slice.length === 0) return []
@@ -60,14 +71,17 @@ export function buildOneYear5DBinnedSeries(bars: EodLightBar[]): ChartPoint[] {
     const last = bucket[bucket.length - 1]
     points.push({
       ts: parseDate(last.date),
-      displayLabel: fmtShortDate(last.date),
+      displayLabel: fmtShortDateWithYear(last.date),
       close: last.close,
     })
   }
   return points
 }
 
-/** 1M tab: 5-year trend, monthly bins (last close per calendar month) */
+/**
+ * 1M tab: 5-year trend, monthly bins.
+ * Order-safe: always keeps the latest-dated bar per month regardless of input order.
+ */
 export function buildFiveYearMonthlySeries(bars: EodLightBar[]): ChartPoint[] {
   const slice = bars.slice(-1260)
   if (slice.length === 0) return []
@@ -75,7 +89,10 @@ export function buildFiveYearMonthlySeries(bars: EodLightBar[]): ChartPoint[] {
   const monthMap = new Map<string, EodLightBar>()
   for (const b of slice) {
     const ym = b.date.slice(0, 7)
-    monthMap.set(ym, b)
+    const existing = monthMap.get(ym)
+    if (!existing || existing.date < b.date) {
+      monthMap.set(ym, b)
+    }
   }
 
   return Array.from(monthMap.entries())
@@ -87,42 +104,93 @@ export function buildFiveYearMonthlySeries(bars: EodLightBar[]): ChartPoint[] {
     }))
 }
 
+// ── Return computation ──────────────────────────────────────────────────────
+
 /**
- * View-based period return: change = last - first, changePct = change / first.
- * Uses the chart series itself (not raw EOD bars) so it reflects what the user sees.
+ * Intraday return uses previous close (market convention).
+ * prevClose = second-to-last EOD bar close.
+ * Falls back to session return (first intraday point) if < 2 EOD bars.
  */
+export function getIntradayReturn(
+  intradaySeries: ChartPoint[],
+  eod: EodLightBar[],
+): { price: number | null; prevClose: number | null; change: number | null; changePct: number | null } {
+  if (intradaySeries.length === 0) return { price: null, prevClose: null, change: null, changePct: null }
+
+  const price = intradaySeries[intradaySeries.length - 1].close
+  let prevClose: number | null = null
+
+  // Previous close = second-to-last EOD bar (the day before today's session)
+  if (eod.length >= 2) {
+    prevClose = eod[eod.length - 2].close
+  }
+
+  if (prevClose != null && prevClose !== 0) {
+    const change = price - prevClose
+    const changePct = (change / Math.abs(prevClose)) * 100
+    return { price, prevClose, change, changePct }
+  }
+
+  // Fallback: session return from first intraday point
+  if (intradaySeries.length >= 2) {
+    const first = intradaySeries[0].close
+    if (first !== 0) {
+      const change = price - first
+      return { price, prevClose: first, change, changePct: (change / Math.abs(first)) * 100 }
+    }
+  }
+
+  return { price, prevClose: null, change: null, changePct: null }
+}
+
+/** Period return for non-intraday views: change = last - first of visible series */
 export function getPeriodReturn(
   series: ChartPoint[],
 ): { price: number | null; change: number | null; changePct: number | null } {
   if (series.length === 0) return { price: null, change: null, changePct: null }
-
   const price = series[series.length - 1].close
   if (series.length < 2) return { price, change: null, changePct: null }
-
   const first = series[0].close
   if (first === 0) return { price, change: null, changePct: null }
-
   const change = price - first
-  const changePct = (change / Math.abs(first)) * 100
-  return { price, change, changePct }
+  return { price, change, changePct: (change / Math.abs(first)) * 100 }
 }
 
-// ── Date parsing helpers ────────────────────────────────────────────────────
+// ── Tick formatters ─────────────────────────────────────────────────────────
 
-/** "2026-03-27 09:35:00" → epoch ms (parsed as local, matching market session) */
-function parseDateTime(s: string): number {
-  // Replace space with T for Date constructor compatibility
-  const d = new Date(s.replace(' ', 'T'))
-  return isNaN(d.getTime()) ? 0 : d.getTime()
+/** Intraday: "09:35" */
+export function fmtTickIntraday(ts: number): string {
+  // Reconstruct ET time from epoch
+  const d = new Date(ts)
+  const et = new Date(d.getTime() + d.getTimezoneOffset() * 60000 - 5 * 3600000)
+  return `${String(et.getHours()).padStart(2, '0')}:${String(et.getMinutes()).padStart(2, '0')}`
 }
 
-/** "2026-03-27" → epoch ms (midnight local) */
-function parseDate(s: string): number {
-  const d = new Date(s + 'T00:00:00')
-  return isNaN(d.getTime()) ? 0 : d.getTime()
+/** Daily/5D: "Mar 27" — add year for year-boundary clarity */
+export function fmtTickDate(ts: number): string {
+  const d = new Date(ts)
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`
 }
 
-// ── Format helpers ──────────────────────────────────────────────────────────
+/** 5D tick with year context at year boundaries */
+export function fmtTick5D(ts: number): string {
+  const d = new Date(ts)
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  // Show year at January
+  if (d.getUTCMonth() === 0) return `Jan '${String(d.getUTCFullYear()).slice(2)}`
+  return `${months[d.getUTCMonth()]} ${d.getUTCDate()}`
+}
+
+/** 1M: always year at January, short month otherwise */
+export function fmtTickMonthly(ts: number): string {
+  const d = new Date(ts)
+  if (d.getUTCMonth() === 0) return String(d.getUTCFullYear())
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return months[d.getUTCMonth()]
+}
+
+// ── Display label formatters ────────────────────────────────────────────────
 
 function fmtShortDate(dateStr: string): string {
   const parts = dateStr.split('-')
@@ -131,30 +199,17 @@ function fmtShortDate(dateStr: string): string {
   return `${months[parseInt(parts[1]) - 1] ?? ''} ${parseInt(parts[2])}`
 }
 
+/** "Mar 27, 2026" — includes year for cross-year disambiguation in 5D view */
+function fmtShortDateWithYear(dateStr: string): string {
+  const parts = dateStr.split('-')
+  if (parts.length < 3) return dateStr
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[parseInt(parts[1]) - 1] ?? ''} ${parseInt(parts[2])}, ${parts[0]}`
+}
+
 function fmtYearMonth(ym: string): string {
   const [year, month] = ym.split('-')
   if (month === '01') return year
   const months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return months[parseInt(month)] ?? ym
-}
-
-/** Format epoch ms → "09:35" for intraday ticks */
-export function fmtTickIntraday(ts: number): string {
-  const d = new Date(ts)
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-/** Format epoch ms → "Mar 27" for daily/5D ticks */
-export function fmtTickDate(ts: number): string {
-  const d = new Date(ts)
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return `${months[d.getMonth()]} ${d.getDate()}`
-}
-
-/** Format epoch ms → year at Jan, short month otherwise (for 1M sparse axis) */
-export function fmtTickMonthly(ts: number): string {
-  const d = new Date(ts)
-  if (d.getMonth() === 0) return String(d.getFullYear())
-  const months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  return months[d.getMonth() + 1] ?? ''
+  return `${months[parseInt(month)] ?? ym} '${year.slice(2)}`
 }

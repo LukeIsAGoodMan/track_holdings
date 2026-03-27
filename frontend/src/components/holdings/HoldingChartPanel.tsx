@@ -2,18 +2,18 @@
  * HoldingChartPanel — right-side slide-over for quick holding inspection.
  *
  * Tab semantics:
- *   Intraday — same-day 5-min line (filtered to market-session date)
- *   1D       — 6-month daily line
- *   5D       — 1-year line, 5-trading-day bins
- *   1M       — 5-year line, monthly bins
+ *   Intraday — same-day 5-min line, return vs previous close (market convention)
+ *   1D       — 6-month daily line, period return
+ *   5D       — 1-year line, 5-day bins, period return
+ *   1M       — 5-year line, monthly bins, period return
  *
- * All views are line charts with time-scaled XAxis (epoch ms).
- * Price summary shows view-based period return (last - first), not daily change.
+ * All timestamps interpreted as US/Eastern (market exchange time).
+ * Price summary: intraday uses prevClose-based return; other views use first-to-last.
  * Auto-refreshes every 5 min while open.
  */
 import { useMemo } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip,
+  AreaChart, Area, XAxis, YAxis, Tooltip, ReferenceLine,
   ResponsiveContainer,
 } from 'recharts'
 import { useLanguage } from '@/context/LanguageContext'
@@ -24,9 +24,11 @@ import {
   buildSixMonthDailySeries,
   buildOneYear5DBinnedSeries,
   buildFiveYearMonthlySeries,
+  getIntradayReturn,
   getPeriodReturn,
   fmtTickIntraday,
   fmtTickDate,
+  fmtTick5D,
   fmtTickMonthly,
   type ChartPoint,
 } from './chartTransforms'
@@ -81,13 +83,13 @@ function SimpleTooltip({ active, payload }: {
   )
 }
 
-// ── Tick formatters per view ─────────────────────────────────────────────────
+// ── Tick config per view ─────────────────────────────────────────────────────
 
 function getTickFormatter(view: ChartView): (ts: number) => string {
   switch (view) {
     case 'Intraday': return fmtTickIntraday
     case '1D':       return fmtTickDate
-    case '5D':       return fmtTickDate
+    case '5D':       return fmtTick5D
     case '1M':       return fmtTickMonthly
   }
 }
@@ -110,28 +112,44 @@ export default function HoldingChartPanel({
   const { lang } = useLanguage()
   const isEn = lang !== 'zh'
 
+  // Build series for current view
+  const intradaySeries = useMemo(() => buildIntradaySeries(intraday5min), [intraday5min])
+
   const chartData = useMemo<ChartPoint[]>(() => {
     switch (view) {
-      case 'Intraday': return buildIntradaySeries(intraday5min)
+      case 'Intraday': return intradaySeries
       case '1D':       return buildSixMonthDailySeries(eodLight)
       case '5D':       return buildOneYear5DBinnedSeries(eodLight)
       case '1M':       return buildFiveYearMonthlySeries(eodLight)
     }
-  }, [view, intraday5min, eodLight])
+  }, [view, intradaySeries, eodLight])
 
-  // View-based period return: change = last - first of visible series
+  // Intraday return: uses previous close (market convention)
+  const intradayReturn = useMemo(
+    () => getIntradayReturn(intradaySeries, eodLight),
+    [intradaySeries, eodLight],
+  )
+
+  // Non-intraday period return: last - first of visible series
   const periodReturn = useMemo(() => getPeriodReturn(chartData), [chartData])
 
+  // Select the correct return based on view
+  const displayReturn = view === 'Intraday' ? intradayReturn : periodReturn
+  const prevClose = view === 'Intraday' ? intradayReturn.prevClose : null
+
   const hasData = chartData.length > 0
-  const isLineUp = hasData && chartData[chartData.length - 1].close >= chartData[0].close
+  const isLineUp = displayReturn.change != null ? displayReturn.change >= 0 : (hasData && chartData[chartData.length - 1].close >= chartData[0].close)
   const strokeColor = isLineUp ? '#4a9a6b' : '#c05c56'
 
-  const changeColor = periodReturn.change != null
-    ? periodReturn.change > 0 ? 'text-emerald-600' : periodReturn.change < 0 ? 'text-rose-500' : 'text-stone-500'
+  const changeColor = displayReturn.change != null
+    ? displayReturn.change > 0 ? 'text-emerald-600' : displayReturn.change < 0 ? 'text-rose-500' : 'text-stone-500'
     : ''
 
   const tickFormatter = getTickFormatter(view)
   const tickCount = getTickCount(view)
+
+  // Valid prevClose for reference line: must be a real positive price, not 0
+  const showPrevCloseLine = view === 'Intraday' && prevClose != null && prevClose > 0 && hasData
 
   if (!open) return null
 
@@ -144,7 +162,7 @@ export default function HoldingChartPanel({
         style={{ width: 'min(480px, 90vw)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-stone-100 shrink-0">
           <div className="text-base font-semibold text-stone-800">{symbol ?? ''}</div>
           <button
             onClick={onClose}
@@ -158,7 +176,7 @@ export default function HoldingChartPanel({
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 px-5 py-3">
+        <div className="flex items-center gap-1 px-5 py-3 shrink-0">
           {VIEW_TABS.map(tab => (
             <button
               key={tab.key}
@@ -175,90 +193,99 @@ export default function HoldingChartPanel({
           ))}
         </div>
 
-        {/* Chart area */}
-        <div className="px-4">
-          {status === 'loading' && (
-            <div className="h-[260px] bg-stone-50 rounded-v2-lg ds-shimmer" />
-          )}
+        {/* Scrollable content area */}
+        <div className="flex-1 min-h-0 overflow-y-auto relative">
+          {/* Chart area — locked 260px */}
+          <div className="px-4">
+            {status === 'loading' && (
+              <div className="h-[260px] bg-stone-50 rounded-v2-lg ds-shimmer" />
+            )}
 
-          {status === 'error' && (
-            <div className="h-[260px] flex items-center justify-center text-stone-400 text-xs">
-              {isEn ? 'No chart data available' : '暂无图表数据'}
-            </div>
-          )}
+            {status === 'error' && (
+              <div className="h-[260px] flex items-center justify-center text-stone-400 text-xs">
+                {isEn ? 'No chart data available' : '暂无图表数据'}
+              </div>
+            )}
 
-          {status === 'ready' && !hasData && (
-            <div className="h-[260px] flex items-center justify-center text-stone-400 text-xs">
-              {isEn ? 'No chart data available' : '暂无图表数据'}
-            </div>
-          )}
+            {status === 'ready' && !hasData && (
+              <div className="h-[260px] flex items-center justify-center text-stone-400 text-xs">
+                {isEn ? 'No chart data available' : '暂无图表数据'}
+              </div>
+            )}
 
-          {status === 'ready' && hasData && (
-            <ResponsiveContainer width="100%" height={260}>
-              <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="holdingChartGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={strokeColor} stopOpacity={0.08} />
-                    <stop offset="95%" stopColor={strokeColor} stopOpacity={0.01} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="ts"
-                  type="number"
-                  scale="time"
-                  domain={['dataMin', 'dataMax']}
-                  tick={{ fill: '#a8a29e', fontSize: 9 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={tickFormatter}
-                  tickCount={tickCount}
-                />
-                <YAxis
-                  domain={['auto', 'auto']}
-                  tick={{ fill: '#a8a29e', fontSize: 9 }}
-                  tickLine={false} axisLine={false}
-                  width={52}
-                  tickFormatter={(v: number) => v.toFixed(0)}
-                />
-                <Tooltip content={<SimpleTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="close"
-                  stroke={strokeColor}
-                  strokeWidth={1.5}
-                  fill="url(#holdingChartGrad)"
-                  dot={false}
-                  activeDot={{ r: 3, fill: strokeColor, strokeWidth: 0 }}
-                  isAnimationActive={false}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
+            {status === 'ready' && hasData && (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="holdingChartGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor={strokeColor} stopOpacity={0.08} />
+                      <stop offset="95%" stopColor={strokeColor} stopOpacity={0.01} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis
+                    dataKey="ts"
+                    type="number"
+                    scale="time"
+                    domain={['dataMin', 'dataMax']}
+                    tick={{ fill: '#a8a29e', fontSize: 9 }}
+                    tickLine={false}
+                    axisLine={false}
+                    tickFormatter={tickFormatter}
+                    tickCount={tickCount}
+                  />
+                  <YAxis
+                    domain={['auto', 'auto']}
+                    tick={{ fill: '#a8a29e', fontSize: 9 }}
+                    tickLine={false} axisLine={false}
+                    width={52}
+                    tickFormatter={(v: number) => v.toFixed(0)}
+                  />
+                  {/* Previous close baseline — intraday only, conditional */}
+                  {showPrevCloseLine && (
+                    <ReferenceLine y={prevClose!} stroke="#e5e7eb" strokeDasharray="2 2" strokeWidth={1} />
+                  )}
+                  <Tooltip
+                    content={<SimpleTooltip />}
+                    cursor={{ stroke: '#e5e7eb', strokeWidth: 1 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="close"
+                    stroke={strokeColor}
+                    strokeWidth={1.5}
+                    fill="url(#holdingChartGrad)"
+                    dot={false}
+                    activeDot={{ r: 3, fill: strokeColor, strokeWidth: 0 }}
+                    isAnimationActive={false}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          {/* Spacer */}
+          <div className="flex-1" />
         </div>
 
-        {/* Price summary — view-based period return */}
+        {/* Sticky price summary — always visible at bottom */}
         {status === 'ready' && (
-          <div className="px-5 pt-4 pb-3">
+          <div className="sticky bottom-0 bg-white px-5 py-3 border-t border-stone-100 shrink-0">
             <div className="text-2xl font-semibold text-stone-800 tnum">
-              {fmtPrice(periodReturn.price)}
+              {fmtPrice(displayReturn.price)}
             </div>
-            {periodReturn.change != null && periodReturn.changePct != null && (
-              <div className={`text-sm font-medium tnum mt-1 ${changeColor}`}>
-                {fmtSignedPrice(periodReturn.change)}
+            {displayReturn.change != null && displayReturn.changePct != null && (
+              <div className={`text-sm font-medium tnum mt-0.5 ${changeColor}`}>
+                {fmtSignedPrice(displayReturn.change)}
                 <span className="ml-2">
-                  ({periodReturn.changePct >= 0 ? '+' : ''}{periodReturn.changePct.toFixed(2)}%)
+                  ({displayReturn.changePct >= 0 ? '+' : ''}{displayReturn.changePct.toFixed(2)}%)
                 </span>
               </div>
             )}
+            <div className="text-[10px] text-stone-400 mt-1">
+              {isEn ? 'Auto-refreshes every 5 min while open' : '面板打开时每5分钟自动刷新'}
+            </div>
           </div>
         )}
-
-        <div className="flex-1" />
-
-        {/* Footer */}
-        <div className="px-5 py-2 border-t border-stone-100 text-[10px] text-stone-400">
-          {isEn ? 'Auto-refreshes every 5 min while open' : '面板打开时每5分钟自动刷新'}
-        </div>
       </div>
     </>
   )
