@@ -220,7 +220,7 @@ function AssetBadge({ type }: { type: string }) {
 
 // ── Stock legs table ─────────────────────────────────────────────────────────
 /** Grid column template for the financial matrix (9-col trading surface) */
-const GRID_COLS = 'grid grid-cols-[minmax(120px,1fr)_70px_90px_90px_110px_110px_110px_90px_56px] gap-x-3'
+const GRID_COLS = 'grid grid-cols-[minmax(120px,1fr)_70px_90px_90px_110px_110px_110px_90px_56px] gap-x-3 min-w-[910px]'
 
 /** Grid header cell */
 function GH({ children, className = '' }: { children?: React.ReactNode; className?: string }) {
@@ -323,53 +323,66 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
         const groupDayPnl = safeFloat(group.daily_pnl) ?? safeFloat(group.bs_pnl_1d)
 
         return (
-          <div key={group.symbol} className="rounded-v2-lg overflow-hidden mb-1"
+          <div key={group.symbol} className="rounded-v2-lg mb-1"
                style={{ borderLeft: `3px solid ${deltaVal >= 0 ? '#4a9a6b' : '#c05c56'}` }}>
 
-            {/* ═══ POSITION HEADER — compact: symbol left, metrics right ═══ */}
+            {/* ═══ POSITION HEADER — uses GRID_COLS for pixel-perfect column alignment ═══ */}
             <button
               onClick={() => toggle(group.symbol)}
               className="w-full ds-hover-surface text-left"
             >
-              <div className="flex items-center justify-between px-4 py-3">
-                {/* Left: symbol + badge */}
-                <div className="flex items-center gap-2.5">
-                  <span className={`text-stone-400 text-xs ${isOpen ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
-                  <span className="text-base font-semibold text-stone-800">{group.symbol}</span>
+              <div className={`${GRID_COLS} px-4 py-3 items-center`}>
+                {/* Asset: symbol + chevron + badge */}
+                <div className="flex items-center gap-2 text-left min-w-0">
+                  <span className={`text-stone-400 text-xs shrink-0 ${isOpen ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
+                  <span className="text-base font-semibold text-stone-800 truncate">{group.symbol}</span>
                   {hasOptions && (
-                    <span className={`text-xs px-1.5 py-0.5 rounded-full border ${strategyBadgeClass(group.strategy_type)}`}>
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full border shrink-0 ${strategyBadgeClass(group.strategy_type)}`}>
                       {group.strategy_label}
                     </span>
                   )}
                 </div>
-
-                {/* Right: labeled summary metrics — aligned to P&L / Day P&L / Δ Exp columns */}
-                <div className="flex items-start justify-end gap-5 tnum ml-auto shrink">
+                {/* Qty — empty */}
+                <div />
+                {/* Cost — empty */}
+                <div />
+                {/* Spot — empty */}
+                <div />
+                {/* Market — empty */}
+                <div />
+                {/* P&L — aligned to column */}
+                <div className="text-right tnum">
                   {group.total_pnl != null && (
-                    <div className="text-right min-w-0">
+                    <>
                       <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('total_pnl')}</div>
                       <div className={`text-sm font-medium ${signClass(group.total_pnl)}`}>{fmtUSDSigned(group.total_pnl)}</div>
-                    </div>
+                    </>
                   )}
+                </div>
+                {/* Day P&L — aligned to column */}
+                <div className="text-right tnum">
                   {groupDayPnl != null && (
-                    <div className="text-right min-w-0">
+                    <>
                       <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('col_day_pnl')}</div>
                       <div className={`text-sm font-medium ${signClass(String(groupDayPnl))}`}>{fmtUSDSigned(String(groupDayPnl))}</div>
-                    </div>
+                    </>
                   )}
-                  <div className="text-right min-w-0">
-                    <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('col_delta_exp')}</div>
-                    <div className={`text-sm font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                      {fmtSigned(group.total_delta_exposure)}
-                    </div>
+                </div>
+                {/* Δ Exp — aligned to column */}
+                <div className="text-right tnum">
+                  <div className="text-xs uppercase tracking-wider text-stone-400 mb-0.5">{t('col_delta_exp')}</div>
+                  <div className={`text-sm font-medium ${deltaVal >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                    {fmtSigned(group.total_delta_exposure)}
                   </div>
                 </div>
+                {/* Action — empty */}
+                <div />
               </div>
             </button>
 
             {/* ═══ EXPANDED BREAKDOWN ═══════════════════════════ */}
             {isOpen && (
-              <div className="border-t border-stone-100">
+              <div className="border-t border-stone-100 overflow-x-auto">
                 {/* Column header */}
                 <div className={`${GRID_COLS} px-4 border-b border-stone-100 bg-stone-50/40`}>
                   <GH className="text-left">{t('col_asset')}</GH>
