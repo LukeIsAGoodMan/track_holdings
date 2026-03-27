@@ -133,6 +133,7 @@ async def get_risk_dashboard(
         as_of=datetime.utcnow(),
         top_efficient_symbol=summary["top_efficient_symbol"],
         sector_exposure=summary["sector_exposure"],
+        sector_allocation=summary.get("sector_allocation", {}),
         benchmark_ytd=benchmark_ytd,
         risk_alerts=summary["risk_alerts"],
         var_1d_95=summary["var_1d_95"],

@@ -85,6 +85,7 @@ def compute_risk_summary(
     sym_gamma: dict[str, Decimal] = {}
     sym_delta: dict[str, Decimal] = {}
     sector_exp: dict[str, Decimal] = {}
+    sector_alloc: dict[str, Decimal] = {}  # tag → signed notional market value
 
     buckets: dict[str, dict] = {
         "\u22647d":   {"net_contracts": 0, "delta_exposure": Decimal("0")},
@@ -102,25 +103,37 @@ def compute_risk_summary(
             total_delta += stock_delta
             sym_delta[inst.symbol] = sym_delta.get(inst.symbol, Decimal("0")) + stock_delta
             n_positions += 1
+
+            # Notional market value for allocation: spot × net_contracts × multiplier
+            spot_s = spot_map.get(inst.symbol)
+            stock_notional = (
+                spot_s * Decimal(str(pos.net_contracts)) * Decimal(str(inst.multiplier))
+                if spot_s is not None else Decimal("0")
+            )
+
             # Sector bucketing: ETF/Index/Crypto go to their own class bucket first;
             # stocks fall back to instrument tags (user-defined sector labels).
             asset_class = get_asset_class(inst.symbol)
             if asset_class in ("etf", "index"):
                 bucket = "ETF/Index"
                 sector_exp[bucket] = sector_exp.get(bucket, Decimal("0")) + stock_delta
+                sector_alloc[bucket] = sector_alloc.get(bucket, Decimal("0")) + stock_notional
             elif asset_class == "crypto":
                 bucket = "Crypto"
                 sector_exp[bucket] = sector_exp.get(bucket, Decimal("0")) + stock_delta
+                sector_alloc[bucket] = sector_alloc.get(bucket, Decimal("0")) + stock_notional
             else:
                 tags = inst.tags or []
                 if tags:
                     for tag in tags:
                         sector_exp[tag] = sector_exp.get(tag, Decimal("0")) + stock_delta
+                        sector_alloc[tag] = sector_alloc.get(tag, Decimal("0")) + stock_notional
                 else:
                     # Try screener-cached sector first; hardcoded fallback next;
                     # generic "Stock" label only when completely unknown.
                     sector = get_cached_sector(inst.symbol) or "Stock"
                     sector_exp[sector] = sector_exp.get(sector, Decimal("0")) + stock_delta
+                    sector_alloc[sector] = sector_alloc.get(sector, Decimal("0")) + stock_notional
             continue
 
         # ── Option position ──────────────────────────────────────────
@@ -157,9 +170,15 @@ def compute_risk_summary(
             sym_gamma[inst.symbol] = sym_gamma.get(inst.symbol, Decimal("0")) + gamma_exp
             sym_delta[inst.symbol] = sym_delta.get(inst.symbol, Decimal("0")) + delta_exp
 
+            # Option notional for allocation: spot × net_contracts × multiplier
+            opt_notional = (
+                spot * Decimal(str(pos.net_contracts)) * MULTIPLIER
+                if spot else Decimal("0")
+            )
             tags = inst.tags or []
             for tag in tags:
                 sector_exp[tag] = sector_exp.get(tag, Decimal("0")) + delta_exp
+                sector_alloc[tag] = sector_alloc.get(tag, Decimal("0")) + opt_notional
 
         # Expiry bucket
         if dte <= 7:
@@ -212,6 +231,7 @@ def compute_risk_summary(
         "positions_count": n_positions,
         "top_efficient_symbol": top_efficient,
         "sector_exposure": {tag: str(v) for tag, v in sector_exp.items()},
+        "sector_allocation": {tag: str(v) for tag, v in sector_alloc.items()},
         "risk_alerts": risk_alerts,
         "expiry_buckets": [
             {"label": k, "net_contracts": v["net_contracts"], "delta_exposure": v["delta_exposure"]}

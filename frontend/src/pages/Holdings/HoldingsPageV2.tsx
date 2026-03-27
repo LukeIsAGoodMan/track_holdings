@@ -501,33 +501,31 @@ const TOP_N = 8
 
 interface ExposureRow {
   name: string
-  delta: number     // signed delta exposure
+  notional: number  // signed notional market value
   pctOfNlv: number  // % of total portfolio NLV (signed)
 }
 
-function ExposurePanel({ sectorExp, portfolioNlv, isEn, t }: {
-  sectorExp: Record<string, string> | null | undefined
+function ExposurePanel({ sectorAlloc, portfolioNlv, isEn }: {
+  sectorAlloc: Record<string, string> | null | undefined
   portfolioNlv: number
   isEn: boolean
-  t: (key: string) => string
 }) {
   const [showOthers, setShowOthers] = useState(false)
-  const [hoverIdx, setHoverIdx]     = useState<number | null>(null)
 
   const rows = useMemo<ExposureRow[]>(() => {
-    if (!sectorExp) return []
+    if (!sectorAlloc) return []
     const entries: ExposureRow[] = []
-    for (const [key, v] of Object.entries(sectorExp)) {
+    for (const [key, v] of Object.entries(sectorAlloc)) {
       if (EXPOSURE_ASSET_CLASS_KEYS.has(key)) continue
-      const delta = parseFloat(v) || 0
-      if (Math.abs(delta) < 0.01) continue
-      const pctOfNlv = portfolioNlv > 0 ? (delta / portfolioNlv) * 100 : 0
-      entries.push({ name: key, delta, pctOfNlv })
+      const notional = parseFloat(v) || 0
+      if (Math.abs(notional) < 0.01) continue
+      const pctOfNlv = portfolioNlv > 0 ? (notional / portfolioNlv) * 100 : 0
+      entries.push({ name: key, notional, pctOfNlv })
     }
-    // Sort descending by absolute exposure
-    entries.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    // Sort descending by absolute notional
+    entries.sort((a, b) => Math.abs(b.notional) - Math.abs(a.notional))
     return entries
-  }, [sectorExp, portfolioNlv])
+  }, [sectorAlloc, portfolioNlv])
 
   if (rows.length === 0) return null
 
@@ -535,18 +533,13 @@ function ExposurePanel({ sectorExp, portfolioNlv, isEn, t }: {
   const otherRows = rows.slice(TOP_N)
   const hasOthers = otherRows.length > 0
 
-  // Find max absolute % for bar scaling (capped at 100% of NLV for normal bars)
+  // Bar scaling: normalize against 100% of NLV (full bar = 100% allocation)
   const maxAbsPct = Math.max(100, ...rows.map(r => Math.abs(r.pctOfNlv)))
 
   return (
     <div className="space-y-1.5">
-      {topRows.map((row, i) => (
-        <ExposureBar
-          key={row.name} row={row} maxAbsPct={maxAbsPct}
-          isHover={hoverIdx === i}
-          onEnter={() => setHoverIdx(i)}
-          onLeave={() => setHoverIdx(null)}
-        />
+      {topRows.map((row) => (
+        <ExposureBar key={row.name} row={row} maxAbsPct={maxAbsPct} />
       ))}
 
       {/* Others — expandable */}
@@ -561,13 +554,8 @@ function ExposurePanel({ sectorExp, portfolioNlv, isEn, t }: {
             <span className={`text-[10px] ${showOthers ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
             <span>{isEn ? `${otherRows.length} more` : `其他 ${otherRows.length} 项`}</span>
           </button>
-          {showOthers && otherRows.map((row, i) => (
-            <ExposureBar
-              key={row.name} row={row} maxAbsPct={maxAbsPct}
-              isHover={hoverIdx === TOP_N + i}
-              onEnter={() => setHoverIdx(TOP_N + i)}
-              onLeave={() => setHoverIdx(null)}
-            />
+          {showOthers && otherRows.map((row) => (
+            <ExposureBar key={row.name} row={row} maxAbsPct={maxAbsPct} />
           ))}
         </>
       )}
@@ -575,32 +563,24 @@ function ExposurePanel({ sectorExp, portfolioNlv, isEn, t }: {
   )
 }
 
-/** Single exposure bar row — supports long (right) and short (left) */
-function ExposureBar({ row, maxAbsPct, isHover, onEnter, onLeave }: {
-  row: ExposureRow; maxAbsPct: number
-  isHover: boolean; onEnter: () => void; onLeave: () => void
-}) {
-  const isLong = row.delta >= 0
+/** Single exposure bar row — clean ranked layout, no hover detail */
+function ExposureBar({ row, maxAbsPct }: { row: ExposureRow; maxAbsPct: number }) {
+  const isLong = row.notional >= 0
   const absPct = Math.abs(row.pctOfNlv)
-  // Bar width: % of the available track (relative to maxAbsPct)
-  const barWidth = maxAbsPct > 0 ? Math.min(100, (absPct / maxAbsPct) * 100) : 0
+  // Bar width: % of track (100% NLV = full bar), with 2px floor for visibility
+  const barWidthPct = maxAbsPct > 0 ? Math.min(100, (absPct / maxAbsPct) * 100) : 0
   const isOverflow = Math.abs(row.pctOfNlv) > 100
-  const displayPct = row.pctOfNlv
 
   return (
-    <div
-      className={`group rounded-v2-sm px-2 py-1.5 ${isHover ? 'bg-stone-50' : ''}`}
-      style={{ transition: 'background-color 150ms ease-out' }}
-      onMouseEnter={onEnter}
-      onMouseLeave={onLeave}
-    >
+    <div className="rounded-v2-sm px-2 py-1.5 hover:bg-stone-50/60"
+         style={{ transition: 'background-color 150ms ease-out' }}>
       {/* Top line: name + signed % */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-stone-600 truncate flex-1 mr-3">{row.name}</span>
         <span className={`tnum text-xs font-medium shrink-0 ${
           isLong ? 'text-emerald-600' : 'text-rose-500'
         }`}>
-          {displayPct >= 0 ? '+' : ''}{displayPct.toFixed(1)}%
+          {row.pctOfNlv >= 0 ? '+' : ''}{row.pctOfNlv.toFixed(1)}%
         </span>
       </div>
 
@@ -613,7 +593,8 @@ function ExposureBar({ row, maxAbsPct, isHover, onEnter, onLeave }: {
               : (isLong ? 'bg-emerald-400/70' : 'bg-rose-400/70')
           }`}
           style={{
-            width: `${barWidth}%`,
+            width: `${barWidthPct}%`,
+            minWidth: absPct > 0.01 ? '2px' : '0px',
             transition: 'width 200ms ease-out',
             backgroundImage: isOverflow
               ? 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 5px)'
@@ -621,13 +602,6 @@ function ExposureBar({ row, maxAbsPct, isHover, onEnter, onLeave }: {
           }}
         />
       </div>
-
-      {/* Hover detail: signed delta value */}
-      {isHover && (
-        <div className="mt-1 text-[10px] text-stone-400 tnum">
-          Δ {row.delta >= 0 ? '+' : ''}{fmtNum(String(row.delta))}
-        </div>
-      )}
     </div>
   )
 }
@@ -974,16 +948,15 @@ export default function HoldingsPageV2() {
               </div>
 
               {/* Right column (40%) — Ranked Exposure Panel */}
-              {riskDash && Object.keys(riskDash.sector_exposure ?? {}).length > 0 && (
+              {riskDash && Object.keys(riskDash.sector_allocation ?? riskDash.sector_exposure ?? {}).length > 0 && (
                 <div className="w-[40%] shrink-0">
                   <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
                     {t('sector_exposure')}
                   </div>
                   <ExposurePanel
-                    sectorExp={riskDash.sector_exposure}
+                    sectorAlloc={riskDash.sector_allocation ?? riskDash.sector_exposure}
                     portfolioNlv={heroMetrics.portfolioValue}
                     isEn={isEn}
-                    t={t}
                   />
                 </div>
               )}

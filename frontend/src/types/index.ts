@@ -164,6 +164,7 @@ export interface RiskDashboard {
   as_of:                    string   // ISO datetime
   top_efficient_symbol:     string | null
   sector_exposure:          Record<string, string>  // tag → delta exposure DecStr
+  sector_allocation?:       Record<string, string>  // tag → notional market value DecStr
   benchmark_ytd:            BenchmarkYTD[]
   risk_alerts:              string[]  // human-readable gamma crash warnings
   var_1d_95:                string | null  // DecStr — 1-day 95% VaR (positive = max expected loss)

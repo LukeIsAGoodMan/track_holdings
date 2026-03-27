@@ -100,6 +100,9 @@ class RiskDashboard(BaseModel):
     # Factor / sector exposure: tag -> aggregate signed delta exposure
     sector_exposure:        dict[str, str] = {}
 
+    # Factor / sector allocation: tag -> signed notional market value
+    sector_allocation:      dict[str, str] = {}
+
     # Alpha benchmarking: SPY + QQQ YTD for comparison
     benchmark_ytd:          list[BenchmarkYTD] = []
 
