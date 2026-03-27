@@ -1,37 +1,48 @@
 /**
- * PortfolioHistoryChart — 30-day NLV equity curve.
+ * PortfolioHistoryChart — 30-day Portfolio PnL curve.
  *
- * Tooltip: Full value + absolute daily change (NO percentage).
+ * Displays cumulative profit/loss (NOT NLV / market value).
+ * PnL starts at ~0 when positions are first opened.
+ * No step jumps from capital deployment.
+ *
+ * Tooltip: Signed PnL value + absolute daily change.
  * X-axis: Dates (Mar 10, Mar 11).
+ * Color: green when PnL > 0, red when PnL < 0.
  * All numbers tnum-aligned.
  */
 import { useState, useEffect, useMemo } from 'react'
 import {
-  AreaChart, Area, XAxis, Tooltip,
+  AreaChart, Area, XAxis, YAxis, ReferenceLine, Tooltip,
   ResponsiveContainer,
 } from 'recharts'
 import { fetchPortfolioHistory } from '@/api/holdings'
 import { useLanguage } from '@/context/LanguageContext'
 import type { PortfolioHistoryPoint } from '@/types'
 
-/** Full currency — NEVER abbreviated in tooltips */
-function fmtFull(val: number): string {
-  if (!val || isNaN(val)) return '$0'
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency', currency: 'USD',
-    minimumFractionDigits: 0, maximumFractionDigits: 0,
-  }).format(val)
-}
-
-/** Signed full currency with explicit +/- */
-function fmtFullSigned(val: number): string {
-  if (!val || isNaN(val)) return '$0'
+/** Signed full currency — always shows +/- for PnL */
+function fmtPnl(val: number): string {
+  if (isNaN(val)) return '$0'
   const abs = Math.abs(val)
   const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency', currency: 'USD',
     minimumFractionDigits: 0, maximumFractionDigits: 0,
   }).format(abs)
-  return val >= 0 ? `+${formatted}` : `-${formatted}`
+  if (val > 0) return `+${formatted}`
+  if (val < 0) return `-${formatted}`
+  return '$0'
+}
+
+/** Signed full currency for daily change */
+function fmtFullSigned(val: number): string {
+  if (isNaN(val)) return '$0'
+  const abs = Math.abs(val)
+  const formatted = new Intl.NumberFormat('en-US', {
+    style: 'currency', currency: 'USD',
+    minimumFractionDigits: 0, maximumFractionDigits: 0,
+  }).format(abs)
+  if (val > 0) return `+${formatted}`
+  if (val < 0) return `-${formatted}`
+  return '$0'
 }
 
 function fmtDate(iso: string): string {
@@ -43,12 +54,14 @@ function fmtDate(iso: string): string {
 
 interface ChartDatum { date: string; nlv: number; change: number | null }
 
-function ChartTooltipInner({ active, payload, label, changeLabel }: {
-  active?: boolean; payload?: Array<{ payload: ChartDatum }>; label?: string; changeLabel: string
+function ChartTooltipInner({ active, payload, label, changeLabel, pnlLabel }: {
+  active?: boolean; payload?: Array<{ payload: ChartDatum }>; label?: string
+  changeLabel: string; pnlLabel: string
 }) {
   if (!active || !payload?.length) return null
   const d = payload[0].payload
 
+  const pnlColor = d.nlv > 0 ? 'text-emerald-600' : d.nlv < 0 ? 'text-rose-500' : 'text-stone-600'
   const changeColor = d.change != null
     ? d.change > 0 ? 'text-emerald-600' : d.change < 0 ? 'text-rose-500' : 'text-stone-500'
     : ''
@@ -58,8 +71,11 @@ function ChartTooltipInner({ active, payload, label, changeLabel }: {
       <div className="text-stone-400 mb-1" style={{ fontSize: '10px' }}>
         {label}
       </div>
-      <div className="text-stone-800 font-medium" style={{ fontSize: '14px' }}>
-        {fmtFull(d.nlv)}
+      <div className="text-stone-400 mb-0.5" style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        {pnlLabel}
+      </div>
+      <div className={`font-medium ${pnlColor}`} style={{ fontSize: '14px' }}>
+        {fmtPnl(d.nlv)}
       </div>
       {d.change != null && (
         <div className="mt-1.5 pt-1.5" style={{ borderTop: '1px solid rgba(0,0,0,0.04)' }}>
@@ -103,13 +119,19 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
     [points],
   )
 
+  // For PnL chart: green if latest PnL > 0, red if < 0
   const isPos = useMemo(() => {
-    if (chartData.length < 2) return true
-    return chartData[chartData.length - 1].nlv >= chartData[0].nlv
+    if (chartData.length === 0) return true
+    return chartData[chartData.length - 1].nlv >= 0
   }, [chartData])
+
+  // Check if series crosses zero — needs split gradient
+  const hasNeg = useMemo(() => chartData.some(d => d.nlv < 0), [chartData])
+  const hasPos = useMemo(() => chartData.some(d => d.nlv > 0), [chartData])
 
   const strokeColor = isPos ? '#4a9a6b' : '#c05c56'
   const changeLabel = t('daily_change')
+  const pnlLabel = t('total_pnl')
 
   if (loading) {
     return <div className="h-44 bg-v2-surface-alt rounded-v2-lg ds-shimmer" />
@@ -118,7 +140,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
   if (error || chartData.length === 0) {
     return (
       <div className="h-44 flex items-center justify-center text-stone-400 text-xs">
-        No chart data available
+        {t('no_chart_data')}
       </div>
     )
   }
@@ -128,7 +150,7 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
       <ResponsiveContainer width="100%" height={180}>
         <AreaChart data={chartData} margin={{ top: 8, right: 12, left: 16, bottom: 0 }}>
           <defs>
-            <linearGradient id="histNlvGrad" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id="histPnlGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%"  stopColor={strokeColor} stopOpacity={0.08} />
               <stop offset="95%" stopColor={strokeColor} stopOpacity={0.01} />
             </linearGradient>
@@ -143,14 +165,21 @@ export default function PortfolioHistoryChart({ portfolioId }: Props) {
             interval={Math.max(0, Math.floor(chartData.length / 6))}
           />
 
-          <Tooltip content={<ChartTooltipInner changeLabel={changeLabel} />} />
+          <YAxis hide domain={['auto', 'auto']} />
+
+          {/* Zero reference line — subtle baseline when PnL crosses zero */}
+          {hasNeg && hasPos && (
+            <ReferenceLine y={0} stroke="#d6d3d1" strokeWidth={0.5} strokeDasharray="3 3" />
+          )}
+
+          <Tooltip content={<ChartTooltipInner changeLabel={changeLabel} pnlLabel={pnlLabel} />} />
 
           <Area
             type="monotone"
             dataKey="nlv"
             stroke={strokeColor}
             strokeWidth={1.5}
-            fill="url(#histNlvGrad)"
+            fill="url(#histPnlGrad)"
             dot={false}
             activeDot={{ r: 3, strokeWidth: 0, fill: strokeColor }}
             isAnimationActive={false}
