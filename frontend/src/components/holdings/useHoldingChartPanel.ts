@@ -12,7 +12,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchHoldingChart } from '@/api/holdings'
 import type { IntradayBar, EodLightBar } from '@/types'
 
-export type ChartView = '1D' | '5D' | '1M'
+export type ChartView = 'Intraday' | '1D' | '5D' | '1M'
 export type ChartStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 const REFRESH_INTERVAL_MS = 5 * 60 * 1000
@@ -32,7 +32,7 @@ export interface HoldingChartState {
 export function useHoldingChartPanel(): HoldingChartState {
   const [isOpen, setIsOpen]     = useState(false)
   const [symbol, setSymbol]     = useState<string | null>(null)
-  const [view,   setView]       = useState<ChartView>('1D')
+  const [view,   setView]       = useState<ChartView>('Intraday')
   const [status, setStatus]     = useState<ChartStatus>('idle')
   const [intraday5min, setIntraday] = useState<IntradayBar[]>([])
   const [eodLight,     setEod]      = useState<EodLightBar[]>([])
@@ -52,7 +52,6 @@ export function useHoldingChartPanel(): HoldingChartState {
     setStatus('loading')
     try {
       const data = await fetchHoldingChart(sym)
-      // Only apply if this symbol is still the active one
       if (activeSymbolRef.current !== sym) return
       setIntraday(data.intraday_5min ?? [])
       setEod(data.eod_light ?? [])
@@ -68,7 +67,7 @@ export function useHoldingChartPanel(): HoldingChartState {
     activeSymbolRef.current = normalized
     setSymbol(normalized)
     setIsOpen(true)
-    setView('1D')
+    setView('Intraday')
     doFetch(normalized)
 
     // Start 5-minute polling
