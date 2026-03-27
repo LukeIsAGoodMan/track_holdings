@@ -213,3 +213,78 @@ function fmtYearMonth(ym: string): string {
   const months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
   return `${months[parseInt(month)] ?? ym} '${year.slice(2)}`
 }
+
+// ── Derived lightweight metrics (no new API calls) ──────────────────────────
+
+export interface DerivedMetrics {
+  /** Price position within available history range: 0 = at low, 1 = at high */
+  pricePosition: number | null
+  rangeLow: number | null
+  rangeHigh: number | null
+  /** (current - 20D avg) / 20D avg */
+  distVs20dAvg: number | null
+  /** Average absolute daily return over last 20 trading days */
+  avgDailyMove: number | null
+  /** Current volume / 20D avg volume (null if volume unavailable) */
+  volVs20dAvg: number | null
+}
+
+export function computeDerivedMetrics(eod: EodLightBar[], currentPrice: number | null): DerivedMetrics {
+  const empty: DerivedMetrics = { pricePosition: null, rangeLow: null, rangeHigh: null, distVs20dAvg: null, avgDailyMove: null, volVs20dAvg: null }
+  if (eod.length < 5 || currentPrice == null) return empty
+
+  // Price Position: use up to 252 bars (1Y), or all available
+  const rangeSlice = eod.slice(-252)
+  let low = Infinity, high = -Infinity
+  for (const b of rangeSlice) {
+    if (b.close < low) low = b.close
+    if (b.close > high) high = b.close
+  }
+  const pricePosition = high > low ? (currentPrice - low) / (high - low) : null
+
+  // 20D metrics
+  const last20 = eod.slice(-21) // need 21 bars for 20 daily returns
+  let distVs20dAvg: number | null = null
+  let avgDailyMove: number | null = null
+  let volVs20dAvg: number | null = null
+
+  if (last20.length >= 2) {
+    // 20D average close
+    const recent = last20.slice(-20)
+    const avgClose = recent.reduce((s, b) => s + b.close, 0) / recent.length
+    if (avgClose > 0) {
+      distVs20dAvg = ((currentPrice - avgClose) / avgClose) * 100
+    }
+
+    // Average absolute daily return
+    let sumAbsReturn = 0
+    let returnCount = 0
+    for (let i = 1; i < last20.length; i++) {
+      const prev = last20[i - 1].close
+      if (prev > 0) {
+        sumAbsReturn += Math.abs((last20[i].close - prev) / prev) * 100
+        returnCount++
+      }
+    }
+    if (returnCount > 0) avgDailyMove = sumAbsReturn / returnCount
+
+    // Volume vs 20D average
+    const recentVols = recent.filter(b => b.volume > 0)
+    if (recentVols.length >= 5) {
+      const avgVol = recentVols.reduce((s, b) => s + b.volume, 0) / recentVols.length
+      const latestVol = eod[eod.length - 1].volume
+      if (avgVol > 0 && latestVol > 0) {
+        volVs20dAvg = latestVol / avgVol
+      }
+    }
+  }
+
+  return {
+    pricePosition,
+    rangeLow: low !== Infinity ? low : null,
+    rangeHigh: high !== -Infinity ? high : null,
+    distVs20dAvg,
+    avgDailyMove,
+    volVs20dAvg,
+  }
+}
