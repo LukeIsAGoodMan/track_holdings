@@ -25,6 +25,7 @@ import type {
   Transaction,
   SymbolSuggestion,
   AnalysisResult,
+  HoldingChartResponse,
 } from '@/types'
 
 // ── Portfolios ────────────────────────────────────────────────────────────────
@@ -265,3 +266,9 @@ export const validateSymbol = (symbol: string): Promise<{ valid: boolean; symbol
 /** GET /api/analysis/stock?symbol=MSFT&lang=en */
 export const fetchAnalysis = (symbol: string, lang: string): Promise<AnalysisResult> =>
   api.get<AnalysisResult>('/analysis/stock', { params: { symbol, lang }, timeout: 60_000 }).then((r) => r.data)
+
+// ── Holding Chart Panel ─────────────────────────────────────────────────────
+
+/** GET /api/holdings/chart/{symbol} — intraday 5min + EOD light in one call */
+export const fetchHoldingChart = (symbol: string): Promise<HoldingChartResponse> =>
+  api.get<HoldingChartResponse>(`/holdings/chart/${encodeURIComponent(symbol)}`).then((r) => r.data)

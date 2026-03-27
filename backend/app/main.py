@@ -31,6 +31,7 @@ from app.routers import portfolio_history as portfolio_history_router
 from app.routers import market_quotes as market_quotes_router
 from app.routers import symbols as symbols_router
 from app.routers import analysis as analysis_router
+from app.routers import holding_chart as holding_chart_router
 from app.services.alert_engine import AlertEngine
 from app.services.lifecycle import process_expired_trades
 from app.services.ai_engine import AiInsightService, create_provider as create_ai_provider, set_vol_cache_ref as set_ai_vol_cache_ref
@@ -194,6 +195,7 @@ app.include_router(portfolio_history_router.router, prefix="/api")
 app.include_router(market_quotes_router.router,     prefix="/api")
 app.include_router(symbols_router.router,           prefix="/api")
 app.include_router(analysis_router.router,          prefix="/api")
+app.include_router(holding_chart_router.router,    prefix="/api")
 
 
 @app.get("/health", tags=["system"])

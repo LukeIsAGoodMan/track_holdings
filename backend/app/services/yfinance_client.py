@@ -646,6 +646,55 @@ async def get_intraday_5min(ticker: str) -> list[dict] | None:
     )
 
 
+# ── /historical-price-eod/light — lightweight EOD close+volume ─────────────
+
+def _do_fetch_eod_light(ticker: str) -> list[dict] | None:
+    """
+    Fetch EOD light history from FMP /historical-price-eod/light.
+
+    FMP raw response: [{symbol, date, price, volume}, ...] newest-first.
+    Normalizes "price" → "close" and sorts ascending by date.
+    Filters out malformed rows (missing date or price).
+    """
+    fmp_s = _fmp_sym(ticker)
+    data = _fmp_get("/historical-price-eod/light", {"symbol": fmp_s})
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+
+    bars: list[dict] = []
+    for item in reversed(data):  # FMP returns newest-first; reverse to chronological
+        d = item.get("date")
+        p = item.get("price")
+        if not d or p is None:
+            continue
+        bars.append({
+            "date":   d,
+            "close":  float(p),
+            "volume": int(item.get("volume") or 0),
+        })
+
+    _set_cached(f"eodlight:{ticker.upper()}", bars)
+    return bars
+
+
+async def get_eod_light(ticker: str) -> list[dict] | None:
+    """
+    Return EOD light history for a ticker (300s TTL, SWR).
+
+    Returns list of {date, close, volume} in chronological order.
+    """
+    ticker = ticker.upper()
+    cache_key = f"eodlight:{ticker}"
+    cached = _get_cached(cache_key, 300.0)
+    if isinstance(cached, list):
+        if not _is_cache_fresh(cache_key, 300.0):
+            _schedule_bg_refresh(cache_key, _do_fetch_eod_light, ticker)
+        return cached
+    return await asyncio.get_running_loop().run_in_executor(
+        _refresh_pool, _do_fetch_eod_light, ticker
+    )
+
+
 # ── SMA — computed locally from historical bars ───────────────────────────
 # FMP /technical-indicators/sma requires a higher-tier subscription (402).
 # We compute SMA locally from the daily OHLCV bars fetched via get_history.

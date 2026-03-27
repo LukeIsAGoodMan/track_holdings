@@ -404,6 +404,29 @@ export interface PortfolioHistoryResponse {
   days:       number
 }
 
+// ── Holding Chart Panel ──────────────────────────────────────────────────────
+export interface IntradayBar {
+  date:   string   // "2026-03-27 09:35:00"
+  open:   number | null
+  high:   number | null
+  low:    number | null
+  close:  number | null
+  volume: number
+}
+
+export interface EodLightBar {
+  date:   string   // "2026-03-27"
+  close:  number
+  volume: number
+}
+
+export interface HoldingChartResponse {
+  symbol:        string
+  intraday_5min: IntradayBar[]
+  eod_light:     EodLightBar[]
+  fetched_at:    string
+}
+
 // ── Transaction History (Phase 14c) ──────────────────────────────────────────
 export interface Transaction {
   id:              number

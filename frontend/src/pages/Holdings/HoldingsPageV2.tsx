@@ -37,6 +37,8 @@ import TradeRecordTimeline   from '@/design-system/workspace/TradeRecordTimeline
 import ActivityPanel         from '@/design-system/workspace/ActivityPanel'
 import SectionCard           from '@/design-system/primitives/SectionCard'
 import TabsV2               from '@/design-system/primitives/TabsV2'
+import HoldingChartPanel     from '@/components/holdings/HoldingChartPanel'
+import { useHoldingChartPanel } from '@/components/holdings/useHoldingChartPanel'
 
 // ── Safe helpers ──────────────────────────────────────────────────────────────
 function safeFloat(v: string | number | null | undefined): number | null {
@@ -90,6 +92,7 @@ function CustomCell(props: Record<string, unknown>) {
   const name    = (typeof props.name   === 'string') ? props.name   : (props.name != null ? String(props.name) : '')
   const perf    = (typeof props.perf   === 'number' && isFinite(props.perf as number)) ? props.perf as number : null
   const isShort = (props.isShort === true)
+  const onCellClick = props.onCellClick as ((name: string) => void) | undefined
 
   const fill  = perfColor(perf)
   const label = isShort ? `${name} (S)` : name
@@ -101,7 +104,7 @@ function CustomCell(props: Record<string, unknown>) {
   const showText    = width > 36 && height > 22
 
   return (
-    <g>
+    <g style={{ cursor: 'pointer' }} onClick={() => name && onCellClick?.(name)}>
       <rect
         x={x + 1} y={y + 1}
         width={Math.max(0, width - 2)} height={Math.max(0, height - 2)}
@@ -114,6 +117,7 @@ function CustomCell(props: Record<string, unknown>) {
             textAnchor="middle" dominantBaseline="middle"
             fill="rgba(255,255,255,0.9)"
             fontSize={fontSize} fontWeight="500" fontFamily="Inter, sans-serif"
+            style={{ pointerEvents: 'none' }}
           >
             {label || '?'}
           </text>
@@ -123,6 +127,7 @@ function CustomCell(props: Record<string, unknown>) {
               textAnchor="middle" dominantBaseline="middle"
               fill="rgba(255,255,255,0.7)"
               fontSize={subFontSize} fontWeight="400" fontFamily="Inter, sans-serif"
+              style={{ pointerEvents: 'none' }}
             >
               {perf >= 0 ? '+' : ''}{perf.toFixed(1)}%
             </text>
@@ -650,6 +655,7 @@ export default function HoldingsPageV2() {
   const { selectedPortfolioId, refreshKey, triggerRefresh, portfolios } = usePortfolio()
   const { lang, t } = useLanguage()
   const { lastHoldingsUpdate, lastSpotChangePct } = useWebSocket()
+  const chartPanel = useHoldingChartPanel()
   const isEn = lang !== 'zh'
 
   // Tab from URL
@@ -846,6 +852,7 @@ export default function HoldingsPageV2() {
           name: g.symbol, size: Math.abs(safeFloat(g.delta_adjusted_exposure) ?? 0),
           perf, rawPerf, perf1d, rawPerf1d,
           exposure: safeFloat(g.delta_adjusted_exposure) ?? 0, isShort,
+          onCellClick: chartPanel.openPanel,
         }
       })
       .filter((d) => d.size > 0 && d.name)
@@ -1021,6 +1028,18 @@ export default function HoldingsPageV2() {
       {activeTab === 'records' && (
         <TradeRecordTimeline portfolioId={selectedPortfolioId} isFolder={selectedPortfolio?.is_folder ?? false} />
       )}
+
+      {/* ── Holding Chart Panel (slide-over from treemap clicks) ──── */}
+      <HoldingChartPanel
+        open={chartPanel.isOpen}
+        symbol={chartPanel.symbol}
+        view={chartPanel.view}
+        onClose={chartPanel.closePanel}
+        onViewChange={chartPanel.setView}
+        intraday5min={chartPanel.intraday5min}
+        eodLight={chartPanel.eodLight}
+        status={chartPanel.status}
+      />
     </div>
   )
 }
