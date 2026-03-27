@@ -20,6 +20,12 @@ Logic:
   5. NLV[date] = cash_balance + Σ(historical_value per position)
   6. Return series sorted ascending, plus start/end NLV and return_pct.
   7. debug_info lists which tickers succeeded and which fell back to proxy.
+
+Lifecycle-aware:
+  Each position contributes 0 before its first_trade_date (entry date).
+  This prevents newly added positions from distorting historical portfolio
+  shape. The entry is timestamp-based: if a position was opened after market
+  close, it does not affect same-day historical contribution.
 """
 from __future__ import annotations
 
@@ -111,9 +117,12 @@ async def get_portfolio_history(
         return _flat_cash_response(cash_balance, days)
 
     # 2. Separate stock and option positions; collect all underlying symbols.
-    stock_sym_qty: dict[str, int] = {}   # sym → net_contracts
-    # (underlying_sym, strike, option_type, net_contracts, multiplier)
-    option_legs: list[tuple[str, Decimal, OptionType, int, int]] = []
+    #    Each entry carries an entry_date (from first_trade_date) for lifecycle
+    #    gating: position contributes 0 before its entry date.
+    # stock_positions: list of (sym, net_contracts, entry_date_str)
+    stock_positions: list[tuple[str, int, str]] = []
+    # option_legs: list of (sym, strike, opt_type, net_contracts, multiplier, entry_date_str)
+    option_legs: list[tuple[str, Decimal, OptionType, int, int, str]] = []
     all_syms: set[str] = set()
 
     for pos in positions:
@@ -123,8 +132,14 @@ async def get_portfolio_history(
         itype = pos.instrument.instrument_type
         otype = pos.instrument.option_type
 
+        # Derive entry date from first_trade_date (timezone-aware datetime → date string)
+        ftd = pos.first_trade_date
+        if ftd.tzinfo:
+            ftd = ftd.replace(tzinfo=None)
+        entry_date_str = ftd.date().isoformat() if hasattr(ftd, 'date') else str(ftd)[:10]
+
         if itype == InstrumentType.STOCK or otype is None:
-            stock_sym_qty[sym] = stock_sym_qty.get(sym, 0) + pos.net_contracts
+            stock_positions.append((sym, pos.net_contracts, entry_date_str))
             all_syms.add(sym)
         else:
             all_syms.add(sym)
@@ -134,6 +149,7 @@ async def get_portfolio_history(
                 otype,
                 pos.net_contracts,
                 pos.instrument.multiplier,
+                entry_date_str,
             ))
 
     # 3. Fetch historical EOD closes.
@@ -192,14 +208,17 @@ async def get_portfolio_history(
         for sym in all_syms
     }
 
-    # 6. Compute daily NLV — each instrument is treated independently.
+    # 6. Compute daily NLV — lifecycle-aware contribution.
+    #    Each position contributes 0 before its entry date (first_trade_date).
     #    A missing price for one instrument never zeros another's contribution.
     series = []
     for d_str in all_dates:
         nlv = cash_balance
 
-        # Stock / ETF contributions
-        for sym, qty in stock_sym_qty.items():
+        # Stock / ETF contributions — gated by entry date
+        for sym, qty, entry_date in stock_positions:
+            if d_str < entry_date:
+                continue  # position not yet opened — contributes 0
             price = filled.get(sym.upper(), {}).get(d_str)
             if price is not None:
                 nlv += Decimal(str(price)) * qty
@@ -207,11 +226,12 @@ async def get_portfolio_history(
         # Option intrinsic-value contributions (simplified — no time value).
         # Uses underlying price; if underlying data was proxied from current spot,
         # this becomes a flat-line estimate rather than zeroing the position out.
-        for (underlying_sym, strike, opt_type, net_contracts, multiplier) in option_legs:
+        # Gated by entry date — options contribute 0 before opened.
+        for (underlying_sym, strike, opt_type, net_contracts, multiplier, entry_date) in option_legs:
+            if d_str < entry_date:
+                continue  # position not yet opened — contributes 0
             price = filled.get(underlying_sym.upper(), {}).get(d_str)
             if price is None:
-                # No data at all for this underlying — use 0 for this leg only.
-                # Other legs continue contributing their correct values.
                 continue
             spot = Decimal(str(price))
             if str(opt_type).upper() in ("CALL", "OPTIONTYPE.CALL"):
