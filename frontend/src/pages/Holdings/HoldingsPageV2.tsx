@@ -16,7 +16,6 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Treemap, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
 } from 'recharts'
 import { usePortfolio }  from '@/context/PortfolioContext'
 import { useLanguage }   from '@/context/LanguageContext'
@@ -496,121 +495,139 @@ function HoldingsTableV2({ groups }: { groups: HoldingGroup[] }) {
   )
 }
 
-// ── Sector Pie Chart (compact V2 version) ────────────────────────────────────
-const ASSET_CLASS_KEYS = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
-const SECTOR_NAMED_COLORS: Record<string, string> = {
-  'Technology': '#6366f1', 'Healthcare': '#10b981', 'Finance': '#0ea5e9',
-  'Financials': '#0ea5e9', 'Energy': '#f59e0b', 'Consumer Discretionary': '#f97316',
-  'Consumer Staples': '#84cc16', 'Industrials': '#64748b', 'Materials': '#78716c',
-  'Real Estate': '#a78bfa', 'Communication Services': '#22d3ee',
-  'Utilities': '#4ade80', 'Other / Diversified': '#94a3b8',
+// ── Exposure Panel — multi-label ranked bar visualization ─────────────────────
+const EXPOSURE_ASSET_CLASS_KEYS = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
+const TOP_N = 8
+
+interface ExposureRow {
+  name: string
+  delta: number     // signed delta exposure
+  pctOfNlv: number  // % of total portfolio NLV (signed)
 }
-const SECTOR_FALLBACK_PALETTE = [
-  '#6366f1', '#0ea5e9', '#f97316', '#10b981',
-  '#f59e0b', '#ec4899', '#84cc16', '#22d3ee',
-]
 
-// ── Sector Donut Chart ───────────────────────────────────────────────────────
+function ExposurePanel({ sectorExp, portfolioNlv, isEn, t }: {
+  sectorExp: Record<string, string> | null | undefined
+  portfolioNlv: number
+  isEn: boolean
+  t: (key: string) => string
+}) {
+  const [showOthers, setShowOthers] = useState(false)
+  const [hoverIdx, setHoverIdx]     = useState<number | null>(null)
 
-// Muted multi-hue institutional palette — adjacent slices always differ in hue
-const SECTOR_PALETTE = [
-  '#1e293b', // slate core
-  '#0f766e', // muted teal
-  '#92400e', // muted amber
-  '#334155', // slate lighter
-  '#4338ca', // muted indigo
-  '#3f6212', // muted olive
-  '#7c2d12', // muted rust
-  '#475569', // slate mid
-  '#64748b', // slate soft
-]
-
-const ASSET_CLASS_KEYS_SET = new Set(['Stock', 'ETF/Index', 'Crypto', 'Option'])
-
-function SectorDonut({ sectorExp, isEn }: { sectorExp: Record<string, string> | null | undefined; isEn: boolean }) {
-  const [activeIdx, setActiveIdx] = useState<number | null>(null)
-
-  const data = useMemo(() => {
+  const rows = useMemo<ExposureRow[]>(() => {
     if (!sectorExp) return []
-    const map: Record<string, number> = {}
-    let otherTotal = 0
+    const entries: ExposureRow[] = []
     for (const [key, v] of Object.entries(sectorExp)) {
-      const val = Math.abs(parseFloat(v) || 0)
-      if (val < 0.01) continue
-      if (ASSET_CLASS_KEYS_SET.has(key)) { otherTotal += val } else { map[key] = (map[key] ?? 0) + val }
+      if (EXPOSURE_ASSET_CLASS_KEYS.has(key)) continue
+      const delta = parseFloat(v) || 0
+      if (Math.abs(delta) < 0.01) continue
+      const pctOfNlv = portfolioNlv > 0 ? (delta / portfolioNlv) * 100 : 0
+      entries.push({ name: key, delta, pctOfNlv })
     }
-    if (otherTotal > 0.01) map['Other'] = (map['Other'] ?? 0) + otherTotal
-    return Object.entries(map)
-      .map(([name, value], i) => ({ name, value, color: SECTOR_PALETTE[i % SECTOR_PALETTE.length] }))
-      .sort((a, b) => b.value - a.value)
-  }, [sectorExp])
+    // Sort descending by absolute exposure
+    entries.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    return entries
+  }, [sectorExp, portfolioNlv])
 
-  if (data.length === 0) return null
-  const total = data.reduce((s, d) => s + d.value, 0)
+  if (rows.length === 0) return null
+
+  const topRows = rows.slice(0, TOP_N)
+  const otherRows = rows.slice(TOP_N)
+  const hasOthers = otherRows.length > 0
+
+  // Find max absolute % for bar scaling (capped at 100% of NLV for normal bars)
+  const maxAbsPct = Math.max(100, ...rows.map(r => Math.abs(r.pctOfNlv)))
 
   return (
-    <div className="flex items-start gap-6">
-      {/* Donut — left, larger */}
-      <div className="w-52 h-52 shrink-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie
-              data={data} dataKey="value" cx="50%" cy="50%"
-              innerRadius="60%" outerRadius="92%"
-              strokeWidth={1} stroke="rgba(255,255,255,0.8)"
-              isAnimationActive={false}
-              onMouseEnter={(_, idx) => setActiveIdx(idx)}
-              onMouseLeave={() => setActiveIdx(null)}
-              label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                if (percent < 0.10) return null
-                const RADIAN = Math.PI / 180
-                const r = (Number(innerRadius) + Number(outerRadius)) / 2
-                const x = Number(cx) + r * Math.cos(-midAngle * RADIAN)
-                const y = Number(cy) + r * Math.sin(-midAngle * RADIAN)
-                return (
-                  <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={10} fontWeight={500}>
-                    {`${(percent * 100).toFixed(0)}%`}
-                  </text>
-                )
-              }}
-              labelLine={false}
-            >
-              {data.map((d, i) => (
-                <Cell
-                  key={d.name}
-                  fill={d.color}
-                  opacity={activeIdx != null && activeIdx !== i ? 0.35 : 1}
-                  style={{ transition: 'opacity 120ms ease-out' }}
-                />
-              ))}
-            </Pie>
-          </PieChart>
-        </ResponsiveContainer>
+    <div className="space-y-1.5">
+      {topRows.map((row, i) => (
+        <ExposureBar
+          key={row.name} row={row} maxAbsPct={maxAbsPct}
+          isHover={hoverIdx === i}
+          onEnter={() => setHoverIdx(i)}
+          onLeave={() => setHoverIdx(null)}
+        />
+      ))}
+
+      {/* Others — expandable */}
+      {hasOthers && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowOthers(!showOthers)}
+            className="flex items-center gap-1.5 w-full text-left px-1 py-1 text-xs text-stone-400 hover:text-stone-600 cursor-pointer"
+            style={{ transition: 'color 150ms ease-out' }}
+          >
+            <span className={`text-[10px] ${showOthers ? 'rotate-90' : ''}`} style={{ transition: 'transform 120ms ease-out' }}>▶</span>
+            <span>{isEn ? `${otherRows.length} more` : `其他 ${otherRows.length} 项`}</span>
+          </button>
+          {showOthers && otherRows.map((row, i) => (
+            <ExposureBar
+              key={row.name} row={row} maxAbsPct={maxAbsPct}
+              isHover={hoverIdx === TOP_N + i}
+              onEnter={() => setHoverIdx(TOP_N + i)}
+              onLeave={() => setHoverIdx(null)}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
+/** Single exposure bar row — supports long (right) and short (left) */
+function ExposureBar({ row, maxAbsPct, isHover, onEnter, onLeave }: {
+  row: ExposureRow; maxAbsPct: number
+  isHover: boolean; onEnter: () => void; onLeave: () => void
+}) {
+  const isLong = row.delta >= 0
+  const absPct = Math.abs(row.pctOfNlv)
+  // Bar width: % of the available track (relative to maxAbsPct)
+  const barWidth = maxAbsPct > 0 ? Math.min(100, (absPct / maxAbsPct) * 100) : 0
+  const isOverflow = Math.abs(row.pctOfNlv) > 100
+  const displayPct = row.pctOfNlv
+
+  return (
+    <div
+      className={`group rounded-v2-sm px-2 py-1.5 ${isHover ? 'bg-stone-50' : ''}`}
+      style={{ transition: 'background-color 150ms ease-out' }}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+    >
+      {/* Top line: name + signed % */}
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-stone-600 truncate flex-1 mr-3">{row.name}</span>
+        <span className={`tnum text-xs font-medium shrink-0 ${
+          isLong ? 'text-emerald-600' : 'text-rose-500'
+        }`}>
+          {displayPct >= 0 ? '+' : ''}{displayPct.toFixed(1)}%
+        </span>
       </div>
 
-      {/* Legend — right, vertical structured list */}
-      <div className="flex-1 min-w-0 space-y-2 pt-3">
-        {data.slice(0, 8).map((d, i) => {
-          const pct = total > 0 ? Math.round(d.value / total * 100) : 0
-          const isActive = activeIdx === i
-          return (
-            <button
-              key={d.name}
-              type="button"
-              className={`flex items-center gap-2.5 w-full text-left ds-color cursor-pointer rounded-v2-sm px-1 py-0.5 ${
-                isActive ? 'bg-stone-100/60' : ''
-              }`}
-              onMouseEnter={() => setActiveIdx(i)}
-              onMouseLeave={() => setActiveIdx(null)}
-              onClick={() => setActiveIdx(activeIdx === i ? null : i)}
-            >
-              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: d.color }} />
-              <span className={`truncate flex-1 text-xs ${isActive ? 'text-stone-800' : 'text-stone-600'}`}>{d.name}</span>
-              <span className={`tnum text-xs font-medium shrink-0 ${isActive ? 'text-stone-800' : 'text-stone-500'}`}>{pct}%</span>
-            </button>
-          )
-        })}
+      {/* Bar track */}
+      <div className="h-1.5 rounded-full bg-stone-100 relative overflow-hidden">
+        <div
+          className={`h-full rounded-full ${
+            isOverflow
+              ? (isLong ? 'bg-emerald-500' : 'bg-rose-400')
+              : (isLong ? 'bg-emerald-400/70' : 'bg-rose-400/70')
+          }`}
+          style={{
+            width: `${barWidth}%`,
+            transition: 'width 200ms ease-out',
+            backgroundImage: isOverflow
+              ? 'repeating-linear-gradient(90deg, transparent, transparent 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 5px)'
+              : undefined,
+          }}
+        />
       </div>
+
+      {/* Hover detail: signed delta value */}
+      {isHover && (
+        <div className="mt-1 text-[10px] text-stone-400 tnum">
+          Δ {row.delta >= 0 ? '+' : ''}{fmtNum(String(row.delta))}
+        </div>
+      )}
     </div>
   )
 }
@@ -956,13 +973,18 @@ export default function HoldingsPageV2() {
                 <ActivityPanel portfolioId={selectedPortfolioId} isEn={isEn} />
               </div>
 
-              {/* Right column (40%) — Sector Donut */}
+              {/* Right column (40%) — Ranked Exposure Panel */}
               {riskDash && Object.keys(riskDash.sector_exposure ?? {}).length > 0 && (
                 <div className="w-[40%] shrink-0">
                   <div className="text-xs font-medium uppercase tracking-wider text-stone-500 mb-4">
                     {t('sector_exposure')}
                   </div>
-                  <SectorDonut sectorExp={riskDash.sector_exposure} isEn={isEn} />
+                  <ExposurePanel
+                    sectorExp={riskDash.sector_exposure}
+                    portfolioNlv={heroMetrics.portfolioValue}
+                    isEn={isEn}
+                    t={t}
+                  />
                 </div>
               )}
             </div>
