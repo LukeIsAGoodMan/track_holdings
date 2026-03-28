@@ -5,7 +5,10 @@
  *   - Consistent chrome around any chart (Recharts, D3, etc.)
  *   - Allows chart implementation swap without layout impact
  *   - Handles loading / empty states
- *   - Flexible height that respects parent constraints
+ *
+ * Layout rule: NEVER clips chart content.
+ *   - Uses min-height (not fixed height) to allow chart to own its space
+ *   - No overflow-hidden — chart content (tooltips, labels) may extend beyond bounds
  */
 import type { ReactNode } from 'react'
 import SkeletonLoader from './SkeletonLoader'
@@ -16,7 +19,9 @@ interface Props {
   title?: string
   /** Right-aligned header action */
   action?: ReactNode
-  /** Chart height (default: h-64) */
+  /** Minimum chart area height (default: min-h-[256px]). Used for loading/empty states. */
+  minHeight?: string
+  /** @deprecated Use minHeight instead. Kept for backward compat. */
   height?: string
   /** Loading state */
   isLoading?: boolean
@@ -31,14 +36,18 @@ export default function ChartContainer({
   children,
   title,
   action,
-  height = 'h-64',
+  minHeight,
+  height,
   isLoading = false,
   isEmpty = false,
   emptyMessage = 'No data available',
   className = '',
 }: Props) {
+  // Resolve min-height: prefer explicit minHeight, fall back to height for compat, else default
+  const resolvedMinH = minHeight ?? (height ? `min-${height}` : 'min-h-[256px]')
+
   return (
-    <div className={`bg-v2-surface border border-v2-border rounded-v2-lg overflow-hidden ${className}`}>
+    <div className={`bg-v2-surface border border-v2-border rounded-v2-lg ${className}`}>
       {(title || action) && (
         <div className="flex items-center justify-between px-6 pt-4 pb-2">
           {title && (
@@ -47,13 +56,13 @@ export default function ChartContainer({
           {action && <div className="flex items-center gap-2">{action}</div>}
         </div>
       )}
-      <div className={`${height} w-full px-2`}>
+      <div className={`${resolvedMinH} w-full px-2`}>
         {isLoading ? (
-          <div className="flex items-center justify-center h-full">
+          <div className="flex items-center justify-center h-64">
             <SkeletonLoader variant="block" width="w-full" height="h-full" className="mx-3 mb-4" />
           </div>
         ) : isEmpty ? (
-          <div className="flex items-center justify-center h-full text-ds-body-r text-v2-text-3">
+          <div className="flex items-center justify-center h-64 text-ds-body-r text-v2-text-3">
             {emptyMessage}
           </div>
         ) : (

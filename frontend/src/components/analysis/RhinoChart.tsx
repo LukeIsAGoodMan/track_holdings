@@ -269,7 +269,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue }: Props
 
   if (data.length === 0) {
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+      <div className="bg-v2-surface border border-v2-border rounded-v2-lg p-5">
         <p className="text-sm text-slate-400 italic">No chart data</p>
       </div>
     )
@@ -320,7 +320,7 @@ export default function RhinoChart({ chart, price: priceProp, fairValue }: Props
   const endDate = data[data.length - 1]?.date ?? ''
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+    <div className="bg-v2-surface border border-v2-border rounded-v2-lg p-5">
       {/* Header with viewport info */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">

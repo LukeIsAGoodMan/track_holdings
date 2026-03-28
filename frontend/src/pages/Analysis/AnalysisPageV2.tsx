@@ -22,7 +22,6 @@ import NarrativeSection      from '@/components/analysis/NarrativeSection'
 import TechnicalDetailsPanel from '@/components/analysis/TechnicalDetailsPanel'
 
 import SectionCard     from '@/design-system/primitives/SectionCard'
-import ChartContainer  from '@/design-system/primitives/ChartContainer'
 import EmptyState      from '@/design-system/primitives/EmptyState'
 import RightPanel      from '@/design-system/shell/RightPanel'
 
@@ -448,24 +447,12 @@ export default function AnalysisPageV2() {
           <div className="flex gap-5">
             {/* ── Main column ─────────────────────────────── */}
             <div className="flex-1 min-w-0 space-y-5">
-              {/* Chart Intelligence — reuses ChartContainer + RhinoChart */}
-              <ChartContainer
-                title={isEn ? 'Market Structure' : '市场结构'}
-                height="h-80"
-                action={
-                  result.chart.market_state ? (
-                    <span className="text-ds-caption px-1.5 py-0.5 rounded-md bg-v2-surface-alt text-v2-text-3">
-                      {result.chart.market_state}
-                    </span>
-                  ) : undefined
-                }
-              >
-                <RhinoChart
-                  chart={result.chart}
-                  price={price}
-                  fairValue={result.valuation.raw_fair_value ?? undefined}
-                />
-              </ChartContainer>
+              {/* Chart — RhinoChart owns its own card frame + height */}
+              <RhinoChart
+                chart={result.chart}
+                price={price}
+                fairValue={result.valuation.raw_fair_value ?? undefined}
+              />
 
               {/* Battle Report */}
               <SectionCard>
