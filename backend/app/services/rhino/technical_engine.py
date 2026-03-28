@@ -93,35 +93,24 @@ def _filter_and_split_zones(
         z["_dist_pct"] = dist_pct
         primary_candidates.append(z)
 
-    # Sort by score descending
-    primary_candidates.sort(key=lambda z: z["_score"], reverse=True)
+    # Separate support and resistance candidates, rank independently
+    support_cands = sorted(
+        [z for z in primary_candidates if z["center"] < last_price],
+        key=lambda z: z["_score"], reverse=True,
+    )
+    resistance_cands = sorted(
+        [z for z in primary_candidates if z["center"] >= last_price],
+        key=lambda z: z["_score"], reverse=True,
+    )
 
-    # Take top 4
-    primary = primary_candidates[:4]
-    overflow = primary_candidates[4:]
+    # Select top 3 per side independently — prevents one side starving the other
+    primary_sup = support_cands[:3]
+    primary_res = resistance_cands[:3]
+    primary = primary_sup + primary_res
+
+    # Overflow to reference
+    overflow = support_cands[3:] + resistance_cands[3:]
     reference.extend(overflow)
-
-    # Coverage guarantee: ensure at least 1 support + 1 resistance within ±10%
-    has_support = any(z["center"] < last_price for z in primary)
-    has_resistance = any(z["center"] >= last_price for z in primary)
-
-    if not has_support:
-        near_support = next(
-            (z for z in reference if z["center"] < last_price and abs(z["center"] - last_price) / last_price < 0.10),
-            None,
-        )
-        if near_support:
-            reference.remove(near_support)
-            primary.append(near_support)
-
-    if not has_resistance:
-        near_resistance = next(
-            (z for z in reference if z["center"] >= last_price and abs(z["center"] - last_price) / last_price < 0.10),
-            None,
-        )
-        if near_resistance:
-            reference.remove(near_resistance)
-            primary.append(near_resistance)
 
     # Clean up internal scoring fields
     for z in primary + reference:
